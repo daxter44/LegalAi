@@ -1,0 +1,25 @@
+# .NET build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+.vs/
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# Lokalne pliki tymczasowe / robocze
+tmp/
+*.log
+
+# Sekrety / lokalne nadpisania (NIE commituj kluczy API)
+appsettings.*.local.json
+secrets.json
+.env
+
+# OS
+.DS_Store
+Thumbs.db

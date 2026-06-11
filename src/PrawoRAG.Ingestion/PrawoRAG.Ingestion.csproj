@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-PrawoRAG.Ingestion-4af6f539-af9e-45a1-9488-2b8a3627dff5</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HtmlAgilityPack" Version="1.12.4" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.6" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PrawoRAG.Domain\PrawoRAG.Domain.csproj" />
+    <ProjectReference Include="..\PrawoRAG.Storage\PrawoRAG.Storage.csproj" />
+    <ProjectReference Include="..\PrawoRAG.Embeddings\PrawoRAG.Embeddings.csproj" />
+  </ItemGroup>
+</Project>

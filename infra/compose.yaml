@@ -1,0 +1,57 @@
+# PrawoRAG — infrastruktura lokalna (Podman / Docker).
+# Uruchom: `podman compose up -d`  (maszyna Podman musi mieć >= 8 GB RAM — patrz README).
+#
+# W MVP ten plik stawia ZALEŻNOŚCI (Postgres+pgvector, TEI/embeddingi).
+# Usługi `api` i `worker` (Dockerfile) dokładamy w E3/E1 — placeholdery niżej (zakomentowane).
+
+name: praworag
+
+services:
+  db:
+    image: docker.io/pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-praworag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-praworag}
+      POSTGRES_DB: ${POSTGRES_DB:-praworag}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-praworag} -d ${POSTGRES_DB:-praworag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Text Embeddings Inference — serwuje mmlw przez HTTP (zero kodu Python do utrzymania).
+  # Model podmienialny zmienną EMBEDDING_MODEL_ID po locku (base -> large-v2) — UWAGA: zmiana
+  # modelu wymaga re-embeddingu całego korpusu (zob. plan, „Lock modelu embeddingów").
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    command: ["--model-id", "${EMBEDDING_MODEL_ID:-sdadas/mmlw-retrieval-roberta-base}", "--port", "80", "--auto-truncate"]
+    environment:
+      HUGGINGFACE_HUB_CACHE: /data
+    ports:
+      - "${TEI_PORT:-8080}:80"
+    volumes:
+      - tei-cache:/data
+    # TEI (obraz distroless) nie ma curl/wget — health weryfikujemy z hosta:
+    #   curl http://localhost:8080/health   (200 OK)
+    #   curl -X POST http://localhost:8080/embed -H 'content-type: application/json' -d '{"inputs":"zapytanie: test"}'
+
+  # --- dokładamy później ---
+  # worker:
+  #   build: { context: .., dockerfile: src/PrawoRAG.Ingestion/Dockerfile }
+  #   depends_on: { db: { condition: service_healthy }, tei: { condition: service_started } }
+  #   environment:
+  #     ConnectionStrings__Db: "Host=db;Port=5432;Database=${POSTGRES_DB:-praworag};Username=${POSTGRES_USER:-praworag};Password=${POSTGRES_PASSWORD:-praworag}"
+  #     Embeddings__BaseUrl: "http://tei:80"
+  #
+  # api:
+  #   build: { context: .., dockerfile: src/PrawoRAG.Api/Dockerfile }
+  #   depends_on: { db: { condition: service_healthy }, tei: { condition: service_started } }
+  #   ports: ["8081:8080"]
+
+volumes:
+  pgdata:
+  tei-cache:

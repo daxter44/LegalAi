@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PrawoRAG.Domain\PrawoRAG.Domain.csproj" />
+    <ProjectReference Include="..\PrawoRAG.Storage\PrawoRAG.Storage.csproj" />
+    <ProjectReference Include="..\PrawoRAG.Embeddings\PrawoRAG.Embeddings.csproj" />
+    <ProjectReference Include="..\PrawoRAG.Llm\PrawoRAG.Llm.csproj" />
+  </ItemGroup>
+
+</Project>

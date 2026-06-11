@@ -1,0 +1,77 @@
+using System.Text;
+using PrawoRAG.Domain.Documents;
+using PrawoRAG.Domain.Llm;
+using PrawoRAG.Domain.Retrieval;
+
+namespace PrawoRAG.Llm.Grounding;
+
+/// <summary>Źródło pokazywane użytkownikowi i numerowane [n] w prompcie/odpowiedzi.</summary>
+public sealed record SourceRef(int Index, string Label, string Title, string? SourceUrl, string Snippet);
+
+/// <summary>
+/// Buduje ugruntowany prompt: twardy system prompt (odpowiadaj tylko ze źródeł, cytuj [n],
+/// abstynencja gdy brak pokrycia) + wiadomość użytkownika z ponumerowanymi źródłami [1..K].
+/// </summary>
+public static class GroundedPrompt
+{
+    public const string SystemPrompt =
+        """
+        Jesteś asystentem prawnym dla polskich prawników. Odpowiadasz WYŁĄCZNIE na podstawie
+        dostarczonych źródeł, oznaczonych [1], [2], itd. Zasady bezwzględne:
+        1. Każdą tezę poprzyj odwołaniem do numeru źródła w nawiasie kwadratowym, np. [1].
+        2. Jeśli dostarczone źródła NIE zawierają odpowiedzi, napisz dokładnie:
+           "Nie mam wystarczających źródeł, aby odpowiedzieć." i nic poza tym nie dodawaj.
+        3. NIE wymyślaj przepisów, artykułów, sygnatur ani cytatów. Nie korzystaj z wiedzy spoza źródeł.
+        4. Cytuj dokładnie; jeśli źródło jest niejednoznaczne — zaznacz to.
+        Odpowiadaj po polsku, rzeczowo i zwięźle.
+        """;
+
+    public static (LlmRequest Request, IReadOnlyList<SourceRef> Sources) Build(string question, IReadOnlyList<RetrievedChunk> chunks)
+    {
+        var sources = new List<SourceRef>(chunks.Count);
+        var sb = new StringBuilder();
+        sb.Append("PYTANIE:\n").Append(question).Append("\n\nŹRÓDŁA:\n");
+
+        for (var i = 0; i < chunks.Count; i++)
+        {
+            var n = i + 1;
+            var label = LocatorLabel(chunks[i]);
+            sources.Add(new SourceRef(n, label, chunks[i].Title, chunks[i].SourceUrl, Snippet(chunks[i].Text)));
+            sb.Append('[').Append(n).Append("] ").Append(label).Append('\n')
+              .Append(chunks[i].Text).Append("\n\n");
+        }
+
+        var request = new LlmRequest
+        {
+            Messages =
+            [
+                new ChatMessage(ChatRole.System, SystemPrompt),
+                new ChatMessage(ChatRole.User, sb.ToString()),
+            ],
+            Temperature = 0,
+        };
+        return (request, sources);
+    }
+
+    /// <summary>Czytelny lokalizator cytatu: akt → tytuł+art.+ELI; orzeczenie → sąd+sygnatura+data.</summary>
+    public static string LocatorLabel(RetrievedChunk c)
+    {
+        var l = c.Locator;
+        if (l is null) return c.Title;
+
+        if (!string.IsNullOrEmpty(l.EliId) || !string.IsNullOrEmpty(l.Article))
+        {
+            var parts = new[] { c.Title, l.Article is { } a ? $"art. {a}" : null, l.DisplayAddress, l.EliId }
+                .Where(s => !string.IsNullOrWhiteSpace(s));
+            return string.Join(", ", parts);
+        }
+
+        var jp = new[] { l.Court, l.CaseNumber, l.JudgmentDate?.ToString("yyyy-MM-dd") }
+            .Where(s => !string.IsNullOrWhiteSpace(s));
+        var label = string.Join(", ", jp);
+        return string.IsNullOrWhiteSpace(label) ? c.Title : label;
+    }
+
+    private static string Snippet(string text, int max = 300) =>
+        text.Length <= max ? text : text[..max] + "…";
+}

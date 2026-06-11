@@ -1,0 +1,107 @@
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Options;
+using PrawoRAG.Domain.Llm;
+using PrawoRAG.Domain.Retrieval;
+using PrawoRAG.Embeddings;
+using PrawoRAG.Llm;
+using PrawoRAG.Llm.Grounding;
+using PrawoRAG.Storage;
+using PrawoRAG.Storage.Retrieval;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddPrawoRagStorage(builder.Configuration.GetConnectionString("Db")
+    ?? throw new InvalidOperationException("Brak ConnectionStrings:Db."));
+builder.Services.AddTeiEmbeddings(builder.Configuration);
+builder.Services.AddClaudeLlm(builder.Configuration);
+builder.Services.AddScoped<IRetriever, HybridRetriever>();
+builder.Services.Configure<RetrievalOptions>(builder.Configuration.GetSection("Retrieval"));
+builder.Services.AddOpenApi();
+
+var app = builder.Build();
+if (app.Environment.IsDevelopment()) app.MapOpenApi();
+
+var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+
+// --- Retrieval (debug / panel źródeł E4) ---
+app.MapPost("/api/search", async (SearchRequest req, IRetriever retriever, IOptions<RetrievalOptions> opt, CancellationToken ct) =>
+{
+    var result = await retriever.RetrieveAsync(ToQuery(req.Query, req.Filters, req.TopK ?? opt.Value.TopK, opt.Value), ct);
+    return Results.Ok(new
+    {
+        maxSimilarity = result.MaxSimilarity,
+        wouldAbstain = AbstentionPolicy.ShouldAbstain(result, opt.Value.AbstentionThreshold),
+        chunks = result.Chunks.Select(c => new { c.Text, c.Section, c.Source, c.Title, c.SourceUrl, c.Score, c.Similarity, locator = GroundedPrompt.LocatorLabel(c) }),
+    });
+});
+
+// --- Chat z ugruntowaniem (SSE) ---
+app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever retriever, ILlmProvider llm, IOptions<RetrievalOptions> opt, CancellationToken ct) =>
+{
+    http.Response.ContentType = "text/event-stream";
+    http.Response.Headers.CacheControl = "no-cache";
+
+    async Task Send(string ev, object data)
+    {
+        await http.Response.WriteAsync($"event: {ev}\ndata: {JsonSerializer.Serialize(data, json)}\n\n", ct);
+        await http.Response.Body.FlushAsync(ct);
+    }
+
+    try
+    {
+        var o = opt.Value;
+        var result = await retriever.RetrieveAsync(ToQuery(req.Question, req.Filters, o.TopK, o), ct);
+
+        // BRAMKA ABSTYNENCJI — rdzeń wartości: brak pokrycia → nie generujemy.
+        if (AbstentionPolicy.ShouldAbstain(result, o.AbstentionThreshold))
+        {
+            await Send("abstain", new { message = AbstentionPolicy.Message, maxSimilarity = result.MaxSimilarity });
+            await Send("done", new { abstained = true });
+            return;
+        }
+
+        var (request, sources) = GroundedPrompt.Build(req.Question, result.Chunks);
+        await Send("sources", sources);
+
+        var full = new StringBuilder();
+        await foreach (var delta in llm.StreamCompletionAsync(request, ct))
+        {
+            full.Append(delta);
+            await Send("token", new { text = delta });
+        }
+
+        // ANTY-FABRYKACJA — czy cytaty istnieją w dostarczonym kontekście.
+        var contextTexts = result.Chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
+        var check = CitationValidator.Validate(full.ToString(), contextTexts, sources.Count);
+        await Send("done", new { abstained = false, model = llm.ModelId, citationCheck = check });
+    }
+    catch (Exception ex)
+    {
+        await Send("error", new { message = ex.Message });
+    }
+});
+
+app.Run();
+
+static RetrievalQuery ToQuery(string text, FiltersDto? f, int topK, RetrievalOptions o) => new()
+{
+    Text = text,
+    TopK = topK,
+    CandidatesPerPath = o.CandidatesPerPath,
+    CourtType = f?.CourtType,
+    DateFrom = f?.DateFrom,
+    DateTo = f?.DateTo,
+    OnlyInForce = f?.OnlyInForce ?? false,
+};
+
+internal sealed record FiltersDto(string? CourtType, DateOnly? DateFrom, DateOnly? DateTo, bool OnlyInForce = false);
+internal sealed record SearchRequest(string Query, FiltersDto? Filters, int? TopK);
+internal sealed record ChatRequest(string Question, FiltersDto? Filters);
+
+internal sealed class RetrievalOptions
+{
+    public int TopK { get; set; } = 8;
+    public int CandidatesPerPath { get; set; } = 50;
+    public double AbstentionThreshold { get; set; } = AbstentionPolicy.DefaultThreshold;
+}

@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PrawoRAG.Api/PrawoRAG.Api.csproj" />
+    <Project Path="src/PrawoRAG.Domain/PrawoRAG.Domain.csproj" />
+    <Project Path="src/PrawoRAG.Embeddings/PrawoRAG.Embeddings.csproj" />
+    <Project Path="src/PrawoRAG.Ingestion/PrawoRAG.Ingestion.csproj" />
+    <Project Path="src/PrawoRAG.Llm/PrawoRAG.Llm.csproj" />
+    <Project Path="src/PrawoRAG.Storage/PrawoRAG.Storage.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PrawoRAG.Tests/PrawoRAG.Tests.csproj" />
+  </Folder>
+</Solution>
