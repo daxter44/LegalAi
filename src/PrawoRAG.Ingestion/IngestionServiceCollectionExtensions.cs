@@ -6,6 +6,7 @@ using PrawoRAG.Domain.Sources;
 using PrawoRAG.Embeddings;
 using PrawoRAG.Ingestion.Chunking;
 using PrawoRAG.Ingestion.Saos;
+using PrawoRAG.Ingestion.Storage;
 using PrawoRAG.Storage;
 
 namespace PrawoRAG.Ingestion;
@@ -21,21 +22,36 @@ public static class IngestionServiceCollectionExtensions
 
         services.Configure<SaosOptions>(config.GetSection(SaosOptions.SectionName));
         services.Configure<ChunkerOptions>(config.GetSection(ChunkerOptions.SectionName));
+        services.Configure<RawStoreOptions>(config.GetSection(RawStoreOptions.SectionName));
 
         // Konektor SAOS jako typowany HttpClient z resilience; eksponowany jako ISourceConnector.
+        // Timeoutami rządzi resilience handler (HttpClient.Timeout = nieskończony, by się nie nakładały).
         services.AddHttpClient<SaosConnector>((sp, c) =>
         {
             var opt = sp.GetRequiredService<IOptions<SaosOptions>>().Value;
             c.BaseAddress = new Uri(opt.BaseUrl.TrimEnd('/') + "/");
-            c.Timeout = TimeSpan.FromSeconds(60);
+            c.Timeout = Timeout.InfiniteTimeSpan;
             c.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-        }).AddStandardResilienceHandler();
+        }).AddStandardResilienceHandler(o =>
+        {
+            // Search SAOS z filtrami bywa wolny (~8–15s) — domyślne 10s na próbę to za mało.
+            var attempt = TimeSpan.FromSeconds(
+                config.GetValue<int?>($"{SaosOptions.SectionName}:AttemptTimeoutSeconds") ?? 45);
+            o.AttemptTimeout.Timeout = attempt;
+            o.TotalRequestTimeout.Timeout = attempt * 2 + TimeSpan.FromSeconds(30); // > attempt; mieści retry
+            o.CircuitBreaker.SamplingDuration = attempt * 2;                          // wymóg: >= 2× AttemptTimeout
+        });
         services.AddTransient<ISourceConnector>(sp => sp.GetRequiredService<SaosConnector>());
 
         services.AddSingleton<IDocumentNormalizer, JudgmentNormalizer>();
         services.AddTransient<IChunker, TokenAwareChunker>();
         services.AddScoped<IngestionPipeline>();
         services.AddSingleton<IngestionRunner>();
+
+        // Magazyn surowych + dwie fazy (fetch / process).
+        services.AddSingleton<IRawDocumentStore, FileSystemRawDocumentStore>();
+        services.AddSingleton<RawFetchRunner>();
+        services.AddSingleton<RawProcessRunner>();
         return services;
     }
 }

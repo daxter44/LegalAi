@@ -14,7 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddPrawoRagStorage(builder.Configuration.GetConnectionString("Db")
     ?? throw new InvalidOperationException("Brak ConnectionStrings:Db."));
 builder.Services.AddTeiEmbeddings(builder.Configuration);
-builder.Services.AddClaudeLlm(builder.Configuration);
+builder.Services.AddPrawoRagLlm(builder.Configuration); // claude | local (Ollama/llama.cpp) wg Llm:Provider
 builder.Services.AddScoped<IRetriever, HybridRetriever>();
 builder.Services.Configure<RetrievalOptions>(builder.Configuration.GetSection("Retrieval"));
 builder.Services.AddOpenApi();

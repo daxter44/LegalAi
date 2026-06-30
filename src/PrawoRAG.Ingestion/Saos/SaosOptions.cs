@@ -17,4 +17,9 @@ public sealed class SaosOptions
     public string JudgmentDateFrom { get; set; } = "2023-01-01";
 
     public int PageSize { get; set; } = 100;
+
+    /// <summary>Limit na pojedynczą próbę HTTP (s). Search SAOS z filtrami (COMMON/APPEAL + sort) liczy
+    /// po stronie serwera ~8–15s (wariancja niezależna od pageSize) — domyślne 10s resilience handlera
+    /// to za mało i ubija każdą próbę. 45s daje zapas nad obserwowanym maksimum.</summary>
+    public int AttemptTimeoutSeconds { get; set; } = 45;
 }

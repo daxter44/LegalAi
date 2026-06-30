@@ -15,6 +15,11 @@ obj/
 tmp/
 *.log
 
+# Magazyn surowych dokumentów (dev-cache wycinka korpusu — NIE wersjonować;
+# uwaga licencyjna: nie magazynujemy hurtowo całej bazy SAOS w repo).
+# `**/` łapie też lokalizację względem CWD `dotnet run` (src/PrawoRAG.Ingestion/data/raw).
+**/data/raw/
+
 # Sekrety / lokalne nadpisania (NIE commituj kluczy API)
 appsettings.*.local.json
 secrets.json
