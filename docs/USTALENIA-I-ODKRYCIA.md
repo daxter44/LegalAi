@@ -53,3 +53,26 @@ podczas budowy MVP (2026-06-11). Plan = zamierzenia; ten dokument = co potwierdz
 - ⬜ **1.6** A/B base vs large → lock modelu · **1.7** bulk na M4/GPU · **0.5** bramka licencyjna.
 
 **Testy:** 31 zielonych (T-NORM, T-CHUNK, T-IDEM na żywym PG, T-ABST, T-FABR).
+
+## Iteracja 2026-07 — ingestia dwufazowa, lokalny LLM, fix timeoutu
+- **Rozdział fetch/process (rozwiązuje „drobna zmiana = pobierz całość od nowa").** Dotąd pipeline był
+  jednofazowy i w pamięci — surowy HTML z SAOS był wyrzucany po przetworzeniu (`DocumentEntity` bez kolumny
+  raw). Teraz: `IRawDocumentStore` + `FileSystemRawDocumentStore` (pliki `data/raw/{źródło}/{id}.json`,
+  zapis atomowy tmp+rename, sanityzacja ExternalId dla ELI). `RawFetchRunner` (idempotentny — pomija
+  istniejące) i `RawProcessRunner` (OFFLINE). Tryby `Ingestion:Mode` = fetch|process|fetch-process|stream.
+  **`IngestionPipeline` nietknięty** — round-trip `SourcePayload` (JsonElement) wierny (jak w SaosFixtures).
+- **SAOS search jest wolny (~8–15s), nie proxy.** Zmierzone: dokładne zapytanie konektora (`pageSize=100`
+  + COMMON/APPEAL + sort) liczy się ~13,7s po stronie SAOS (wariancja niezależna od pageSize: `20`→7,6s,
+  `10`→11,7s). Domyślny `AddStandardResilienceHandler` ma **10s na próbę** → ubijał każdą próbę. Fix:
+  `Saos:AttemptTimeoutSeconds` (domyślnie 45s), `HttpClient.Timeout=Infinite` (rządzi resilience handler).
+  Pojedyncze `/judgments/{id}` są szybkie (~110ms) — wolny jest tylko search.
+- **Re-chunk wymaga unieważnienia (bez pobierania).** `process` pomija dokument o niezmienionym
+  `content_hash` (dedup). Żeby przeliczyć chunki po zmianie chunkera: wyczyść dokumenty źródła w bazie
+  (lokalnie) i uruchom `process` ponownie — zero ruchu do SAOS.
+- **Lokalny LLM (pakiet Diamond).** `OpenAiCompatibleLlmProvider` (streaming SSE OpenAI: `delta.content`,
+  `[DONE]`) — działa z Ollama/llama.cpp/LM Studio. Przełącznik `Llm:Provider` = claude | local; Bielik w
+  `Llm:Local` (domyślnie `speakleash/Bielik-11B-v3.0-DFlash`). Weryfikacja na M4: [URUCHOMIENIE-M4.md](URUCHOMIENIE-M4.md).
+- **Ryzyko na M4:** obraz TEI `cpu-latest` bywa amd64 → na Apple Silicon emulacja/nie wstaje; fallback =
+  natywny embedding (do zrobienia, jeśli TEI padnie).
+- **Testy:** 34 zielone (baseline 23 bez zmian + 5 round-trip magazynu + 4 fetch/process + 2 SSE lokalnego LLM).
+- **Git:** wypchnięte na `daxter44/LegalAi` (prywatne; tożsamość repo per-repo `daxter44`, globalna `diag` nietknięta).

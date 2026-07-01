@@ -6,9 +6,18 @@ decyzje i odkrycia: [USTALENIA-I-ODKRYCIA.md](USTALENIA-I-ODKRYCIA.md).
 ## Gdzie jesteśmy
 MVP zbudowane i przetestowane w warstwie ingestii i retrievalu/czatu:
 - ✅ **E0** fundament · ✅ **E1** ingestia SAOS (idempotentna) · ✅ **E3** retrieval hybrydowy + czat SSE z ugruntowaniem, abstynencją, anty-fabrykacją.
-- **31 testów zielonych** (T-NORM, T-CHUNK, T-IDEM na żywym Postgresie, T-ABST, T-FABR).
+- ✅ **Ingestia dwufazowa** (2026-07): `fetch` (SAOS→magazyn surowych na dysku) rozdzielone od `process`
+  (magazyn→normalize/chunk/embed→baza). Re-processing po zmianie kodu **bez ponownego pobierania**.
+  Tryby `Ingestion:Mode` = fetch | process | fetch-process (domyślny) | stream (stara ścieżka).
+- ✅ **Lokalny LLM** (pakiet Diamond): `OpenAiCompatibleLlmProvider` (Ollama/llama.cpp), przełącznik
+  `Llm:Provider` = claude | local. Bielik konfigurowalny w `Llm:Local`.
+- ✅ **Fix timeoutu SAOS**: search z filtrami liczy ~8–15s po stronie serwera; `Saos:AttemptTimeoutSeconds`
+  (domyślnie 45s) zamiast domyślnych 10s resilience handlera.
+- **34 testy zielone** (T-NORM, T-CHUNK, T-IDEM na żywym PG, T-ABST, T-FABR + round-trip magazynu,
+  fetch/process, SSE lokalnego LLM).
 - Smoke end-to-end: realne orzeczenia apelacyjne przeszły cały pipeline; `/api/search` i `/api/chat` działają.
-- Git: gałąź `main`, 3 commity (kod + docs). **Jeszcze NIE wypchnięte na GitHub.**
+- Git: gałąź `main` wypchnięta na **`daxter44/LegalAi`** (prywatne konto). Weryfikacja lokalna na M4:
+  [URUCHOMIENIE-M4.md](URUCHOMIENIE-M4.md).
 
 ## Jak wznowić pracę (ta maszyna lub M4)
 ```bash
@@ -22,8 +31,9 @@ dotnet tool restore && dotnet ef database update --project src/PrawoRAG.Storage
 # 3. Testy — szybka weryfikacja, że wszystko działa
 dotnet test
 
-# 4. Ingestia próbki
+# 4. Ingestia próbki — dwufazowo (fetch+process domyślnie); process powtarzalny bez pobierania
 Ingestion__MaxItems=50 dotnet run --project src/PrawoRAG.Ingestion
+#   albo osobno: Ingestion__Mode=fetch ...  potem  Ingestion__Mode=process ...
 
 # 5. API (czat wymaga klucza)
 ANTHROPIC_API_KEY=sk-... dotnet run --project src/PrawoRAG.Api
@@ -31,7 +41,7 @@ ANTHROPIC_API_KEY=sk-... dotnet run --project src/PrawoRAG.Api
 Stan bazy zależy od tego, czy kontenery wciąż żyją (`podman ps`). Dane w wolumenach `praworag_pgdata` / `praworag_tei-cache` przetrwają restart kontenerów.
 
 ## Otwarte decyzje (czekają na Ciebie)
-1. **Push na GitHub** — utwórz repo i `git remote add origin … && git push -u origin main` (albo podaj URL, wypchnę).
+1. ✅ **Push na GitHub** — zrobione: `daxter44/LegalAi` (prywatne). Następne: weryfikacja jakości na M4 (poziom 3, Bielik lokalnie) — [URUCHOMIENIE-M4.md](URUCHOMIENIE-M4.md).
 2. **1.6 — model embeddingów:** A/B `mmlw-base` (768) vs `large-v2` (1024) → **lock przed masową ingestią** (zmiana = re-embedding całości).
 3. **0.5 — bramka licencyjna:** ToS SAOS + regulamin api.sejm.gov.pl + art. 4 pr. aut. (przed pełną ingestią/serwowaniem).
 4. **Próg abstynencji wymaga kalibracji** — surowy cosine mmlw słabo rozdziela „wiem"/„nie wiem" (patrz USTALENIA). Potrzebny golden set + reranker.
