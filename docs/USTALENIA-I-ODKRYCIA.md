@@ -71,7 +71,10 @@ podczas budowy MVP (2026-06-11). Plan = zamierzenia; ten dokument = co potwierdz
   (lokalnie) i uruchom `process` ponownie — zero ruchu do SAOS.
 - **Lokalny LLM (pakiet Diamond).** `OpenAiCompatibleLlmProvider` (streaming SSE OpenAI: `delta.content`,
   `[DONE]`) — działa z Ollama/llama.cpp/LM Studio. Przełącznik `Llm:Provider` = claude | local; Bielik w
-  `Llm:Local` (domyślnie `speakleash/Bielik-11B-v3.0-DFlash`). Weryfikacja na M4: [URUCHOMIENIE-M4.md](URUCHOMIENIE-M4.md).
+  `Llm:Local`. Weryfikacja na M4: [URUCHOMIENIE-M4.md](URUCHOMIENIE-M4.md).
+- **Bielik model do Ollamy:** wariant **`DFlash` NIE ma GGUF** (repo to pełne wagi safetensors) → `ollama pull`
+  odrzuca go („not gguf"). Używać **`SpeakLeash/bielik-11b-v3.0-instruct:Q5_K_M`** (wprost z rejestru Ollamy,
+  bez `hf.co/`); kwantyzacje Q4_K_M/Q5_K_M/Q6_K/Q8_0. To domyślny `Llm:Local:Model`.
 - **Ryzyko na M4:** obraz TEI `cpu-latest` bywa amd64 → na Apple Silicon emulacja/nie wstaje; fallback =
   natywny embedding (do zrobienia, jeśli TEI padnie).
 - **Testy:** 34 zielone (baseline 23 bez zmian + 5 round-trip magazynu + 4 fetch/process + 2 SSE lokalnego LLM).

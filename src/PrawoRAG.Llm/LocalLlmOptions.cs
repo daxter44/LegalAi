@@ -11,8 +11,9 @@ public sealed class LocalLlmOptions
     /// <summary>Bazowy URL API zgodnego z OpenAI. Ollama: <c>http://localhost:11434/v1</c>.</summary>
     public string BaseUrl { get; set; } = "http://localhost:11434/v1";
 
-    /// <summary>Nazwa modelu znana serwerowi (Ollama: tag z `ollama list`). Domyślnie Bielik.</summary>
-    public string Model { get; set; } = "speakleash/Bielik-11B-v3.0-DFlash";
+    /// <summary>Nazwa modelu znana serwerowi (Ollama: tag z `ollama list`). Domyślnie Bielik v3.0 Instruct GGUF
+    /// z rejestru Ollamy (DFlash nie ma GGUF — nie działa w Ollamie).</summary>
+    public string Model { get; set; } = "SpeakLeash/bielik-11b-v3.0-instruct:Q5_K_M";
 
     /// <summary>Opcjonalny token (Ollama go ignoruje; llama.cpp/LM Studio bywa wymagany).</summary>
     public string? ApiKey { get; set; }

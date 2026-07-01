@@ -15,11 +15,13 @@ ollama serve &                          # serwer LLM na :11434 (OpenAI-compatibl
 
 ## 1. Bielik w Ollamie
 ```bash
-ollama pull hf.co/speakleash/Bielik-11B-v3.0-DFlash-GGUF   # zweryfikuj dokładny tag na stronie HF
-ollama list                                                 # ZAPAMIĘTAJ nazwę → to Llm:Local:Model
+# Bielik v3.0 Instruct jest wprost w rejestrze Ollamy (Q5_K_M = 7,9 GB, dobry balans).
+# UWAGA: wariant "DFlash" NIE ma GGUF → nie zadziała w Ollamie. Używamy Instruct v3.0.
+ollama pull SpeakLeash/bielik-11b-v3.0-instruct:Q5_K_M
+ollama list                                                # potwierdź nazwę → to Llm:Local:Model
 ```
-⚠️ Dokładny tag GGUF (może mieć sufiks kwantyzacji, np. `:Q4_K_M`) sprawdź na stronie modelu.
-Cokolwiek pokaże `ollama list`, wstawiasz w kroku 6 jako `Llm__Local__Model`.
+Kwantyzacje do wyboru: `Q4_K_M` (6,7 GB, najbezpieczniejszy przy 16 GB RAM), `Q5_K_M` (7,9 GB),
+`Q6_K` (9,2 GB), `Q8_0` (12 GB). Cokolwiek pobierzesz, tę samą nazwę wstaw w kroku 6.
 
 ## 2. Klon repo
 ```bash
@@ -55,7 +57,7 @@ Do oceny jakości potem zwiększ `MaxItems` (np. 300–500).
 ## 6. API z lokalnym Bielikiem
 ```bash
 Llm__Provider=local \
-Llm__Local__Model="hf.co/speakleash/Bielik-11B-v3.0-DFlash-GGUF" \
+Llm__Local__Model="SpeakLeash/bielik-11b-v3.0-instruct:Q5_K_M" \
 ASPNETCORE_URLS=http://localhost:5005 \
 dotnet run --project src/PrawoRAG.Api
 ```
