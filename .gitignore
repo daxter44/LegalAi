@@ -28,3 +28,7 @@ secrets.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Lokalne narzędzia deweloperskie (natywny TEI cache na Apple Silicon, Claude Code)
+.local/
+.claude/
