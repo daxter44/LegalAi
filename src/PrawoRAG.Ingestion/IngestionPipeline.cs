@@ -83,6 +83,7 @@ public sealed class IngestionPipeline(
         doc.UpdatedAt = DateTimeOffset.UtcNow;
         if (isNew) doc.IngestedAt = doc.UpdatedAt;
         doc.CourtType = norm.TypedMetadata.GetValueOrDefault("courtType") as string;
+        doc.InForce = norm.TypedMetadata.GetValueOrDefault("inForce") as bool?; // akty ELI; dla orzeczeń null
         doc.JudgmentDate = norm.Locator?.JudgmentDate;
         doc.Year = norm.Locator?.JudgmentDate?.Year;
         doc.TypedMetadata = JsonSerializer.SerializeToDocument(norm.TypedMetadata);

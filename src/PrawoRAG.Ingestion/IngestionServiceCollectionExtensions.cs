@@ -5,6 +5,7 @@ using PrawoRAG.Domain.Documents;
 using PrawoRAG.Domain.Sources;
 using PrawoRAG.Embeddings;
 using PrawoRAG.Ingestion.Chunking;
+using PrawoRAG.Ingestion.Eli;
 using PrawoRAG.Ingestion.Saos;
 using PrawoRAG.Ingestion.Storage;
 using PrawoRAG.Storage;
@@ -43,7 +44,26 @@ public static class IngestionServiceCollectionExtensions
         });
         services.AddTransient<ISourceConnector>(sp => sp.GetRequiredService<SaosConnector>());
 
+        // Konektor ELI/Sejm (akty prawne) — analogicznie do SAOS.
+        services.Configure<EliOptions>(config.GetSection(EliOptions.SectionName));
+        services.AddHttpClient<EliSejmConnector>((sp, c) =>
+        {
+            var opt = sp.GetRequiredService<IOptions<EliOptions>>().Value;
+            c.BaseAddress = new Uri(opt.BaseUrl.TrimEnd('/') + "/");
+            c.Timeout = Timeout.InfiniteTimeSpan;
+            c.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+        }).AddStandardResilienceHandler(o =>
+        {
+            var attempt = TimeSpan.FromSeconds(
+                config.GetValue<int?>($"{EliOptions.SectionName}:AttemptTimeoutSeconds") ?? 45);
+            o.AttemptTimeout.Timeout = attempt;
+            o.TotalRequestTimeout.Timeout = attempt * 2 + TimeSpan.FromSeconds(30);
+            o.CircuitBreaker.SamplingDuration = attempt * 2;
+        });
+        services.AddTransient<ISourceConnector>(sp => sp.GetRequiredService<EliSejmConnector>());
+
         services.AddSingleton<IDocumentNormalizer, JudgmentNormalizer>();
+        services.AddSingleton<IDocumentNormalizer, ActNormalizer>();
         services.AddTransient<IChunker, TokenAwareChunker>();
         services.AddScoped<IngestionPipeline>();
         services.AddSingleton<IngestionRunner>();

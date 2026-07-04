@@ -47,7 +47,7 @@ podczas budowy MVP (2026-06-11). Plan = zamierzenia; ten dokument = co potwierdz
 ## Status epików (2026-06-11)
 - ✅ **E0** fundament (solucja, compose, schemat+migracja na żywym pgvector, kontrakty).
 - ✅ **E1** ingestia SAOS (connector, normalizer, chunker, embedding, pipeline z idempotencją). Smoke E2E OK.
-- ⬜ **E2** akty ELI/ISAP (da art. 148 KK itp. — twarde sygnały do retrievalu i testów).
+- ✅ **E2** akty ELI/ISAP (KK, KPK, KC, KPC) — `EliSejmConnector` + `ActNormalizer` (art. 148 KK działa).
 - ✅ **E3** retrieval hybrydowy (dense+BM25+RRF) + API chat SSE + ugruntowanie + abstynencja + anty-fabrykacja.
 - ⬜ **E4** UI (Blazor), **E5** golden set + kalibracja + reranker, **E6** deploy/ops.
 - ⬜ **1.6** A/B base vs large → lock modelu · **1.7** bulk na M4/GPU · **0.5** bramka licencyjna.
@@ -79,3 +79,18 @@ podczas budowy MVP (2026-06-11). Plan = zamierzenia; ten dokument = co potwierdz
   natywny embedding (do zrobienia, jeśli TEI padnie).
 - **Testy:** 34 zielone (baseline 23 bez zmian + 5 round-trip magazynu + 4 fetch/process + 2 SSE lokalnego LLM).
 - **Git:** wypchnięte na `daxter44/LegalAi` (prywatne; tożsamość repo per-repo `daxter44`, globalna `diag` nietknięta).
+
+## Iteracja 2026-07 — E2: akty prawne ELI/ISAP
+- **Kodeksy przez API ELI/Sejm** (`api.sejm.gov.pl/eli`): `EliSejmConnector` (metadane JSON + `text.html`
+  per akt) + `ActNormalizer` (parsowanie `div.unit_arti`/`unit_para`, artykuł = segment/chunk z nagłówkiem
+  kontekstowym wbitym w tekst, lokalizator `eli_id`+`article`+kotwica `data-id`). Fazy fetch/process i
+  magazyn działają bez zmian (agnostyczne wobec źródła). Dodana 1 linia w pipeline: mapowanie `InForce`.
+- **Zweryfikowane pozycje ELI (żywe API):** KK=`DU/1997/553`, KPK=`DU/1997/555`, KC=`DU/1964/93`,
+  KPC=`DU/1964/296` — wszystkie 4 pobrane, tytuły się zgadzają.
+- **Gotcha 406:** endpoint `text.html` odrzuca `Accept: application/json` (kod 406) — konektor ma domyślny
+  Accept=json dla metadanych, więc dla `text.html` nadpisuje `Accept: text/html`. Metadane 200, tekst 200.
+- **Struktura `text.html` potwierdzona** (WebFetch markdownizuje i mylił — trzeba surowego HTML): 363×
+  `div.unit_arti`, artykuły `id="none_-chpt_XIX-arti_148" data-id="arti_148"`, tekst w `div[data-template=xText]`.
+- **Fixture testowy = realny KK** (`tests/Fixtures/Eli/act_DU_1997_553.html`, ~1 MB) → T-ACT parsuje 363 artykuły.
+- **Testy:** 40 zielonych (34 + 5 T-ACT + 1 integracyjny aktu na żywym PG z Fake embedderem).
+- **Fetch aktów:** `Ingestion__Source=ELI Ingestion__Mode=fetch dotnet run --project src/PrawoRAG.Ingestion`.

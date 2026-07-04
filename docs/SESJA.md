@@ -13,8 +13,10 @@ MVP zbudowane i przetestowane w warstwie ingestii i retrievalu/czatu:
   `Llm:Provider` = claude | local. Bielik konfigurowalny w `Llm:Local`.
 - ✅ **Fix timeoutu SAOS**: search z filtrami liczy ~8–15s po stronie serwera; `Saos:AttemptTimeoutSeconds`
   (domyślnie 45s) zamiast domyślnych 10s resilience handlera.
-- **34 testy zielone** (T-NORM, T-CHUNK, T-IDEM na żywym PG, T-ABST, T-FABR + round-trip magazynu,
-  fetch/process, SSE lokalnego LLM).
+- ✅ **E2 — akty ELI/ISAP** (2026-07): kodeksy KK/KPK/KC/KPC przez API Sejm (`EliSejmConnector` +
+  `ActNormalizer`, artykuł=chunk z lokalizatorem `eli_id`+`article`). Fetch: `Ingestion__Source=ELI`.
+- **40 testów zielonych** (T-NORM, T-CHUNK, T-IDEM na żywym PG, T-ABST, T-FABR + round-trip magazynu,
+  fetch/process, SSE lokalnego LLM, T-ACT + integracyjny aktu).
 - Smoke end-to-end: realne orzeczenia apelacyjne przeszły cały pipeline; `/api/search` i `/api/chat` działają.
 - Git: gałąź `main` wypchnięta na **`daxter44/LegalAi`** (prywatne konto). Weryfikacja lokalna na M4:
   [URUCHOMIENIE-M4.md](URUCHOMIENIE-M4.md).
@@ -52,7 +54,7 @@ Stan bazy zależy od tego, czy kontenery wciąż żyją (`podman ps`). Dane w wo
 4. **Próg abstynencji wymaga kalibracji** — surowy cosine mmlw słabo rozdziela „wiem"/„nie wiem" (patrz USTALENIA). Potrzebny golden set + reranker.
 
 ## Następne kroki (priorytety)
-- **E2 — akty ELI/ISAP** (KC/KK…): twarde sygnały do retrievalu (art. 148 KK) i lepszy materiał do testów niż same sprawy cywilne.
+- ✅ ~~**E2 — akty ELI/ISAP**~~ zrobione (KK/KPK/KC/KPC). Do rozważenia: sync przyrostowy po `changeDate`, filtr `OnlyInForce` w retrievalu, kolejne akty.
 - **Bulk embedding na M4** dla większego korpusu: na start wystarczy nasz stack .NET+TEI na natywnym M4 (CPU, ~min dla setek dok.); skrypt Python+MPS (`tools/bulk-embed/`) dopiero przy dużym korpusie (8–10 tys.+).
 - **E5 — golden set + kalibracja progu + reranker** (żeby abstynencja realnie odróżniała brak pokrycia).
 - **E4 — UI (Blazor)**: czat w stylu ChatGPT + panel źródeł.
