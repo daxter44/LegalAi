@@ -1,4 +1,5 @@
 using PrawoRAG.Domain.Embeddings;
+using PrawoRAG.Storage;
 
 namespace PrawoRAG.Tests.Fakes;
 
@@ -6,8 +7,10 @@ namespace PrawoRAG.Tests.Fakes;
 /// Atrapa <see cref="IEmbeddingProvider"/> do testów bez żywego TEI.
 /// Liczenie tokenów = liczba słów (deterministyczne); embedding = wektor deterministyczny z tekstu.
 /// Zlicza wywołania embeddingu — kluczowe dla testów idempotencji (0 wywołań przy re-runie).
+/// Domyślny wymiar = <see cref="PrawoRagDbContext.EmbeddingDimensions"/>, by wektory pasowały do
+/// kolumny <c>vector(N)</c> w bazie (inaczej insert rzuca dimension mismatch po zmianie modelu).
 /// </summary>
-public sealed class FakeEmbeddingProvider(int dimensions = 768, string modelId = "fake-embedder@v1") : IEmbeddingProvider
+public sealed class FakeEmbeddingProvider(int dimensions = PrawoRagDbContext.EmbeddingDimensions, string modelId = "fake-embedder@v1") : IEmbeddingProvider
 {
     public int PassageEmbedCalls { get; private set; }
     public int PassagesEmbedded { get; private set; }
