@@ -356,7 +356,7 @@ Sizing: **S** = 1–2 wieczory, **M** = ~tydzień po godzinach, **L** = 2–3 ty
 | 1.3 | Chunker: ~400–500 tokenów, overlap, respektuje granice sekcji orzeczenia | S | Chunki ≤ limitu modelu; `char_start/end` wskazują na oryginał |
 | 1.4 | `TeiEmbeddingProvider` (batch + prefiks `zapytanie: ` tylko dla zapytań) | S | Embedding próbki zgodny wymiarowo; batch działa |
 | 1.5 | Upsert do pgvector + dedup po `content_hash` | S | Ponowny przebieg = 0 nowych embeddingów |
-| 1.6 | **A/B base vs large-v2** na próbce (≥20 realnych pytań prawnych) → **lock modelu** | M | Decyzja zapisana; `embedding_model` w metadanych |
+| 1.6 | ✅ **A/B base vs large-v2 → lock modelu: `large-v2`** (PIRB NDCG@10 60.71 vs 56.38) | M | Decyzja zapisana w SESJA.md; `EmbeddedWith` w metadanych chunków |
 | 1.7 | Masowy embedding wycinka na wynajętym GPU (RunPod/Vast.ai) + załadunek wektorów | M | Wycinek w pgvector; koszt i czas zmierzone (godziny, nie dni) |
 | 1.8 | Worker przyrostowy (`BackgroundService`, sync dzienny) | S | Nowe orzeczenia z ostatnich dni pojawiają się w bazie automatycznie |
 

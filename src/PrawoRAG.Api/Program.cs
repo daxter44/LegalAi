@@ -18,9 +18,15 @@ builder.Services.AddPrawoRagLlm(builder.Configuration); // claude | local (Ollam
 builder.Services.AddScoped<IRetriever, HybridRetriever>();
 builder.Services.Configure<RetrievalOptions>(builder.Configuration.GetSection("Retrieval"));
 builder.Services.AddOpenApi();
+if (builder.Environment.IsDevelopment())
+    builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 
 var app = builder.Build();
-if (app.Environment.IsDevelopment()) app.MapOpenApi();
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.UseCors(); // pozwala odpalić tools/chat-tester.html jako plik lokalny (inne origin)
+}
 
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 

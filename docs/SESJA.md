@@ -42,7 +42,12 @@ Stan bazy zależy od tego, czy kontenery wciąż żyją (`podman ps`). Dane w wo
 
 ## Otwarte decyzje (czekają na Ciebie)
 1. ✅ **Push na GitHub** — zrobione: `daxter44/LegalAi` (prywatne). Następne: weryfikacja jakości na M4 (poziom 3, Bielik lokalnie) — [URUCHOMIENIE-M4.md](URUCHOMIENIE-M4.md).
-2. **1.6 — model embeddingów:** A/B `mmlw-base` (768) vs `large-v2` (1024) → **lock przed masową ingestią** (zmiana = re-embedding całości).
+2. ✅ **1.6 — model embeddingów: ZABLOKOWANY na `mmlw-retrieval-roberta-large-v2` (1024)** (2026-07-04).
+   Decyzja na podstawie PIRB (polski benchmark retrievalu): `large-v2` NDCG@10=60.71 vs `base` NDCG@10=56.38
+   (+4.3 pkt, konsystentne z ogólnym MTEB 63.23 vs 61.05). Koszt akceptowalny — masowy embedding i tak
+   idzie na wynajętym GPU (rozmiar modelu nie ogranicza tempa), serwowanie zapytań mieści się w planowanym
+   VPS 8GB. Migracja `LockEmbeddingModelLargeV2_1024` zmienia kolumnę `vector(768)`→`vector(1024)`
+   (czyści stare embeddingi — pipeline re-embeduje automatycznie po `EmbeddedWith` != model).
 3. **0.5 — bramka licencyjna:** ToS SAOS + regulamin api.sejm.gov.pl + art. 4 pr. aut. (przed pełną ingestią/serwowaniem).
 4. **Próg abstynencji wymaga kalibracji** — surowy cosine mmlw słabo rozdziela „wiem"/„nie wiem" (patrz USTALENIA). Potrzebny golden set + reranker.
 

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>PrawoRAG — chat tester</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  h1 { font-size: 1.2rem; }
+  #apiUrl { width: 100%; box-sizing: border-box; padding: .5rem; margin-bottom: .5rem; font-family: monospace; }
+  #question { width: 100%; box-sizing: border-box; padding: .6rem; font-size: 1rem; }
+  button { padding: .6rem 1.2rem; margin-top: .5rem; cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: .5; }
+  #status { color: #666; font-size: .9rem; margin: .5rem 0; min-height: 1.2em; }
+  #sources { background: #f4f4f4; border-radius: 6px; padding: .75rem 1rem; margin-top: 1rem; font-size: .9rem; }
+  #sources ol { margin: .3rem 0 0; padding-left: 1.2rem; }
+  #answer { white-space: pre-wrap; line-height: 1.5; margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 6px; min-height: 3em; }
+  #check { margin-top: 1rem; font-size: .85rem; padding: .6rem 1rem; border-radius: 6px; }
+  #check.clean { background: #e6f6e6; color: #1a5c1a; }
+  #check.dirty { background: #fdeaea; color: #8a1f1f; }
+  .cursor::after { content: "▍"; animation: blink 1s step-start infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+  <h1>PrawoRAG — tester czatu (SSE sklejone w całość)</h1>
+  <input id="apiUrl" value="http://localhost:5024/api/chat" />
+  <input id="question" placeholder="Zadaj pytanie prawnicze..." value="Kiedy przysługuje odszkodowanie za niesłuszne tymczasowe aresztowanie?" />
+  <button id="ask">Zapytaj</button>
+  <div id="status"></div>
+  <div id="sources" hidden></div>
+  <div id="answer"></div>
+  <div id="check" hidden></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const askBtn = $('ask');
+
+async function ask() {
+  const url = $('apiUrl').value.trim();
+  const question = $('question').value.trim();
+  if (!question) return;
+
+  askBtn.disabled = true;
+  $('status').textContent = 'Łączenie...';
+  $('sources').hidden = true;
+  $('sources').innerHTML = '';
+  $('check').hidden = true;
+  $('answer').textContent = '';
+  $('answer').classList.add('cursor');
+
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE: eventy rozdzielone pustą linią ("\n\n")
+      let sep;
+      while ((sep = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        handleFrame(frame);
+      }
+    }
+    $('status').textContent = 'Zakończono.';
+  } catch (err) {
+    $('status').textContent = 'Błąd: ' + err.message +
+      ' (jeśli to "Failed to fetch" — sprawdź czy API działa i czy CORS jest włączony w Development)';
+  } finally {
+    $('answer').classList.remove('cursor');
+    askBtn.disabled = false;
+  }
+}
+
+function handleFrame(frame) {
+  let event = 'message', data = '';
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event: ')) event = line.slice(7);
+    else if (line.startsWith('data: ')) data += line.slice(6);
+  }
+  if (!data) return;
+  const payload = JSON.parse(data);
+
+  switch (event) {
+    case 'sources':
+      $('status').textContent = `Znaleziono ${payload.length} źródeł, generuję odpowiedź...`;
+      $('sources').hidden = false;
+      $('sources').innerHTML = '<strong>Źródła:</strong><ol>' +
+        payload.map(s => `<li>${escapeHtml(s.locator ?? s.title ?? JSON.stringify(s))}</li>`).join('') +
+        '</ol>';
+      break;
+    case 'token':
+      $('answer').textContent += payload.text;
+      break;
+    case 'abstain':
+      $('status').textContent = 'Abstynencja (brak wystarczających źródeł).';
+      $('answer').textContent = payload.message;
+      break;
+    case 'done':
+      if (payload.abstained) break;
+      $('status').textContent = `Model: ${payload.model}`;
+      const c = payload.citationCheck;
+      if (c) {
+        $('check').hidden = false;
+        $('check').className = c.isClean ? 'clean' : 'dirty';
+        $('check').textContent = c.isClean
+          ? '✓ Cytaty czyste (wszystkie w zakresie źródeł)'
+          : `⚠ Podejrzane cytaty — outOfRange: [${c.outOfRange}], suspicious: [${(c.suspiciousReferences ?? []).join(', ')}]`;
+      }
+      break;
+    case 'error':
+      $('status').textContent = 'Błąd serwera: ' + payload.message;
+      break;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+askBtn.addEventListener('click', ask);
+$('question').addEventListener('keydown', (e) => { if (e.key === 'Enter') ask(); });
+</script>
+</body>
+</html>

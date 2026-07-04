@@ -10,7 +10,7 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options) : Db
     /// Wymiar wektora. mmlw-base = 768, large-v2 = 1024. ZMIANA wymaga nowej migracji
     /// i re-embeddingu całego korpusu (model zablokowany na życie korpusu — zob. plan).
     /// </summary>
-    public const int EmbeddingDimensions = 768;
+    public const int EmbeddingDimensions = 1024;
 
     /// <summary>
     /// Konfiguracja tekstowego słownika do tsvector. „simple" jest zawsze dostępny w stockowym

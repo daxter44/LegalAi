@@ -28,7 +28,7 @@ services:
   # modelu wymaga re-embeddingu całego korpusu (zob. plan, „Lock modelu embeddingów").
   tei:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-    command: ["--model-id", "${EMBEDDING_MODEL_ID:-sdadas/mmlw-retrieval-roberta-base}", "--port", "80", "--auto-truncate"]
+    command: ["--model-id", "${EMBEDDING_MODEL_ID:-sdadas/mmlw-retrieval-roberta-large-v2}", "--port", "80", "--auto-truncate"]
     environment:
       HUGGINGFACE_HUB_CACHE: /data
     ports:
