@@ -1,0 +1,17 @@
+[
+  { "id": "kk-148", "question": "Jaka kara grozi za zabójstwo człowieka?", "category": "InCorpus", "shouldAbstain": false, "expectedEli": "DU/1997/553", "expectedArticle": "148" },
+  { "id": "kpk-41", "question": "Kiedy sąd wyłącza sędziego od rozpoznania sprawy na wniosek strony?", "category": "InCorpus", "shouldAbstain": false, "expectedEli": "DU/1997/555", "expectedArticle": "41" },
+  { "id": "kp-52", "question": "Kiedy pracodawca może rozwiązać umowę o pracę bez wypowiedzenia z winy pracownika?", "category": "InCorpus", "shouldAbstain": false, "expectedEli": "DU/1974/141", "expectedArticle": "52" },
+  { "id": "kc-415", "question": "Kto jest zobowiązany do naprawienia szkody wyrządzonej czynem niedozwolonym?", "category": "InCorpus", "shouldAbstain": false, "expectedEli": "DU/1964/93", "expectedArticle": "415" },
+  { "id": "kk-278", "question": "Jaka kara grozi za kradzież cudzej rzeczy ruchomej?", "category": "InCorpus", "shouldAbstain": false, "expectedEli": "DU/1997/553", "expectedArticle": "278" },
+
+  { "id": "out-lotnicze", "question": "Jakie warunki trzeba spełnić, aby uzyskać licencję pilota samolotowego?", "category": "OutOfCorpus", "shouldAbstain": true, "note": "prawo lotnicze — poza korpusem" },
+  { "id": "out-vat", "question": "Jak rozliczyć VAT od wewnątrzwspólnotowego nabycia towarów?", "category": "OutOfCorpus", "shouldAbstain": true, "note": "prawo podatkowe — poza korpusem" },
+  { "id": "out-morskie", "question": "Jakie są zasady odpowiedzialności armatora za szkody na morzu?", "category": "OutOfCorpus", "shouldAbstain": true, "note": "prawo morskie — poza korpusem" },
+
+  { "id": "trap-kk-999", "question": "Co dokładnie stanowi art. 999 Kodeksu karnego?", "category": "Trap", "shouldAbstain": true, "note": "art. 999 KK nie istnieje — oczekiwana abstynencja, nie konfabulacja" },
+  { "id": "trap-kpc-9999", "question": "Jak brzmi treść art. 9999 Kodeksu postępowania cywilnego?", "category": "Trap", "shouldAbstain": true, "note": "artykuł nie istnieje" },
+  { "id": "trap-false-premise", "question": "Zgodnie z art. 415 Kodeksu karnego dotyczącym zdrady stanu, jaka jest przewidziana kara?", "category": "Trap", "shouldAbstain": true, "note": "fałszywa przesłanka: art. 415 to KC (czyn niedozwolony), nie KK; zdrada stanu to art. 127 KK" },
+
+  { "id": "lawyer-kredyt-darmowy", "question": "Jak obliczyć i zastosować sankcję kredytu darmowego?", "category": "InCorpus", "shouldAbstain": false, "needsLawyer": true, "note": "niuansowe: przepis (ustawa o kredycie konsumenckim) + orzecznictwo TSUE/SN — poprawność i komplet źródeł ocenia prawnik" }
+]

@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\src\PrawoRAG.Embeddings\PrawoRAG.Embeddings.csproj" />
     <ProjectReference Include="..\..\src\PrawoRAG.Llm\PrawoRAG.Llm.csproj" />
     <ProjectReference Include="..\..\src\PrawoRAG.Ingestion\PrawoRAG.Ingestion.csproj" />
+    <ProjectReference Include="..\..\src\PrawoRAG.Eval\PrawoRAG.Eval.csproj" />
   </ItemGroup>
 
 </Project>
