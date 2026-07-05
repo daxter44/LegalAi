@@ -4,14 +4,18 @@
   { "id": "kp-52", "question": "Kiedy pracodawca może rozwiązać umowę o pracę bez wypowiedzenia z winy pracownika?", "category": "InCorpus", "shouldAbstain": false, "expectedEli": "DU/1974/141", "expectedArticle": "52" },
   { "id": "kc-415", "question": "Kto jest zobowiązany do naprawienia szkody wyrządzonej czynem niedozwolonym?", "category": "InCorpus", "shouldAbstain": false, "expectedEli": "DU/1964/93", "expectedArticle": "415" },
   { "id": "kk-278", "question": "Jaka kara grozi za kradzież cudzej rzeczy ruchomej?", "category": "InCorpus", "shouldAbstain": false, "expectedEli": "DU/1997/553", "expectedArticle": "278" },
+  { "id": "kro-rozwod", "question": "W jakich okolicznościach sąd może orzec rozwód małżonków?", "category": "InCorpus", "shouldAbstain": false, "expectedEli": "DU/1964/59", "expectedArticle": "56", "note": "KRO doszedł do korpusu; numer artykułu do potwierdzenia na M4" },
+  { "id": "konsument-odstapienie", "question": "Ile dni ma konsument na odstąpienie od umowy zawartej na odległość?", "category": "InCorpus", "shouldAbstain": false, "expectedEli": "DU/2014/827", "expectedArticle": "27", "note": "ustawa o prawach konsumenta; numer artykułu do potwierdzenia na M4" },
 
-  { "id": "out-lotnicze", "question": "Jakie warunki trzeba spełnić, aby uzyskać licencję pilota samolotowego?", "category": "OutOfCorpus", "shouldAbstain": true, "note": "prawo lotnicze — poza korpusem" },
-  { "id": "out-vat", "question": "Jak rozliczyć VAT od wewnątrzwspólnotowego nabycia towarów?", "category": "OutOfCorpus", "shouldAbstain": true, "note": "prawo podatkowe — poza korpusem" },
-  { "id": "out-morskie", "question": "Jakie są zasady odpowiedzialności armatora za szkody na morzu?", "category": "OutOfCorpus", "shouldAbstain": true, "note": "prawo morskie — poza korpusem" },
+  { "id": "out-morskie", "question": "Jakie są zasady odpowiedzialności armatora za szkody na morzu?", "category": "OutOfCorpus", "shouldAbstain": true, "note": "prawo morskie — brak w korpusie" },
+  { "id": "out-rodo", "question": "Jakie są zasady przetwarzania danych osobowych zgodnie z RODO?", "category": "OutOfCorpus", "shouldAbstain": true, "note": "ochrona danych osobowych — brak w korpusie" },
+
+  { "id": "related-pilot", "question": "Jakie warunki trzeba spełnić, aby uzyskać licencję pilota samolotowego?", "category": "RelatedButWrong", "shouldAbstain": true, "note": "lotnictwo poza korpusem, ale strukturalnie bliskie przepisom o kwalifikacjach zawodowych (ustrój sądów) — trafia na pokrewny, nieodpowiadający przepis z wysokim score" },
+  { "id": "related-vat", "question": "Jak rozliczyć VAT od wewnątrzwspólnotowego nabycia towarów?", "category": "RelatedButWrong", "shouldAbstain": true, "note": "ustawy o VAT NIE ma, ale JEST Ordynacja podatkowa (ogólne postępowanie podatkowe) — retriever trafia na pokrewny przepis podatkowy, choć nie odpowiada on na pytanie o VAT" },
 
   { "id": "trap-kk-999", "question": "Co dokładnie stanowi art. 999 Kodeksu karnego?", "category": "Trap", "shouldAbstain": true, "note": "art. 999 KK nie istnieje — oczekiwana abstynencja, nie konfabulacja" },
   { "id": "trap-kpc-9999", "question": "Jak brzmi treść art. 9999 Kodeksu postępowania cywilnego?", "category": "Trap", "shouldAbstain": true, "note": "artykuł nie istnieje" },
   { "id": "trap-false-premise", "question": "Zgodnie z art. 415 Kodeksu karnego dotyczącym zdrady stanu, jaka jest przewidziana kara?", "category": "Trap", "shouldAbstain": true, "note": "fałszywa przesłanka: art. 415 to KC (czyn niedozwolony), nie KK; zdrada stanu to art. 127 KK" },
 
-  { "id": "lawyer-kredyt-darmowy", "question": "Jak obliczyć i zastosować sankcję kredytu darmowego?", "category": "InCorpus", "shouldAbstain": false, "needsLawyer": true, "note": "niuansowe: przepis (ustawa o kredycie konsumenckim) + orzecznictwo TSUE/SN — poprawność i komplet źródeł ocenia prawnik" }
+  { "id": "lawyer-kredyt-darmowy", "question": "Jak obliczyć i zastosować sankcję kredytu darmowego?", "category": "InCorpus", "shouldAbstain": false, "needsLawyer": true, "note": "niuansowe: ustawa o kredycie konsumenckim (NIE ma jej w korpusie!) + orzecznictwo TSUE/SN — poprawność ocenia prawnik; nie scorujemy" }
 ]

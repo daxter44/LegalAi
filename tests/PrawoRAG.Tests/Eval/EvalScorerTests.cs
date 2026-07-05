@@ -69,16 +69,30 @@ public class EvalScorerTests
     {
         var verdicts = new[]
         {
-            new ItemVerdict("a", GoldenCategory.InCorpus, 0.80, RetrievalHit: true, AbstentionCorrect: true, NoHallucination: null),
-            new ItemVerdict("b", GoldenCategory.InCorpus, 0.70, RetrievalHit: false, AbstentionCorrect: true, NoHallucination: null),
-            new ItemVerdict("c", GoldenCategory.OutOfCorpus, 0.40, RetrievalHit: null, AbstentionCorrect: true, NoHallucination: null),
-            new ItemVerdict("d", GoldenCategory.Trap, 0.90, RetrievalHit: null, AbstentionCorrect: false, NoHallucination: false),
+            new ItemVerdict("a", GoldenCategory.InCorpus, 0.80, RetrievalHit: true, AbstentionCorrect: true, NoHallucination: null, ChatAbstentionCorrect: true),
+            new ItemVerdict("b", GoldenCategory.InCorpus, 0.70, RetrievalHit: false, AbstentionCorrect: true, NoHallucination: null, ChatAbstentionCorrect: null),
+            new ItemVerdict("c", GoldenCategory.OutOfCorpus, 0.40, RetrievalHit: null, AbstentionCorrect: true, NoHallucination: null, ChatAbstentionCorrect: true),
+            new ItemVerdict("d", GoldenCategory.Trap, 0.90, RetrievalHit: null, AbstentionCorrect: false, NoHallucination: false, ChatAbstentionCorrect: false),
         };
         var r = EvalScorer.Aggregate(verdicts, 0.55);
         Assert.Equal(4, r.Total);
         Assert.Equal(0.5, r.RecallAtK);            // 1 z 2 scorowanych
-        Assert.Equal(0.75, r.AbstentionAccuracy);  // 3 z 4
+        Assert.Equal(0.75, r.AbstentionAccuracy);  // 3 z 4 (bramka retrievalu)
         Assert.Equal(0.0, r.AntiHallucination);    // 1 pułapka, nie zaliczona
+        Assert.Equal(2.0 / 3.0, r.ChatAbstentionAccuracy!.Value, 3); // 2 z 3 z czatem (a,c ok; d źle)
+        Assert.Equal(3, r.ScoredChat);
+    }
+
+    [Fact]
+    public void Chat_abstention_scored_end_to_end()
+    {
+        var outItem = new GoldenItem { Id = "o", Question = "q", Category = GoldenCategory.RelatedButWrong, ShouldAbstain = true };
+        // LLM odmówił (Abstained=true) na pytaniu wymagającym abstynencji → poprawnie.
+        Assert.True(EvalScorer.Score(outItem, Obs(false, 0.9) with { Abstained = true }).ChatAbstentionCorrect);
+        // LLM odpowiedział (Abstained=false) mimo że powinien odmówić → niepoprawnie.
+        Assert.False(EvalScorer.Score(outItem, Obs(false, 0.9) with { Abstained = false }).ChatAbstentionCorrect);
+        // Czat nieuruchomiony (Abstained=null) → nie scorujemy.
+        Assert.Null(EvalScorer.Score(outItem, Obs(false, 0.9)).ChatAbstentionCorrect);
     }
 
     [Fact]

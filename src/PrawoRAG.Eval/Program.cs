@@ -54,16 +54,26 @@ foreach (var item in items)
     bool? citationsClean = null, abstained = null;
     if (chat && !item.NeedsLawyer)
     {
-        if (wouldAbstain) abstained = true;
+        if (wouldAbstain) abstained = true; // bramka retrievalu odmówiła — LLM nie wołany
         else
         {
             var llm = scope.ServiceProvider.GetRequiredService<ILlmProvider>();
             var (req, sources) = GroundedPrompt.Build(item.Question, res.Chunks);
             var sb = new StringBuilder();
             await foreach (var d in llm.StreamCompletionAsync(req, default)) sb.Append(d);
-            var ctx = res.Chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
-            citationsClean = CitationValidator.Validate(sb.ToString(), ctx, sources.Count).IsClean;
-            abstained = false;
+            var answer = sb.ToString();
+
+            // Realna bramka: czy LLM SAM odmówił (fraza z GroundedPrompt), gdy źródła nie odpowiadają.
+            if (answer.Contains("Nie mam wystarczających źródeł", StringComparison.OrdinalIgnoreCase))
+            {
+                abstained = true;
+            }
+            else
+            {
+                var ctx = res.Chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
+                citationsClean = CitationValidator.Validate(answer, ctx, sources.Count).IsClean;
+                abstained = false;
+            }
         }
     }
 

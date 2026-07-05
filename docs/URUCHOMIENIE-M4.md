@@ -136,8 +136,19 @@ Llm__Provider=local dotnet run --project src/PrawoRAG.Eval -- --chat
 - `Kalibracja progu: najlepszy ≈ Z`.
 
 Wstaw `Z` jako `Retrieval:AbstentionThreshold` w `src/PrawoRAG.Api/appsettings.json` (i w Eval, żeby kolejne
-przebiegi liczyły przy nowym progu). **Jeśli „rozdział" jest bliski zeru / najlepsza trafność niska** — to
-dowód, że surowy cosine nie wystarcza i następny krok to **reranker (5.4)**, nie strojenie progu.
+przebiegi liczyły przy nowym progu).
+
+**Zmierzone (2026-07): próg liczbowy NIE rozdziela.** „Rozdział" ≈ 0 dla cosine i reranker — bo pytanie
+spoza korpusu trafia na pokrewny przepis z równie wysokim score (pilot→sędziowie, VAT→Ordynacja). Wniosek:
+abstynencja to **decyzja LLM na etapie generowania**, nie próg z retrievalu. Dlatego harness liczy teraz
+`Abstynencja END-TO-END (LLM/czat)` — czy Bielik SAM odmawia („Nie mam wystarczających źródeł"), gdy źródła
+nie odpowiadają. **Żeby zmierzyć czysto bramkę LLM**, wyłącz próg retrievalu i włącz czat:
+```bash
+Retrieval__AbstentionThreshold=0 Reranker__Enabled=false Llm__Provider=local \
+  dotnet run --project src/PrawoRAG.Eval -- --chat
+```
+Patrz na `Abstynencja END-TO-END` (poprawne odmowy na OutOfCorpus/RelatedButWrong/Trap) oraz `Anty-halucynacja`.
+Uwaga: Bielik lubi fabrykować — jeśli END-TO-END jest niskie, to argument za mocniejszym modelem (Diamond).
 
 **Czego E5 NIE zrobi:** nie oceni poprawności merytorycznej niuansowych pytań (pozycje `needsLawyer` w
 `golden-set.json`, np. „kredyt darmowy") — to czeka na prawnika. Golden set możesz rozszerzać, dopisując

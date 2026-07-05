@@ -20,7 +20,13 @@ public static class EvalScorer
         if (item.Category == GoldenCategory.Trap && (obs.CitationsClean is not null || obs.Abstained is not null))
             noHallucination = (obs.Abstained ?? false) || (obs.CitationsClean ?? false);
 
-        return new ItemVerdict(item.Id, item.Category, obs.MaxSimilarity, hit, abstentionCorrect, noHallucination);
+        // Abstynencja END-TO-END (realna bramka): gdy czat był uruchomiony (obs.Abstained != null), poprawne
+        // zachowanie = odmówił ⇔ ShouldAbstain. To mierzy LLM jako bramkę, nie próg z retrievalu.
+        bool? chatAbstentionCorrect = null;
+        if (!item.NeedsLawyer && obs.Abstained is not null)
+            chatAbstentionCorrect = obs.Abstained.Value == item.ShouldAbstain;
+
+        return new ItemVerdict(item.Id, item.Category, obs.MaxSimilarity, hit, abstentionCorrect, noHallucination, chatAbstentionCorrect);
     }
 
     private static bool HasExpected(GoldenItem i) =>
@@ -45,6 +51,7 @@ public static class EvalScorer
     {
         var withHit = verdicts.Where(v => v.RetrievalHit is not null).ToList();
         var traps = verdicts.Where(v => v.NoHallucination is not null).ToList();
+        var chat = verdicts.Where(v => v.ChatAbstentionCorrect is not null).ToList();
         var inSims = verdicts.Where(v => v.Category == GoldenCategory.InCorpus).Select(v => v.MaxSimilarity).ToList();
         var outSims = verdicts.Where(v => v.Category != GoldenCategory.InCorpus).Select(v => v.MaxSimilarity).ToList();
 
@@ -55,10 +62,12 @@ public static class EvalScorer
             RecallAtK = withHit.Count == 0 ? null : withHit.Count(v => v.RetrievalHit == true) / (double)withHit.Count,
             AbstentionAccuracy = verdicts.Count == 0 ? 0 : verdicts.Count(v => v.AbstentionCorrect) / (double)verdicts.Count,
             AntiHallucination = traps.Count == 0 ? null : traps.Count(v => v.NoHallucination == true) / (double)traps.Count,
+            ChatAbstentionAccuracy = chat.Count == 0 ? null : chat.Count(v => v.ChatAbstentionCorrect == true) / (double)chat.Count,
             MeanSimInCorpus = inSims.Count == 0 ? 0 : inSims.Average(),
             MeanSimOutOfCorpus = outSims.Count == 0 ? 0 : outSims.Average(),
             ScoredRecall = withHit.Count,
             ScoredTraps = traps.Count,
+            ScoredChat = chat.Count,
         };
     }
 

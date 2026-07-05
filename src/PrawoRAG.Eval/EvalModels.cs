@@ -12,6 +12,10 @@ public enum GoldenCategory
     OutOfCorpus,
     /// <summary>Pułapka (nieistniejący artykuł, fałszywa przesłanka) — oczekiwana abstynencja/sprostowanie, NIE konfabulacja.</summary>
     Trap,
+    /// <summary>Pytanie z dziedziny NIEobecnej w korpusie, ale strukturalnie/tematycznie bliskiej temu, co jest
+    /// (np. „licencja pilota" → przepisy o kwalifikacjach sędziów; „VAT" → Ordynacja podatkowa). Retriever zwraca
+    /// pokrewny, ale NIE odpowiadający przepis z wysokim score — najtrudniejszy przypadek dla bramki. Oczekiwana abstynencja.</summary>
+    RelatedButWrong,
 }
 
 /// <summary>
@@ -57,7 +61,7 @@ public sealed record ItemObservation
 
 public sealed record ItemVerdict(
     string Id, GoldenCategory Category, double MaxSimilarity,
-    bool? RetrievalHit, bool AbstentionCorrect, bool? NoHallucination);
+    bool? RetrievalHit, bool AbstentionCorrect, bool? NoHallucination, bool? ChatAbstentionCorrect);
 
 /// <summary>Zagregowany raport ewaluacji.</summary>
 public sealed record EvalReport
@@ -67,10 +71,12 @@ public sealed record EvalReport
     public double? RecallAtK { get; init; }
     public double AbstentionAccuracy { get; init; }
     public double? AntiHallucination { get; init; }
+    public double? ChatAbstentionAccuracy { get; init; }
     public double MeanSimInCorpus { get; init; }
     public double MeanSimOutOfCorpus { get; init; }
     public int ScoredRecall { get; init; }
     public int ScoredTraps { get; init; }
+    public int ScoredChat { get; init; }
 
     public string Format()
     {
@@ -80,6 +86,7 @@ public sealed record EvalReport
         sb.AppendLine($"Recall@K (retrieval): {(RecallAtK is { } r ? $"{r:P0}" : "—")}   (na {ScoredRecall} poz. z oczekiwanym źródłem)");
         sb.AppendLine($"Trafność abstynencji: {AbstentionAccuracy:P0}   (na wszystkich {Total})");
         sb.AppendLine($"Anty-halucynacja (pułapki): {(AntiHallucination is { } h ? $"{h:P0}" : "— (czat nieuruchomiony)")}   (na {ScoredTraps} pułapkach)");
+        sb.AppendLine($"Abstynencja END-TO-END (LLM/czat): {(ChatAbstentionAccuracy is { } ca ? $"{ca:P0}" : "— (czat nieuruchomiony)")}   (na {ScoredChat} poz. z czatem) ← realna bramka");
         sb.AppendLine($"Śr. similarity: w korpusie {MeanSimInCorpus:F3} vs poza {MeanSimOutOfCorpus:F3}  (rozdział {MeanSimInCorpus - MeanSimOutOfCorpus:+0.000;-0.000})");
         return sb.ToString();
     }
