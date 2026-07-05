@@ -39,6 +39,15 @@ services:
     #   curl http://localhost:8080/health   (200 OK)
     #   curl -X POST http://localhost:8080/embed -H 'content-type: application/json' -d '{"inputs":"zapytanie: test"}'
 
+  # Reranker (opcjonalny, 5.4) — DRUGA instancja TEI z cross-encoderem (osobny model niż embeddingi).
+  # Włącz przez Reranker:Enabled=true w API/Eval i Reranker:BaseUrl wskazujący na tę usługę.
+  # tei-reranker:
+  #   image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+  #   command: ["--model-id", "sdadas/polish-reranker-roberta-v3", "--port", "80", "--auto-truncate"]
+  #   environment: { HUGGINGFACE_HUB_CACHE: /data }
+  #   ports: ["8081:80"]
+  #   volumes: ["tei-reranker-cache:/data"]
+
   # --- dokładamy później ---
   # worker:
   #   build: { context: .., dockerfile: src/PrawoRAG.Ingestion/Dockerfile }

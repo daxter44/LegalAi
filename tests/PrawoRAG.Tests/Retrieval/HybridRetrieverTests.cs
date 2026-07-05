@@ -116,4 +116,25 @@ public class HybridRetrieverTests
         Assert.DoesNotContain(res.Chunks, c => c.Text.Contains("uchylony")); // akt nieobowiązujący odsiany
         await CleanAsync(src);
     }
+
+    [Fact] // R5: reranker przestawia kolejność i to JEGO top-score steruje MaxSimilarity (bramka abstynencji)
+    public async Task Reranker_reorders_and_drives_abstention_signal()
+    {
+        const string src = "TEST-RETR-5";
+        await CleanAsync(src);
+        await SeedAsync(src, "a", DocTypes.Judgment, "Rerankuj alfa zzztarget przepis testowy do wypromowania", tokenCount: 20);
+        await SeedAsync(src, "b", DocTypes.Judgment, "Rerankuj beta zwykly przepis testowy bez boosta", tokenCount: 20);
+
+        await using var db = NewDb();
+        var reranker = new FakeReranker("zzztarget");
+        var res = await new HybridRetriever(db, Emb, reranker).RetrieveAsync(
+            new RetrievalQuery { Text = "Rerankuj przepis testowy", MinChunkTokens = 0 }, default);
+
+        Assert.NotEmpty(res.Chunks);
+        Assert.Contains("zzztarget", res.Chunks[0].Text);   // wypromowany na 1. miejsce
+        Assert.Equal(0.99, res.Chunks[0].RerankScore);
+        Assert.Equal(0.99, res.MaxSimilarity, 3);           // abstynencja gatuje na score rerankera, nie cosine
+        Assert.True(reranker.Calls > 0);
+        await CleanAsync(src);
+    }
 }

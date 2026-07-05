@@ -143,6 +143,28 @@ dowód, że surowy cosine nie wystarcza i następny krok to **reranker (5.4)**, 
 `golden-set.json`, np. „kredyt darmowy") — to czeka na prawnika. Golden set możesz rozszerzać, dopisując
 pozycje do `src/PrawoRAG.Eval/golden-set.json` (obiektywne: numer artykułu / „poza domeną" / pułapka).
 
+## Reranker (5.4, opcjonalny) — lepszy sygnał abstynencji
+
+Cross-encoder daje score lepiej rozdzielony niż surowy cosine → naprawia abstynencję i podnosi precyzję.
+**Domyślnie wyłączony**; włączasz, gdy E5 pokaże, że cosine nie rozdziela („rozdział" bliski zeru).
+
+```bash
+# 1. DRUGA instancja TEI z rerankerem (osobny model, port 8081):
+HUGGINGFACE_HUB_CACHE=.local/tei-reranker \
+  text-embeddings-router --model-id sdadas/polish-reranker-roberta-v3 --port 8081 --auto-truncate \
+  > /tmp/tei-rr.log 2>&1 &
+disown
+curl http://localhost:8081/health   # 200 = OK
+
+# 2. Zmierz ZYSK w E5 — odpal off vs on i porównaj recall@K oraz „rozdział similarity":
+dotnet run --project src/PrawoRAG.Eval                          # off
+Reranker__Enabled=true dotnet run --project src/PrawoRAG.Eval   # on (BaseUrl :8081 domyślny)
+```
+Reranker ma **zwiększyć rozdział** „w korpusie" vs „poza". Jeśli tak — skalibruj próg (już na score
+rerankera) i wstaw do `Retrieval:AbstentionThreshold`, oraz włącz `Reranker:Enabled=true` w API.
+Uwaga: reranking działa na score sigmoidowym (~0..1), więc **próg będzie inny niż dla cosine** — dlatego
+kalibrujemy go od nowa właśnie na tym sygnale.
+
 ## Uwagi
 - **Magazyn surowych** ląduje w `src/PrawoRAG.Ingestion/data/raw/` (bo `dotnet run` ustawia CWD na katalog
   projektu). Jest gitignorowany. Na inną lokalizację ustaw `RawStore__RootPath` (ścieżka absolutna).

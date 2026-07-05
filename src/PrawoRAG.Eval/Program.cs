@@ -20,6 +20,7 @@ builder.Services.AddPrawoRagStorage(builder.Configuration.GetConnectionString("D
     ?? throw new InvalidOperationException("Brak ConnectionStrings:Db."));
 builder.Services.AddTeiEmbeddings(builder.Configuration);
 builder.Services.AddPrawoRagLlm(builder.Configuration);
+builder.Services.AddTeiReranker(builder.Configuration);  // IReranker tylko gdy Reranker:Enabled=true
 builder.Services.AddScoped<IRetriever, HybridRetriever>();
 
 using var host = builder.Build();

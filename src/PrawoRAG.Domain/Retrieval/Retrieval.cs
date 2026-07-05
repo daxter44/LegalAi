@@ -44,6 +44,9 @@ public sealed record RetrievedChunk
 
     /// <summary>Podobieństwo cosine (1 − dystans) z toru gęstego, jeśli chunk był w nim obecny.</summary>
     public double? Similarity { get; init; }
+
+    /// <summary>Score rerankera (cross-encoder), jeśli reranking był włączony. Null = bez rerankingu.</summary>
+    public double? RerankScore { get; init; }
 }
 
 /// <summary>Wynik retrievalu + najwyższe podobieństwo (sygnał dla bramki abstynencji).</summary>

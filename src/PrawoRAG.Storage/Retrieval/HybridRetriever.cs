@@ -13,7 +13,7 @@ namespace PrawoRAG.Storage.Retrieval;
 /// Wyszukiwanie hybrydowe: tor gęsty (pgvector cosine) + tor rzadki (tsvector BM25), fuzja RRF.
 /// Numery artykułów/sygnatury łapie BM25; intencję semantyczną — dense. Filtry metadanych w SQL.
 /// </summary>
-public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider embedder) : IRetriever
+public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider embedder, IReranker? reranker = null) : IRetriever
 {
     private const int RrfK = 60;
 
@@ -73,7 +73,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
             .Where(c => candidateIds.Contains(c.Id))
             .ToListAsync(ct);
 
-        var chunks = rows
+        var deduped = rows
             .Select(c => new RetrievedChunk
             {
                 ChunkId = c.Id,
@@ -91,11 +91,27 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
             .OrderByDescending(c => c.Score)
             .GroupBy(c => NormalizeForDedup(c.Text))   // kolaps identycznych tekstów — zostaje najwyżej scorowany
             .Select(g => g.First())
-            .Take(query.TopK)
             .ToList();
 
         var maxSim = sim.Count > 0 ? sim.Values.Max() : 0;
-        return new RetrievalResult(chunks, maxSim);
+
+        // Reranking (opcjonalny): cross-encoder przelicza trafność deduplikowanych kandydatów.
+        // Gdy włączony, jego TOP-score steruje bramką abstynencji (MaxSimilarity) — jest lepiej
+        // rozdzielony niż surowy cosine. Gdy wyłączony (reranker == null) — zachowanie jak dotąd.
+        if (reranker is not null && deduped.Count > 0)
+        {
+            var scores = await reranker.RerankAsync(query.Text, deduped.Select(c => c.Text).ToList(), ct);
+            var byIndex = scores.ToDictionary(x => x.Index, x => x.Score);
+            var reranked = deduped
+                .Select((c, i) => c with { RerankScore = byIndex.GetValueOrDefault(i) })
+                .OrderByDescending(c => c.RerankScore ?? double.MinValue)
+                .Take(query.TopK)
+                .ToList();
+            var topRerank = reranked.Count > 0 ? reranked[0].RerankScore ?? 0 : 0;
+            return new RetrievalResult(reranked, topRerank);
+        }
+
+        return new RetrievalResult(deduped.Take(query.TopK).ToList(), maxSim);
     }
 
     private static IQueryable<ChunkEntity> ApplyFilters(IQueryable<ChunkEntity> q, RetrievalQuery query)

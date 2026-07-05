@@ -15,6 +15,7 @@ builder.Services.AddPrawoRagStorage(builder.Configuration.GetConnectionString("D
     ?? throw new InvalidOperationException("Brak ConnectionStrings:Db."));
 builder.Services.AddTeiEmbeddings(builder.Configuration);
 builder.Services.AddPrawoRagLlm(builder.Configuration); // claude | local (Ollama/llama.cpp) wg Llm:Provider
+builder.Services.AddTeiReranker(builder.Configuration);  // IReranker tylko gdy Reranker:Enabled=true
 builder.Services.AddScoped<IRetriever, HybridRetriever>();
 builder.Services.Configure<RetrievalOptions>(builder.Configuration.GetSection("Retrieval"));
 builder.Services.AddOpenApi();
