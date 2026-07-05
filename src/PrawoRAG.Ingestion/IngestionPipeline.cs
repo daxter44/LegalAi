@@ -79,7 +79,9 @@ public sealed class IngestionPipeline(
         doc.DocType = raw.DocType;
         doc.SourceUrl = raw.SourceUrl;
         doc.ContentHash = hash;
-        doc.SourceModificationDate = raw.SourceModificationDate;
+        // Npgsql akceptuje dla timestamptz tylko offset 0 — źródła bez jawnej strefy (np. ELI) dostają
+        // doklejoną strefę lokalną maszyny przy parsowaniu; wymuszamy UTC tutaj, w jedynym miejscu zapisu.
+        doc.SourceModificationDate = raw.SourceModificationDate?.ToUniversalTime();
         doc.UpdatedAt = DateTimeOffset.UtcNow;
         if (isNew) doc.IngestedAt = doc.UpdatedAt;
         doc.CourtType = norm.TypedMetadata.GetValueOrDefault("courtType") as string;

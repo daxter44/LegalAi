@@ -56,9 +56,12 @@ public sealed class EliSejmConnector(HttpClient http, IOptions<EliOptions> optio
 
             var title = root.TryGetProperty("title", out var t) ? t.GetString() : null;
             var address = root.TryGetProperty("address", out var a) ? a.GetString() : null;
+            // AssumeUniversal+AdjustToUniversal: API zwraca datę bez strefy — wymuszamy UTC zamiast
+            // dokładania lokalnej strefy maszyny (Npgsql akceptuje dla timestamptz tylko offset 0).
             DateTimeOffset? changeDate =
                 root.TryGetProperty("changeDate", out var cd) && cd.ValueKind == JsonValueKind.String &&
-                DateTimeOffset.TryParse(cd.GetString(), CultureInfo.InvariantCulture, out var dt) ? dt : null;
+                DateTimeOffset.TryParse(cd.GetString(), CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt) ? dt : null;
 
             log.LogInformation("ELI akt {Addr}: {Title}", addr, title);
 
