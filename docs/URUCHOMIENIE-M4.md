@@ -105,6 +105,44 @@ zapobiega ucięciu przez domyślny timeout curla w trakcie ręcznego testu.
   wyłapała. Sygnał, że lokalny model 11B wymaga bardziej rygorystycznej weryfikacji `citationCheck`
   niż Claude, nie że pipeline jest zepsuty.
 
+## E5 — pomiar jakości i kalibracja abstynencji (na M4)
+
+Harness `PrawoRAG.Eval` mierzy guardraile (recall, abstynencja, anty-halucynacja) i **kalibruje próg
+abstynencji** na golden secie. Sensowne liczby wymagają **reprezentatywnego korpusu** — nie 4 dokumentów.
+
+**Krok 1 — urośnij korpus (to jest warunek sensownego E5).** TEI (Metal) i Postgres muszą chodzić (kroki 3–4 wyżej).
+```bash
+# Więcej orzeczeń apelacyjnych 2023+ (zacznij od ~500–1000, docelowo pełne ~8–10 tys.):
+Ingestion__Source=SAOS Ingestion__Mode=fetch-process Ingestion__MaxItems=1000 \
+  dotnet run --project src/PrawoRAG.Ingestion
+# Kodeksy/ustawy ELI (15 pozycji z appsettings):
+Ingestion__Source=ELI Ingestion__Mode=fetch-process \
+  dotnet run --project src/PrawoRAG.Ingestion
+```
+Embedding idzie przez natywny TEI (Metal) — dlatego to robota na M4, nie na słabym laptopie.
+
+**Krok 2 — odpal ewaluację.**
+```bash
+# Retrieval-only (tanio, bez LLM) — recall, trafność abstynencji, rekomendowany próg:
+dotnet run --project src/PrawoRAG.Eval
+
+# + anty-halucynacja z Bielikiem (Ollama musi chodzić, jak w kroku 1/6 wyżej):
+Llm__Provider=local dotnet run --project src/PrawoRAG.Eval -- --chat
+```
+
+**Krok 3 — odczytaj raport i skalibruj.** Runner wypisze m.in.:
+- `Recall@K` — czy właściwy artykuł/orzeczenie trafia do top-K,
+- `Trafność abstynencji` + `Śr. similarity: w korpusie X vs poza Y (rozdział …)`,
+- `Kalibracja progu: najlepszy ≈ Z`.
+
+Wstaw `Z` jako `Retrieval:AbstentionThreshold` w `src/PrawoRAG.Api/appsettings.json` (i w Eval, żeby kolejne
+przebiegi liczyły przy nowym progu). **Jeśli „rozdział" jest bliski zeru / najlepsza trafność niska** — to
+dowód, że surowy cosine nie wystarcza i następny krok to **reranker (5.4)**, nie strojenie progu.
+
+**Czego E5 NIE zrobi:** nie oceni poprawności merytorycznej niuansowych pytań (pozycje `needsLawyer` w
+`golden-set.json`, np. „kredyt darmowy") — to czeka na prawnika. Golden set możesz rozszerzać, dopisując
+pozycje do `src/PrawoRAG.Eval/golden-set.json` (obiektywne: numer artykułu / „poza domeną" / pułapka).
+
 ## Uwagi
 - **Magazyn surowych** ląduje w `src/PrawoRAG.Ingestion/data/raw/` (bo `dotnet run` ustawia CWD na katalog
   projektu). Jest gitignorowany. Na inną lokalizację ustaw `RawStore__RootPath` (ścieżka absolutna).
