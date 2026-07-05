@@ -4,9 +4,10 @@ using PrawoRAG.Tests.Fixtures;
 namespace PrawoRAG.Tests.Ingestion;
 
 /// <summary>
-/// T-ACT — normalizacja aktów ELI na REALNYM fixture KK (DU/1997/553). Dowodzi deterministycznego
-/// parsowania artykułów I PARAGRAFÓW (artykuł z ≥2 §§ → segment na §; jeden § = jedna norma
-/// = jeden wektor), nagłówka kontekstowego i lokalizatora cytatu. Bez sieci i bazy.
+/// T-ACT — normalizacja aktów ELI na REALNYM fixture KK (DU/1997/553). Dowodzi deterministycznego,
+/// REKURENCYJNEGO parsowania: artykuł z ≥2 §§ → segment na §; paragraf z ≥2 punktami wyliczenia
+/// (art. 148 § 2: pkt 1-4, różne warianty zabójstwa kwalifikowanego) → segment na punkt. Jeden
+/// wektor = jedna norma na każdym poziomie. Nagłówek kontekstowy i lokalizator cytatu. Bez sieci i bazy.
 /// </summary>
 public class ActNormalizerTests
 {
@@ -28,12 +29,31 @@ public class ActNormalizerTests
         Assert.DoesNotContain("silnego wzburzenia", p1.Text);
     }
 
-    [Fact] // A1b: punkty 1)–4) zostają WEWNĄTRZ swojego paragrafu (nie rozbijamy niżej niż §)
-    public void Points_stay_inside_their_paragraph()
+    [Fact] // A1b: paragraf z ≥2 punktami wyliczenia (art. 148 § 2: pkt 1-4) dzielony na segment per punkt
+    public void Splits_paragraph_with_multiple_points_into_point_segments()
     {
-        var p2 = Kk().Segments.Single(s => s.Locator?.Article == "148" && s.Locator.Paragraph == "2");
-        Assert.Contains("ze szczególnym okrucieństwem", p2.Text);
-        Assert.Contains("broni palnej", p2.Text);
+        var points = Kk().Segments
+            .Where(s => s.Locator?.Article == "148" && s.Locator.Paragraph == "2" && s.Locator.Point is not null)
+            .ToList();
+        Assert.True(points.Count >= 4, $"Art. 148 § 2 ma pkt 1-4; znaleziono {points.Count}");
+
+        var pkt1 = points.Single(s => s.Locator!.Point == "1");
+        Assert.Equal("Art. 148 § 2 pkt 1", pkt1.Label);
+        Assert.Contains("ze szczególnym okrucieństwem", pkt1.Text);
+        Assert.DoesNotContain("broni palnej", pkt1.Text); // pkt 4 nie miesza się do wektora pkt 1
+
+        var pkt4 = points.Single(s => s.Locator!.Point == "4");
+        Assert.Contains("broni palnej", pkt4.Text);
+        Assert.DoesNotContain("okrucieństwem", pkt4.Text);
+    }
+
+    [Fact] // A1b2: wstęp paragrafu przed wyliczeniem („Kto zabija człowieka:") to własny segment (Point == null)
+    public void Paragraph_intro_before_points_is_its_own_segment()
+    {
+        var intro = Kk().Segments.SingleOrDefault(
+            s => s.Locator?.Article == "148" && s.Locator.Paragraph == "2" && s.Locator.Point is null);
+        Assert.NotNull(intro);
+        Assert.Contains("Kto zabija człowieka", intro!.Text);
     }
 
     [Fact] // A1c: artykuł bez §§ zostaje jednym segmentem (Paragraph == null)

@@ -13,6 +13,8 @@ public sealed record CitationLocator
     public string? Article { get; init; }
     /// <summary>Numer paragrafu, np. „1".</summary>
     public string? Paragraph { get; init; }
+    /// <summary>Numer punktu w wyliczeniu paragrafu, np. „1" (art. 52 § 1 pkt 1).</summary>
+    public string? Point { get; init; }
     /// <summary>Adres do wyświetlenia człowiekowi, np. „Dz.U. 1997 nr 88 poz. 553".</summary>
     public string? DisplayAddress { get; init; }
     /// <summary>Kotwica w <c>text.html</c>, np. „none_-chpt_XIX-arti_148".</summary>

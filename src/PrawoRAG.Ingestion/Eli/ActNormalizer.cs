@@ -10,12 +10,15 @@ using PrawoRAG.Ingestion.Saos;
 namespace PrawoRAG.Ingestion.Eli;
 
 /// <summary>
-/// Normalizer aktów prawnych ELI: parsuje strukturalny <c>text.html</c> po <c>div.unit_arti</c>
-/// i <c>div.unit_para</c> (deterministycznie). Artykuł z ≥2 paragrafami dostaje SEGMENT NA PARAGRAF
-/// (jeden § = jedna norma = jeden wektor — cały artykuł w jednym wektorze uśrednia kilka norm naraz
-/// i rozmywa retrieval); artykuł bez §§ zostaje segmentem w całości. Nagłówek kontekstowy wbity
-/// w tekst (krótka nazwa aktu + rozdział + „Art. N § M") — chunk samoopisowy dla retrievalu i cytowania.
-/// Lokalizator = eli_id + artykuł + paragraf + kotwica HTML (data-id/id). Błędy → QualityIssues.
+/// Normalizer aktów prawnych ELI: parsuje strukturalny <c>text.html</c> po <c>div.unit_arti</c>,
+/// <c>div.unit_para</c> i <c>div.unit_pint</c> (deterministycznie), rekurencyjnie: artykuł z ≥2
+/// paragrafami dzieli się na §§, paragraf z ≥2 punktami wyliczenia dzieli się na punkty. Jeden
+/// wektor = jedna norma — zmierzone, że mieszanie kilku podstaw prawnych (np. art. 52 § 1 pkt 1-3
+/// KP: różne, niezależne przesłanki zwolnienia) w jednym chunku rozmywa cosine o ~0.15 i zrzuca
+/// przepis z top rankingu. Nagłówek kontekstowy wbity w tekst (krótka nazwa aktu + rozdział +
+/// „Art. N § M pkt K") — BEZ zdania wprowadzającego paragrafu (zmierzone: obniża cosine, bo dokłada
+/// bojlerplate wspólny dla wszystkich punktów) — chunk samoopisowy dla retrievalu i cytowania.
+/// Lokalizator = eli_id + artykuł/paragraf/punkt + kotwica HTML (data-id/id). Błędy → QualityIssues.
 /// </summary>
 public sealed class ActNormalizer : IDocumentNormalizer
 {
@@ -23,6 +26,14 @@ public sealed class ActNormalizer : IDocumentNormalizer
 
     private static readonly Regex ArtRe = new(@"Art\.\s*(\d+[a-zA-Z]*)", RegexOptions.Compiled);
     private static readonly Regex ParaRe = new(@"§\s*(\d+[a-zA-Z]*)", RegexOptions.Compiled);
+    private static readonly Regex PointRe = new(@"^(\d+[a-zA-Z]*)\)", RegexOptions.Compiled);
+
+    // „Ustawa z dnia ... r. [-] Nazwa[.]" → Nazwa (dopuszcza z/bez myślnika, z/bez kropki na końcu).
+    private static readonly Regex UstawaTitleRe =
+        new(@"^Ustawa z dnia .+?\d{4}\s*r\.\s*-?\s*(.+?)\.?\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    // Obwieszczenia o tekście jednolitym: „...ogłoszenia jednolitego tekstu ustawy [-] Nazwa" → Nazwa.
+    private static readonly Regex ObwieszczenieTitleRe =
+        new(@"tekstu ustawy\s+(?:-\s*)?(.+?)\.?\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     public NormalizedDocument Normalize(RawDocument raw)
     {
@@ -105,25 +116,59 @@ public sealed class ActNormalizer : IDocumentNormalizer
                     pn.Remove();
                 var intro = StripArticleHeading(HtmlText.ToPlainText(clone.OuterHtml));
                 if (intro.Length >= 20)
-                    Emit(segments, full, intro, article, paragraph: null, shortTitle, chapter,
+                    Emit(segments, full, intro, article, paragraph: null, point: null, shortTitle, chapter,
                          eliId, displayAddress, htmlId, sourceUrl);
 
                 foreach (var para in paras)
                 {
-                    var paraBody = HtmlText.ToPlainText(para.OuterHtml);
-                    if (string.IsNullOrWhiteSpace(paraBody)) continue;
                     var paraId = NullIfEmpty(para.GetAttributeValue("id", ""));       // „…-arti_148-para_1"
                     var paraDataId = NullIfEmpty(para.GetAttributeValue("data-id", "")); // „para_1"
                     var paragraph = ParagraphNumber(para, paraDataId);
-                    Emit(segments, full, paraBody, article, paragraph, shortTitle, chapter,
-                         eliId, displayAddress, paraId ?? htmlId, sourceUrl);
+
+                    var points = para.SelectNodes(
+                        ".//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_pint ')]");
+
+                    if (points is { Count: >= 2 })
+                    {
+                        // Wstęp paragrafu przed wyliczeniem (np. „Zakład pracy może rozwiązać umowę...
+                        // w razie:") jako własny segment — samodzielnie ma sens, a nie rozmywa punktów.
+                        var paraClone = para.CloneNode(true);
+                        foreach (var pn in paraClone.SelectNodes(
+                                     ".//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_pint ')]") ?? Enumerable.Empty<HtmlNode>())
+                            pn.Remove();
+                        var paraIntro = StripParagraphHeading(HtmlText.ToPlainText(paraClone.OuterHtml));
+                        if (paraIntro.Length >= 20)
+                            Emit(segments, full, paraIntro, article, paragraph, point: null, shortTitle, chapter,
+                                 eliId, displayAddress, paraId ?? htmlId, sourceUrl);
+
+                        foreach (var pt in points)
+                        {
+                            // Zamierzone pominięcie zdania wprowadzającego paragrafu w treści punktu —
+                            // zmierzone: dokłada bojlerplate wspólny dla wszystkich punktów i obniża cosine
+                            // (art. 52 § 1 pkt 1 KP: 0.823 bez wstępu vs 0.775 z wstępem dla tego samego zapytania).
+                            var ptBody = HtmlText.ToPlainText(pt.OuterHtml);
+                            if (string.IsNullOrWhiteSpace(ptBody)) continue;
+                            var ptId = NullIfEmpty(pt.GetAttributeValue("id", ""));
+                            var ptDataId = NullIfEmpty(pt.GetAttributeValue("data-id", ""));
+                            var point = PointNumber(pt, ptDataId);
+                            Emit(segments, full, ptBody, article, paragraph, point, shortTitle, chapter,
+                                 eliId, displayAddress, ptId ?? paraId ?? htmlId, sourceUrl);
+                        }
+                    }
+                    else
+                    {
+                        var paraBody = HtmlText.ToPlainText(para.OuterHtml);
+                        if (string.IsNullOrWhiteSpace(paraBody)) continue;
+                        Emit(segments, full, paraBody, article, paragraph, point: null, shortTitle, chapter,
+                             eliId, displayAddress, paraId ?? htmlId, sourceUrl);
+                    }
                 }
             }
             else
             {
                 var body = HtmlText.ToPlainText(node.OuterHtml);
                 if (string.IsNullOrWhiteSpace(body)) continue;
-                Emit(segments, full, body, article, paragraph: null, shortTitle, chapter,
+                Emit(segments, full, body, article, paragraph: null, point: null, shortTitle, chapter,
                      eliId, displayAddress, htmlId, sourceUrl);
             }
         }
@@ -133,11 +178,12 @@ public sealed class ActNormalizer : IDocumentNormalizer
 
     private static void Emit(
         List<DocumentSegment> segments, StringBuilder full, string body,
-        string? article, string? paragraph, string shortTitle, string? chapter,
+        string? article, string? paragraph, string? point, string shortTitle, string? chapter,
         string eliId, string? displayAddress, string? anchor, string? sourceUrl)
     {
-        var artLabel = article is null ? null
-            : paragraph is null ? $"Art. {article}" : $"Art. {article} § {paragraph}";
+        string? artLabel = article is null ? null : $"Art. {article}"
+            + (paragraph is not null ? $" § {paragraph}" : "")
+            + (point is not null ? $" pkt {point}" : "");
         var header = string.Join(", ", new[] { shortTitle, chapter, artLabel }
             .Where(s => !string.IsNullOrWhiteSpace(s)));
         var text = header.Length > 0 ? header + "\n" + body : body;
@@ -157,6 +203,7 @@ public sealed class ActNormalizer : IDocumentNormalizer
                 EliId = eliId,
                 Article = article,
                 Paragraph = paragraph,
+                Point = point,
                 DisplayAddress = displayAddress,
                 Anchor = anchor,
                 SourceUrl = sourceUrl,
@@ -165,9 +212,16 @@ public sealed class ActNormalizer : IDocumentNormalizer
     }
 
     /// <summary>„Ustawa z dnia 6 czerwca 1997 r. - Kodeks karny." → „Kodeks karny" (mniej bojlerplate'u
-    /// w każdym chunku = mniej rozmyty wektor); pełny tytuł zostaje w Document.Title i cytatach.</summary>
+    /// w każdym chunku = mniej rozmyty wektor); pełny tytuł zostaje w Document.Title i cytatach.
+    /// Obsługuje też obwieszczenia o tekście jednolitym (tytuł nie zaczyna się od „Ustawa").</summary>
     private static string ShortTitle(string title)
     {
+        var m = UstawaTitleRe.Match(title);
+        if (m.Success && m.Groups[1].Value.Length > 0) return m.Groups[1].Value.Trim();
+
+        var m2 = ObwieszczenieTitleRe.Match(title);
+        if (m2.Success && m2.Groups[1].Value.Length > 0) return m2.Groups[1].Value.Trim();
+
         var idx = title.LastIndexOf(" - ", StringComparison.Ordinal);
         if (idx < 0) idx = title.LastIndexOf(" – ", StringComparison.Ordinal);
         var tail = idx >= 0 ? title[(idx + 3)..].Trim().TrimEnd('.') : "";
@@ -190,6 +244,22 @@ public sealed class ActNormalizer : IDocumentNormalizer
         return null;
     }
 
+    private static string? PointNumber(HtmlNode pt, string? dataId)
+    {
+        if (dataId is not null && dataId.StartsWith("pint_", StringComparison.Ordinal))
+        {
+            var n = dataId["pint_".Length..];
+            if (n.Length > 0) return n;
+        }
+        var h3 = pt.SelectSingleNode(".//h3");
+        if (h3 is not null)
+        {
+            var m = PointRe.Match(Collapse(HtmlEntity.DeEntitize(h3.InnerText)));
+            if (m.Success) return m.Groups[1].Value;
+        }
+        return null;
+    }
+
     /// <summary>Zdejmuje pierwszą linię „Art. N." z tekstu (nagłówek artykułu, nie treść wstępu).</summary>
     private static string StripArticleHeading(string text)
     {
@@ -197,6 +267,17 @@ public sealed class ActNormalizer : IDocumentNormalizer
         var nl = trimmed.IndexOf('\n');
         var firstLine = nl < 0 ? trimmed : trimmed[..nl];
         if (ArtRe.IsMatch(firstLine) && firstLine.Length <= 20)
+            return nl < 0 ? "" : trimmed[(nl + 1)..].Trim();
+        return trimmed;
+    }
+
+    /// <summary>Zdejmuje pierwszą linię „§ N." z tekstu (nagłówek paragrafu, nie treść wstępu przed punktami).</summary>
+    private static string StripParagraphHeading(string text)
+    {
+        var trimmed = text.Trim();
+        var nl = trimmed.IndexOf('\n');
+        var firstLine = nl < 0 ? trimmed : trimmed[..nl];
+        if (ParaRe.IsMatch(firstLine) && firstLine.Length <= 20)
             return nl < 0 ? "" : trimmed[(nl + 1)..].Trim();
         return trimmed;
     }
