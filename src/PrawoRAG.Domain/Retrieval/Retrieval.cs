@@ -18,6 +18,12 @@ public sealed record RetrievalQuery
     public DateOnly? DateFrom { get; init; }
     public DateOnly? DateTo { get; init; }
     public bool OnlyInForce { get; init; }
+
+    /// <summary>
+    /// Minimalna liczba tokenów chunka (0 = bez filtra). Zdegenerowane mini-chunki („⚫", „(",
+    /// pojedyncze linie formularzy) mają wysokie cosine do KAŻDEGO zapytania i zaśmiecają top-K.
+    /// </summary>
+    public int MinChunkTokens { get; init; }
 }
 
 /// <summary>Pojedynczy trafiony chunk z lokalizatorem cytatu i wynikiem.</summary>

@@ -87,6 +87,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         if (query.DateFrom is { } from) q = q.Where(c => c.Document!.JudgmentDate >= from);
         if (query.DateTo is { } to) q = q.Where(c => c.Document!.JudgmentDate <= to);
         if (query.OnlyInForce) q = q.Where(c => c.Document!.DocType != "act" || c.Document!.InForce == true);
+        if (query.MinChunkTokens > 0) q = q.Where(c => c.TokenCount >= query.MinChunkTokens);
         return q;
     }
 

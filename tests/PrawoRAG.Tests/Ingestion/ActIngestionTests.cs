@@ -13,7 +13,7 @@ namespace PrawoRAG.Tests.Ingestion;
 
 /// <summary>
 /// Akt ELI przez PEŁNY pipeline (normalize→chunk→embed→DB) na żywym Postgresie, bez TEI (Fake embedder).
-/// Dowodzi: doc_type=act, mapowanie InForce, chunki = artykuły (setki), Section „Art. 148".
+/// Dowodzi: doc_type=act, mapowanie InForce, chunki = paragrafy artykułów (Section „Art. 148 § 1").
 /// </summary>
 [Collection("LiveDb")]
 public class ActIngestionTests
@@ -51,8 +51,8 @@ public class ActIngestionTests
             var doc = await verify.Documents.Include(d => d.Chunks).SingleAsync(d => d.Source == src);
             Assert.Equal(DocTypes.Act, doc.DocType);
             Assert.Equal(true, doc.InForce);                                  // mapowanie InForce (nowa linia w pipeline)
-            Assert.True(doc.Chunks.Count > 300, $"KK → setki chunków-artykułów; było {doc.Chunks.Count}");
-            Assert.Contains(doc.Chunks, c => c.Section == "Art. 148");        // chunk = artykuł
+            Assert.True(doc.Chunks.Count > 600, $"KK → setki chunków (per §); było {doc.Chunks.Count}");
+            Assert.Contains(doc.Chunks, c => c.Section == "Art. 148 § 1");    // chunk = paragraf artykułu
         }
         await CleanAsync(src);
     }

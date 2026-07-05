@@ -64,7 +64,10 @@ public static class GroundedPrompt
 
         if (!string.IsNullOrEmpty(l.EliId) || !string.IsNullOrEmpty(l.Article))
         {
-            var parts = new[] { c.Title, l.Article is { } a ? $"art. {a}" : null, l.DisplayAddress, l.EliId }
+            var art = l.Article is { } a
+                ? $"art. {a}" + (l.Paragraph is { } pg ? $" § {pg}" : "")
+                : null;
+            var parts = new[] { c.Title, art, l.DisplayAddress, l.EliId }
                 .Where(s => !string.IsNullOrWhiteSpace(s));
             return string.Join(", ", parts);
         }

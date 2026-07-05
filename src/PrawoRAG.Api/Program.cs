@@ -95,6 +95,7 @@ static RetrievalQuery ToQuery(string text, FiltersDto? f, int topK, RetrievalOpt
     Text = text,
     TopK = topK,
     CandidatesPerPath = o.CandidatesPerPath,
+    MinChunkTokens = o.MinChunkTokens,
     CourtType = f?.CourtType,
     DateFrom = f?.DateFrom,
     DateTo = f?.DateTo,
@@ -110,4 +111,7 @@ internal sealed class RetrievalOptions
     public int TopK { get; set; } = 8;
     public int CandidatesPerPath { get; set; } = 50;
     public double AbstentionThreshold { get; set; } = AbstentionPolicy.DefaultThreshold;
+
+    /// <summary>Minimalna liczba tokenów chunka w retrievalu (odsiew zdegenerowanych mini-chunków).</summary>
+    public int MinChunkTokens { get; set; } = 20;
 }
