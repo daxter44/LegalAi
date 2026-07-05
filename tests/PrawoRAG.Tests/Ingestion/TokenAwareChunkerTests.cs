@@ -51,15 +51,30 @@ public class TokenAwareChunkerTests
         }
     }
 
-    [Fact] // T-CHUNK #4: krótki tekst → 1 chunk, pusty → 0, bez wyjątku
+    [Fact] // T-CHUNK #4: krótki-lecz-treściwy tekst → 1 chunk, pusty → 0, bez wyjątku
     public async Task Short_and_empty_inputs()
     {
         var chunker = Build(new ChunkerOptions());
         var empty = await chunker.ChunkAsync(MakeDoc(""), default);
         Assert.Empty(empty);
 
-        var oneLine = await chunker.ChunkAsync(MakeDoc("Krótki tekst orzeczenia."), default);
+        // ≥5 sensownych słów → przechodzi filtr MinSubstantiveWords
+        var oneLine = await chunker.ChunkAsync(MakeDoc("Sąd oddalił powództwo jako oczywiście bezzasadne."), default);
         Assert.Single(oneLine);
+    }
+
+    [Fact] // T-CHUNK #5: zdegenerowane fragmenty (checkboxy, „⚫", pojedyncze znaki) są odrzucane
+    public async Task Drops_degenerate_low_content_chunks()
+    {
+        var chunker = Build(new ChunkerOptions());
+        // Same artefakty formularza / HTML→tekst, żadnej realnej treści → 0 chunków.
+        var junk = await chunker.ChunkAsync(MakeDoc("⚫\n(\n)\n☐\n☒\n1)\n3.\nUZASADNIENIE"), default);
+        Assert.Empty(junk);
+
+        // Próg konfigurowalny: przy MinSubstantiveWords=0 nic nie odrzucamy.
+        var permissive = Build(new ChunkerOptions { MinSubstantiveWords = 0 });
+        var kept = await permissive.ChunkAsync(MakeDoc("⚫\n(\nUZASADNIENIE"), default);
+        Assert.NotEmpty(kept);
     }
 
     private static PrawoRAG.Domain.Documents.NormalizedDocument MakeDoc(string text) => new()

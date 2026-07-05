@@ -17,12 +17,23 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
 {
     private const int RrfK = 60;
 
+    /// <summary>
+    /// hnsw.ef_search dla toru gęstego. Domyślne 40 daje słaby recall przy filtrze i gęstwinie
+    /// bliskich konkurentów — indeks (aproksymacyjny) potrafi POMINĄĆ prawdziwie najbliższy wektor
+    /// (np. właściwy artykuł kodeksu). 400 przywraca poprawny ranking kosztem nieco wolniejszego skanu.
+    /// </summary>
+    private const int HnswEfSearch = 400;
+
     public async Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, CancellationToken ct)
     {
         var qvec = new Vector(await embedder.EmbedQueryAsync(query.Text, ct));
         var k = query.CandidatesPerPath;
 
         var filtered = ApplyFilters(db.Chunks.Where(c => c.Embedding != null), query);
+
+        // ef_search musi obowiązywać na TYM samym połączeniu co zapytanie dense — transakcja to gwarantuje.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlRawAsync($"SET LOCAL hnsw.ef_search = {HnswEfSearch}", ct);
 
         // Tor gęsty: najmniejszy dystans cosine.
         var dense = await filtered
@@ -50,13 +61,16 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         for (var i = 0; i < sparse.Count; i++)
             rrf[sparse[i].Id] = rrf.GetValueOrDefault(sparse[i].Id) + 1.0 / (RrfK + i + 1);
 
-        var topIds = rrf.OrderByDescending(kv => kv.Value).Take(query.TopK).Select(kv => kv.Key).ToList();
-        if (topIds.Count == 0)
+        // Nad-pobieramy kandydatów przed dedupem po tekście: standardowe formułki (dyrektywy, tezy TSUE)
+        // są cytowane dosłownie w wielu orzeczeniach — bez dedupu N kopii zajmuje N slotów top-K i przez
+        // fuzję RRF wypycha realny przepis (np. właściwy artykuł kodeksu) poza wynik.
+        var candidateIds = rrf.OrderByDescending(kv => kv.Value).Take(query.TopK * 4).Select(kv => kv.Key).ToList();
+        if (candidateIds.Count == 0)
             return new RetrievalResult([], 0);
 
         var rows = await db.Chunks
             .Include(c => c.Document)
-            .Where(c => topIds.Contains(c.Id))
+            .Where(c => candidateIds.Contains(c.Id))
             .ToListAsync(ct);
 
         var chunks = rows
@@ -75,6 +89,9 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
                 Similarity = sim.TryGetValue(c.Id, out var s) ? s : null,
             })
             .OrderByDescending(c => c.Score)
+            .GroupBy(c => NormalizeForDedup(c.Text))   // kolaps identycznych tekstów — zostaje najwyżej scorowany
+            .Select(g => g.First())
+            .Take(query.TopK)
             .ToList();
 
         var maxSim = sim.Count > 0 ? sim.Values.Max() : 0;
@@ -93,4 +110,8 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
 
     private static CitationLocator? Deserialize(JsonDocument? json) =>
         json is null ? null : json.Deserialize<CitationLocator>();
+
+    /// <summary>Klucz dedupu: tekst bez różnic w białych znakach i wielkości liter.</summary>
+    private static string NormalizeForDedup(string text) =>
+        string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
 }

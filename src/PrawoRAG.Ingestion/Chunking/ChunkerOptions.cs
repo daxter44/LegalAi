@@ -15,4 +15,12 @@ public sealed class ChunkerOptions
 
     /// <summary>Heurystyka znaków/token (PL ~5) do wstępnego dzielenia bardzo długich akapitów przed liczeniem tokenów.</summary>
     public int ApproxCharsPerToken { get; set; } = 5;
+
+    /// <summary>
+    /// Minimalna liczba „sensownych słów" (≥3 litery) w chunku. Poniżej progu chunk jest odrzucany —
+    /// to zdegenerowane fragmenty (checkboxy formularza, „⚫", pojedyncze linie, urwane słowa), które
+    /// mają anomalnie wysokie cosine do KAŻDEGO zapytania i wypychają realne przepisy z top-K.
+    /// Akty ELI mają ≥6 słów dzięki nagłówkowi kontekstowemu, więc próg 5 ich nie tyka.
+    /// </summary>
+    public int MinSubstantiveWords { get; set; } = 5;
 }

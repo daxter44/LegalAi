@@ -29,6 +29,10 @@ public sealed class TokenAwareChunker(IEmbeddingProvider embedder, IOptions<Chun
 
             foreach (var packed in Pack(units, counts))
             {
+                // Odrzuć zdegenerowane fragmenty (checkboxy formularza, „⚫", pojedyncze linie, urwane słowa) —
+                // mają anomalnie wysokie cosine do KAŻDEGO zapytania i wypychają realne przepisy z top-K.
+                if (CountSubstantiveWords(packed.Text) < _opt.MinSubstantiveWords) continue;
+
                 chunks.Add(new DocumentChunk
                 {
                     ChunkIndex = index++,
@@ -46,6 +50,13 @@ public sealed class TokenAwareChunker(IEmbeddingProvider embedder, IOptions<Chun
 
     private readonly record struct Unit(string Text, int Start);
     private readonly record struct Packed(string Text, int LocalStart, int Tokens);
+
+    private static readonly System.Text.RegularExpressions.Regex SubstantiveWord =
+        new(@"[A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż]{3,}", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Liczba „sensownych słów" = ciągów ≥3 liter. Miara realnej treści chunka
+    /// (odsiew scaffoldingu formularzy SAOS i artefaktów HTML→tekst).</summary>
+    private static int CountSubstantiveWords(string text) => SubstantiveWord.Matches(text).Count;
 
     /// <summary>Akapity (linie) jako jednostki, z offsetem w tekście segmentu.</summary>
     private static List<Unit> SplitUnits(string text)
