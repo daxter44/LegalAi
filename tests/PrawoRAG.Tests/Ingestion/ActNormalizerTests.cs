@@ -83,6 +83,16 @@ public class ActNormalizerTests
         Assert.Contains("para_1", p1.Locator.Anchor);   // kotwica wskazuje konkretny §
     }
 
+    [Fact] // A6: rozporządzenie — § jako segment najwyższego poziomu (brak artykułów); regresja poprawki parsera
+    public void Parses_rozporzadzenie_paragraphs_when_no_articles()
+    {
+        var doc = _sut.Normalize(EliFixtures.LoadAct("DU/2023/2824"));
+        Assert.True(doc.Segments.Count > 0, $"rozporządzenie powinno dać segmenty (§); dostało {doc.Segments.Count}");
+        Assert.All(doc.Segments, s => Assert.Null(s.Locator?.Article));           // rozporządzenia nie mają artykułów
+        Assert.Contains(doc.Segments, s => s.Locator?.Paragraph is not null);     // mają paragrafy §
+        Assert.Contains(doc.Segments, s => s.Label is not null && s.Label.StartsWith('§'));
+    }
+
     [Fact] // A4: obowiązywanie z metadanych (IN_FORCE → true)
     public void Marks_in_force_from_metadata()
     {

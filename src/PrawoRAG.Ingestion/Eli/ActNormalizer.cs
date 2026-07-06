@@ -90,13 +90,11 @@ public sealed class ActNormalizer : IDocumentNormalizer
         doc.LoadHtml(html);
 
         // Artykuł = div z klasą-tokenem „unit_arti" (dopasowanie po całym tokenie, nie podłańcuchu).
-        var nodes = doc.DocumentNode.SelectNodes(
+        var articleNodes = doc.DocumentNode.SelectNodes(
             "//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_arti ')]");
-        if (nodes is null) return (segments, "");
-
         var shortTitle = ShortTitle(title);
 
-        foreach (var node in nodes)
+        foreach (var node in articleNodes ?? Enumerable.Empty<HtmlNode>())
         {
             var htmlId = NullIfEmpty(node.GetAttributeValue("id", ""));       // kotwica: „none_-chpt_XIX-arti_148"
             var dataId = NullIfEmpty(node.GetAttributeValue("data-id", ""));  // „arti_148"
@@ -120,49 +118,7 @@ public sealed class ActNormalizer : IDocumentNormalizer
                          eliId, displayAddress, htmlId, sourceUrl);
 
                 foreach (var para in paras)
-                {
-                    var paraId = NullIfEmpty(para.GetAttributeValue("id", ""));       // „…-arti_148-para_1"
-                    var paraDataId = NullIfEmpty(para.GetAttributeValue("data-id", "")); // „para_1"
-                    var paragraph = ParagraphNumber(para, paraDataId);
-
-                    var points = para.SelectNodes(
-                        ".//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_pint ')]");
-
-                    if (points is { Count: >= 2 })
-                    {
-                        // Wstęp paragrafu przed wyliczeniem (np. „Zakład pracy może rozwiązać umowę...
-                        // w razie:") jako własny segment — samodzielnie ma sens, a nie rozmywa punktów.
-                        var paraClone = para.CloneNode(true);
-                        foreach (var pn in paraClone.SelectNodes(
-                                     ".//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_pint ')]") ?? Enumerable.Empty<HtmlNode>())
-                            pn.Remove();
-                        var paraIntro = StripParagraphHeading(HtmlText.ToPlainText(paraClone.OuterHtml));
-                        if (paraIntro.Length >= 20)
-                            Emit(segments, full, paraIntro, article, paragraph, point: null, shortTitle, chapter,
-                                 eliId, displayAddress, paraId ?? htmlId, sourceUrl);
-
-                        foreach (var pt in points)
-                        {
-                            // Zamierzone pominięcie zdania wprowadzającego paragrafu w treści punktu —
-                            // zmierzone: dokłada bojlerplate wspólny dla wszystkich punktów i obniża cosine
-                            // (art. 52 § 1 pkt 1 KP: 0.823 bez wstępu vs 0.775 z wstępem dla tego samego zapytania).
-                            var ptBody = HtmlText.ToPlainText(pt.OuterHtml);
-                            if (string.IsNullOrWhiteSpace(ptBody)) continue;
-                            var ptId = NullIfEmpty(pt.GetAttributeValue("id", ""));
-                            var ptDataId = NullIfEmpty(pt.GetAttributeValue("data-id", ""));
-                            var point = PointNumber(pt, ptDataId);
-                            Emit(segments, full, ptBody, article, paragraph, point, shortTitle, chapter,
-                                 eliId, displayAddress, ptId ?? paraId ?? htmlId, sourceUrl);
-                        }
-                    }
-                    else
-                    {
-                        var paraBody = HtmlText.ToPlainText(para.OuterHtml);
-                        if (string.IsNullOrWhiteSpace(paraBody)) continue;
-                        Emit(segments, full, paraBody, article, paragraph, point: null, shortTitle, chapter,
-                             eliId, displayAddress, paraId ?? htmlId, sourceUrl);
-                    }
-                }
+                    EmitParagraph(segments, full, para, article, chapter, shortTitle, eliId, displayAddress, htmlId, sourceUrl);
             }
             else
             {
@@ -173,6 +129,17 @@ public sealed class ActNormalizer : IDocumentNormalizer
             }
         }
 
+        // Akty BEZ artykułów (rozporządzenia): najwyższym poziomem jest § (unit_para), nie Art.
+        // Traktujemy każdy § jako segment (z ew. podziałem na punkty) — analogicznie do § w kodeksie.
+        if (segments.Count == 0)
+        {
+            var topParas = doc.DocumentNode.SelectNodes(
+                "//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_para ')]");
+            foreach (var para in topParas ?? Enumerable.Empty<HtmlNode>())
+                EmitParagraph(segments, full, para, article: null, ChapterTitle(para),
+                    shortTitle, eliId, displayAddress, htmlIdFallback: null, sourceUrl);
+        }
+
         return (segments, full.ToString().TrimEnd());
     }
 
@@ -181,9 +148,11 @@ public sealed class ActNormalizer : IDocumentNormalizer
         string? article, string? paragraph, string? point, string shortTitle, string? chapter,
         string eliId, string? displayAddress, string? anchor, string? sourceUrl)
     {
-        string? artLabel = article is null ? null : $"Art. {article}"
-            + (paragraph is not null ? $" § {paragraph}" : "")
-            + (point is not null ? $" pkt {point}" : "");
+        var artLabel = article is not null
+            ? $"Art. {article}" + (paragraph is not null ? $" § {paragraph}" : "") + (point is not null ? $" pkt {point}" : "")
+            : paragraph is not null
+                ? $"§ {paragraph}" + (point is not null ? $" pkt {point}" : "")
+                : point is not null ? $"pkt {point}" : null;
         var header = string.Join(", ", new[] { shortTitle, chapter, artLabel }
             .Where(s => !string.IsNullOrWhiteSpace(s)));
         var text = header.Length > 0 ? header + "\n" + body : body;
@@ -209,6 +178,52 @@ public sealed class ActNormalizer : IDocumentNormalizer
                 SourceUrl = sourceUrl,
             },
         });
+    }
+
+    /// <summary>Emituje segment(y) dla jednego § (unit_para): jeśli ma ≥2 punkty wyliczenia — wstęp + segment
+    /// na punkt; inaczej cały §. Używane i dla § w artykule (article≠null), i dla § najwyższego poziomu w
+    /// rozporządzeniu (article=null).</summary>
+    private static void EmitParagraph(
+        List<DocumentSegment> segments, StringBuilder full, HtmlNode para,
+        string? article, string? chapter, string shortTitle, string eliId, string? displayAddress,
+        string? htmlIdFallback, string? sourceUrl)
+    {
+        var paraId = NullIfEmpty(para.GetAttributeValue("id", ""));
+        var paragraph = ParagraphNumber(para, NullIfEmpty(para.GetAttributeValue("data-id", "")));
+
+        var points = para.SelectNodes(
+            ".//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_pint ')]");
+
+        if (points is { Count: >= 2 })
+        {
+            // Wstęp paragrafu przed wyliczeniem jako własny segment — samodzielnie ma sens, a nie rozmywa punktów.
+            var paraClone = para.CloneNode(true);
+            foreach (var pn in paraClone.SelectNodes(
+                         ".//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_pint ')]") ?? Enumerable.Empty<HtmlNode>())
+                pn.Remove();
+            var paraIntro = StripParagraphHeading(HtmlText.ToPlainText(paraClone.OuterHtml));
+            if (paraIntro.Length >= 20)
+                Emit(segments, full, paraIntro, article, paragraph, point: null, shortTitle, chapter,
+                     eliId, displayAddress, paraId ?? htmlIdFallback, sourceUrl);
+
+            foreach (var pt in points)
+            {
+                // Zamierzone pominięcie zdania wprowadzającego w treści punktu (zmierzone: obniża cosine).
+                var ptBody = HtmlText.ToPlainText(pt.OuterHtml);
+                if (string.IsNullOrWhiteSpace(ptBody)) continue;
+                var ptId = NullIfEmpty(pt.GetAttributeValue("id", ""));
+                var point = PointNumber(pt, NullIfEmpty(pt.GetAttributeValue("data-id", "")));
+                Emit(segments, full, ptBody, article, paragraph, point, shortTitle, chapter,
+                     eliId, displayAddress, ptId ?? paraId ?? htmlIdFallback, sourceUrl);
+            }
+        }
+        else
+        {
+            var paraBody = HtmlText.ToPlainText(para.OuterHtml);
+            if (string.IsNullOrWhiteSpace(paraBody)) return;
+            Emit(segments, full, paraBody, article, paragraph, point: null, shortTitle, chapter,
+                 eliId, displayAddress, paraId ?? htmlIdFallback, sourceUrl);
+        }
     }
 
     /// <summary>„Ustawa z dnia 6 czerwca 1997 r. - Kodeks karny." → „Kodeks karny" (mniej bojlerplate'u
