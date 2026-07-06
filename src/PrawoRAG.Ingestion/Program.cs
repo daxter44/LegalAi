@@ -57,7 +57,14 @@ switch (mode)
         Console.WriteLine($"PROCESS DONE [{source}]: {procSummary}");
         break;
     }
+    case "report":
+    {
+        // Raport jakości normalizacji (bez embeddingu, bez bazy) — ocena parsowania typów przed masowym pobraniem.
+        var report = host.Services.GetRequiredService<QualityReportRunner>();
+        await report.RunAsync(source, maxItems, default);
+        break;
+    }
     default:
         throw new InvalidOperationException(
-            $"Nieznany Ingestion:Mode '{mode}'. Dozwolone: fetch | process | fetch-process | stream.");
+            $"Nieznany Ingestion:Mode '{mode}'. Dozwolone: fetch | process | fetch-process | stream | report.");
 }

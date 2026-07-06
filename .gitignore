@@ -17,8 +17,9 @@ tmp/
 
 # Magazyn surowych dokumentów (dev-cache wycinka korpusu — NIE wersjonować;
 # uwaga licencyjna: nie magazynujemy hurtowo całej bazy SAOS w repo).
-# `**/` łapie też lokalizację względem CWD `dotnet run` (src/PrawoRAG.Ingestion/data/raw).
-**/data/raw/
+# `**/` łapie też lokalizację względem CWD `dotnet run` (src/PrawoRAG.Ingestion/data/...).
+# Szeroko: cały katalog data/ (magazyn surowych, próbki jakości itp.) — lokalny cache, nie wersjonujemy.
+**/data/
 
 # Sekrety / lokalne nadpisania (NIE commituj kluczy API)
 appsettings.*.local.json
