@@ -72,6 +72,7 @@ public static class IngestionServiceCollectionExtensions
         services.AddSingleton<IRawDocumentStore, FileSystemRawDocumentStore>();
         services.AddSingleton<RawFetchRunner>();
         services.AddSingleton<RawProcessRunner>();
+        services.AddSingleton<QualityReportRunner>();
         return services;
     }
 }
