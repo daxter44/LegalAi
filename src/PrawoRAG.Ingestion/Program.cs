@@ -64,6 +64,16 @@ switch (mode)
         await report.RunAsync(source, maxItems, default);
         break;
     }
+    case "discover":
+    {
+        // Podgląd odkrywania aktów ELI (ile pasuje wg Eli:Discover) — BEZ pobierania. Poznaj wolumen zanim ruszysz.
+        var eli = host.Services.GetRequiredService<PrawoRAG.Ingestion.Eli.EliSejmConnector>();
+        var addrs = await eli.DiscoverAddressesAsync(default);
+        Console.WriteLine($"\nODKRYTO {addrs.Count} aktów ELI (typ + status obowiązujący + tekst HTML). Przykłady:");
+        foreach (var a in addrs.Take(15)) Console.WriteLine($"  {a}");
+        if (addrs.Count > 15) Console.WriteLine($"  … i {addrs.Count - 15} więcej");
+        break;
+    }
     default:
         throw new InvalidOperationException(
             $"Nieznany Ingestion:Mode '{mode}'. Dozwolone: fetch | process | fetch-process | stream | report.");

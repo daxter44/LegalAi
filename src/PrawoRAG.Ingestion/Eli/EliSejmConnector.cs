@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PrawoRAG.Domain;
@@ -23,11 +25,17 @@ public sealed class EliSejmConnector(HttpClient http, IOptions<EliOptions> optio
 
     public async IAsyncEnumerable<RawDocument> FetchAsync(FetchRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
+        // Adresy: odkryte z list roczników (gdy Discover.Enabled) ∪ ręczna lista Acts. Dedup.
+        IEnumerable<string> addresses = _opt.Acts.Select(a => a.Trim());
+        if (_opt.Discover.Enabled)
+            addresses = (await DiscoverAddressesAsync(ct)).Concat(addresses);
+        var toFetch = addresses.Where(a => a.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
         var emitted = 0;
-        foreach (var addr in _opt.Acts)
+        foreach (var addr in toFetch)
         {
             if (request.MaxItems is { } max && emitted >= max) yield break;
-            var raw = await FetchActAsync(addr.Trim(), ct);
+            var raw = await FetchActAsync(addr, ct);
             if (raw is not null)
             {
                 yield return raw;
@@ -35,6 +43,65 @@ public sealed class EliSejmConnector(HttpClient http, IOptions<EliOptions> optio
             }
         }
     }
+
+    /// <summary>
+    /// Odkrywa adresy aktów z list roczników ELI wg konfiguracji Discover (typ + status „obowiązujący" +
+    /// tekst HTML). Jedno wywołanie na rocznik zwraca wszystkie akty rocznika — filtrujemy po stronie klienta.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> DiscoverAddressesAsync(CancellationToken ct)
+    {
+        var d = _opt.Discover;
+        var types = new HashSet<string>(d.Types, StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>();
+
+        for (var year = d.YearFrom; year <= d.YearTo; year++)
+        {
+            ct.ThrowIfCancellationRequested();
+            List<EliListItem>? items;
+            try
+            {
+                using var resp = await http.GetAsync($"acts/{d.Publisher}/{year}", ct);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    log.LogWarning("ELI lista {Publisher}/{Year}: HTTP {Code} — pomijam rocznik.", d.Publisher, year, (int)resp.StatusCode);
+                    continue;
+                }
+                items = (await resp.Content.ReadFromJsonAsync<EliListResponse>(ct))?.Items;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                log.LogWarning(ex, "ELI lista {Publisher}/{Year} — błąd, pomijam rocznik.", d.Publisher, year);
+                continue;
+            }
+            if (items is null) continue;
+
+            var wanted = items.Where(i => ShouldInclude(i.Eli, i.Type, i.Status, i.TextHtml, types, d.OnlyInForce))
+                .Select(i => i.Eli!).ToList();
+            result.AddRange(wanted);
+            log.LogInformation("ELI {Publisher}/{Year}: {Wanted} pasujących z {Total}.", d.Publisher, year, wanted.Count, items.Count);
+        }
+
+        return result.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>Predykat wyboru aktu z listy rocznika (czysty — testowalny bez sieci).</summary>
+    public static bool ShouldInclude(string? eli, string? type, string? status, bool textHtml,
+        IReadOnlyCollection<string> types, bool onlyInForce) =>
+        !string.IsNullOrWhiteSpace(eli)
+        && textHtml
+        && type is not null && types.Contains(type)
+        && (!onlyInForce || string.Equals(status, "obowiązujący", StringComparison.OrdinalIgnoreCase));
+
+    private sealed class EliListResponse
+    {
+        [JsonPropertyName("items")] public List<EliListItem>? Items { get; init; }
+    }
+
+    private sealed record EliListItem(
+        [property: JsonPropertyName("ELI")] string? Eli,
+        [property: JsonPropertyName("type")] string? Type,
+        [property: JsonPropertyName("status")] string? Status,
+        [property: JsonPropertyName("textHTML")] bool TextHtml);
 
     private async Task<RawDocument?> FetchActAsync(string addr, CancellationToken ct)
     {
