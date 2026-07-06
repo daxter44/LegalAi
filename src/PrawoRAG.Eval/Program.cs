@@ -15,7 +15,17 @@ using PrawoRAG.Storage.Retrieval;
 
 // Harness ewaluacyjny (E5): puszcza golden set przez retrieval (+ opcjonalnie czat) i liczy metryki.
 // Domyślnie retrieval-only (tanie, bez LLM). Czat (anty-halucynacja): Eval:Chat=true lub arg --chat.
-var builder = Host.CreateApplicationBuilder(args);
+//
+// ContentRootPath jawnie na AppContext.BaseDirectory — `dotnet run --project src/PrawoRAG.Eval`
+// z korzenia repo NIE ustawia CWD na katalog projektu (zmierzone: ContentRootPath = CWD wywołania),
+// więc appsettings.json bez tego jawnego zakotwiczenia po prostu się nie ładuje (cichy fallback do
+// defaultów w kodzie — brak ConnectionStrings:Db, złe Embeddings:Dimensions). golden-set.json już
+// stosował tę samą obronę (Path.Combine(AppContext.BaseDirectory, ...)) — teraz cały config też.
+var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+});
 builder.Services.AddPrawoRagStorage(builder.Configuration.GetConnectionString("Db")
     ?? throw new InvalidOperationException("Brak ConnectionStrings:Db."));
 builder.Services.AddTeiEmbeddings(builder.Configuration);
