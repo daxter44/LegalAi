@@ -34,6 +34,11 @@ public sealed class EliDiscoverOptions
     /// <summary>Typy aktów do wzięcia (dokładne etykiety z API): „Ustawa", „Rozporządzenie", …</summary>
     public List<string> Types { get; set; } = ["Ustawa", "Rozporządzenie"];
 
-    /// <summary>Tylko akty obowiązujące (status „obowiązujący"). Domyślnie tak.</summary>
-    public bool OnlyInForce { get; set; } = true;
+    /// <summary>
+    /// Akceptowane statusy (pusta lista = dowolny). Domyślnie akty żywe z AKTUALNYM tekstem HTML:
+    /// „obowiązujący" (w mocy, bez konsolidacji) + „akt posiada tekst jednolity" (w mocy; jego text.html
+    /// to skonsolidowany, bieżący tekst — np. kodeksy). Świadomie POMIJAMY „akt objęty tekstem jednolitym"
+    /// (akty nowelizujące wchłonięte do tekstu bazowego — niska wartość samodzielna, ryzyko dubli/starej treści).
+    /// </summary>
+    public List<string> Statuses { get; set; } = ["obowiązujący", "akt posiada tekst jednolity"];
 }

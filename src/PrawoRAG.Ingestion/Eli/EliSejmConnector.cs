@@ -45,13 +45,14 @@ public sealed class EliSejmConnector(HttpClient http, IOptions<EliOptions> optio
     }
 
     /// <summary>
-    /// Odkrywa adresy aktów z list roczników ELI wg konfiguracji Discover (typ + status „obowiązujący" +
+    /// Odkrywa adresy aktów z list roczników ELI wg konfiguracji Discover (typ + akceptowany status +
     /// tekst HTML). Jedno wywołanie na rocznik zwraca wszystkie akty rocznika — filtrujemy po stronie klienta.
     /// </summary>
     public async Task<IReadOnlyList<string>> DiscoverAddressesAsync(CancellationToken ct)
     {
         var d = _opt.Discover;
         var types = new HashSet<string>(d.Types, StringComparer.OrdinalIgnoreCase);
+        var statuses = new HashSet<string>(d.Statuses, StringComparer.OrdinalIgnoreCase);
         var result = new List<string>();
 
         for (var year = d.YearFrom; year <= d.YearTo; year++)
@@ -75,7 +76,7 @@ public sealed class EliSejmConnector(HttpClient http, IOptions<EliOptions> optio
             }
             if (items is null) continue;
 
-            var wanted = items.Where(i => ShouldInclude(i.Eli, i.Type, i.Status, i.TextHtml, types, d.OnlyInForce))
+            var wanted = items.Where(i => ShouldInclude(i.Eli, i.Type, i.Status, i.TextHtml, types, statuses))
                 .Select(i => i.Eli!).ToList();
             result.AddRange(wanted);
             log.LogInformation("ELI {Publisher}/{Year}: {Wanted} pasujących z {Total}.", d.Publisher, year, wanted.Count, items.Count);
@@ -84,13 +85,14 @@ public sealed class EliSejmConnector(HttpClient http, IOptions<EliOptions> optio
         return result.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    /// <summary>Predykat wyboru aktu z listy rocznika (czysty — testowalny bez sieci).</summary>
+    /// <summary>Predykat wyboru aktu z listy rocznika (czysty — testowalny bez sieci). <paramref name="statuses"/>
+    /// pusta = dowolny status; inaczej status musi być na liście (case-insensitive, przekaż HashSet z komparatorem).</summary>
     public static bool ShouldInclude(string? eli, string? type, string? status, bool textHtml,
-        IReadOnlyCollection<string> types, bool onlyInForce) =>
+        IReadOnlyCollection<string> types, IReadOnlyCollection<string> statuses) =>
         !string.IsNullOrWhiteSpace(eli)
         && textHtml
         && type is not null && types.Contains(type)
-        && (!onlyInForce || string.Equals(status, "obowiązujący", StringComparison.OrdinalIgnoreCase));
+        && (statuses.Count == 0 || (status is not null && statuses.Contains(status)));
 
     private sealed class EliListResponse
     {
