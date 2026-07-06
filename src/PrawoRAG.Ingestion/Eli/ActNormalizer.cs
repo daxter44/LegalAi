@@ -44,9 +44,14 @@ public sealed class ActNormalizer : IDocumentNormalizer
         var displayAddress = StringProp(p, "displayAddress");
         var eliId = raw.ExternalId;
 
-        var (segments, plainText) = ParseArticles(raw.RawContent, title, displayAddress, eliId, raw.SourceUrl);
+        // ELI od 2025 publikuje teksty jednolite tylko w PDF → ścieżka tekstowa; starsze/HTML → ścieżka DOM.
+        var (segments, plainText) = raw.ContentFormat == ContentFormats.PdfText
+            ? ActTextParser.Parse(raw.RawContent, ShortTitle(title), eliId, displayAddress, raw.SourceUrl)
+            : ParseArticles(raw.RawContent, title, displayAddress, eliId, raw.SourceUrl);
         if (segments.Count == 0)
-            issues.Add("Nie znaleziono artykułów (div.unit_arti) — sprawdź strukturę text.html.");
+            issues.Add(raw.ContentFormat == ContentFormats.PdfText
+                ? "Nie znaleziono jednostek (Art./§) w tekście PDF — sprawdź ekstrakcję/strukturę."
+                : "Nie znaleziono artykułów (div.unit_arti) — sprawdź strukturę text.html.");
 
         var metadata = new Dictionary<string, object?>
         {
