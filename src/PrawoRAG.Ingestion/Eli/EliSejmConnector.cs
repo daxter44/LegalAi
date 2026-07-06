@@ -17,7 +17,8 @@ namespace PrawoRAG.Ingestion.Eli;
 /// Idempotencja/wznawialność = magazyn surowych (jak SAOS). Loguje tytuł aktu → zła pozycja ELI
 /// jest natychmiast widoczna.
 /// </summary>
-public sealed class EliSejmConnector(HttpClient http, IOptions<EliOptions> options, ILogger<EliSejmConnector> log) : ISourceConnector
+public sealed class EliSejmConnector(
+    HttpClient http, IOptions<EliOptions> options, Pdf.IPdfTextExtractor pdf, ILogger<EliSejmConnector> log) : ISourceConnector
 {
     private readonly EliOptions _opt = options.Value;
 
@@ -94,6 +95,33 @@ public sealed class EliSejmConnector(HttpClient http, IOptions<EliOptions> optio
         && type is not null && types.Contains(type)
         && (statuses.Count == 0 || (status is not null && statuses.Contains(status)));
 
+    /// <summary>
+    /// Adres najnowszego obwieszczenia z tekstem jednolitym (references „Inf. o tekście jednolitym") lub null.
+    /// Wpisy mają tylko „id" (np. „DU/2025/383"), bez daty — najnowszy wyznaczamy deterministycznie z adresu:
+    /// max po (rok, pozycja) = chronologicznie najświeższy (pozycje Dz.U. rosną w roku). Czysta — testowalna bez sieci.
+    /// </summary>
+    public static string? NewestConsolidatedText(JsonElement meta)
+    {
+        if (meta.ValueKind != JsonValueKind.Object
+            || !meta.TryGetProperty("references", out var refs) || refs.ValueKind != JsonValueKind.Object
+            || !refs.TryGetProperty("Inf. o tekście jednolitym", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return null;
+
+        string? best = null;
+        var bestKey = (Year: int.MinValue, Pos: int.MinValue);
+        foreach (var el in arr.EnumerateArray())
+        {
+            var id = el.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : null;
+            if (id is null) continue;
+            var parts = id.Split('/');
+            if (parts.Length < 3
+                || !int.TryParse(parts[^2], out var year) || !int.TryParse(parts[^1], out var pos))
+                continue;
+            if ((year, pos).CompareTo(bestKey) > 0) { bestKey = (year, pos); best = id; }
+        }
+        return best;
+    }
+
     private sealed class EliListResponse
     {
         [JsonPropertyName("items")] public List<EliListItem>? Items { get; init; }
@@ -110,18 +138,21 @@ public sealed class EliSejmConnector(HttpClient http, IOptions<EliOptions> optio
         // Pojedynczy błąd nie przerywa całości — pomijamy akt (jak SAOS przy pojedynczym orzeczeniu).
         try
         {
-            using var metaResp = await http.GetAsync($"acts/{addr}", ct);
-            metaResp.EnsureSuccessStatusCode();
-            using var metaDoc = JsonDocument.Parse(await metaResp.Content.ReadAsStringAsync(ct));
+            using var metaDoc = await FetchMetaAsync(addr, ct);
             var root = metaDoc.RootElement;
 
-            // Endpoint text.html odrzuca Accept: application/json (406) — żądamy jawnie text/html.
-            using var htmlReq = new HttpRequestMessage(HttpMethod.Get, $"acts/{addr}/text.html");
-            htmlReq.Headers.Accept.Clear();
-            htmlReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
-            using var htmlResp = await http.SendAsync(htmlReq, ct);
-            htmlResp.EnsureSuccessStatusCode();
-            var html = await htmlResp.Content.ReadAsStringAsync(ct);
+            // AKTUALNOŚĆ: treść bierzemy z NAJNOWSZEGO tekstu jednolitego, nie z (często przestarzałego)
+            // text.html aktu bazowego. ELI od 2025 publikuje t.j. tylko w PDF — HTML gdy dostępny, inaczej PDF.
+            // Tożsamość dokumentu (ExternalId, tytuł, metadane) zostaje BAZOWA — prawnik cytuje „KK", nie obwieszczenie.
+            var tj = NewestConsolidatedText(root);
+            var contentAddr = tj ?? addr;
+            var contentHtml = tj is null
+                ? root.TryGetProperty("textHTML", out var th) && th.ValueKind == JsonValueKind.True
+                : await HasHtmlAsync(contentAddr, ct);
+
+            var (rawContent, format) = contentHtml
+                ? (await FetchHtmlAsync(contentAddr, ct), ContentFormats.Html)
+                : (pdf.ExtractText(await FetchPdfAsync(contentAddr, ct)), ContentFormats.PdfText);
 
             var title = root.TryGetProperty("title", out var t) ? t.GetString() : null;
             var address = root.TryGetProperty("address", out var a) ? a.GetString() : null;
@@ -132,17 +163,18 @@ public sealed class EliSejmConnector(HttpClient http, IOptions<EliOptions> optio
                 DateTimeOffset.TryParse(cd.GetString(), CultureInfo.InvariantCulture,
                     DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt) ? dt : null;
 
-            log.LogInformation("ELI akt {Addr}: {Title}", addr, title);
+            log.LogInformation("ELI akt {Addr}: {Title} (treść: {Content}, format: {Format})", addr, title, contentAddr, format);
 
             return new RawDocument
             {
                 Source = SourceKeys.Eli,
                 ExternalId = addr,
                 DocType = DocTypes.Act,
-                RawContent = html,
+                RawContent = rawContent,
+                ContentFormat = format,
                 SourceUrl = address is not null
                     ? $"https://isap.sejm.gov.pl/isap.nsf/DocDetails.xsp?id={address}"
-                    : $"{_opt.BaseUrl.TrimEnd('/')}/acts/{addr}/text.html",
+                    : $"{_opt.BaseUrl.TrimEnd('/')}/acts/{contentAddr}/text.html",
                 SourceModificationDate = changeDate,
                 SourcePayload = root.Clone(),
             };
@@ -152,5 +184,39 @@ public sealed class EliSejmConnector(HttpClient http, IOptions<EliOptions> optio
             log.LogWarning(ex, "Pomijam akt ELI {Addr} (błąd pobrania).", addr);
             return null;
         }
+    }
+
+    private async Task<JsonDocument> FetchMetaAsync(string addr, CancellationToken ct)
+    {
+        using var resp = await http.GetAsync($"acts/{addr}", ct);
+        resp.EnsureSuccessStatusCode();
+        return JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+    }
+
+    private async Task<bool> HasHtmlAsync(string addr, CancellationToken ct)
+    {
+        using var doc = await FetchMetaAsync(addr, ct);
+        return doc.RootElement.TryGetProperty("textHTML", out var th) && th.ValueKind == JsonValueKind.True;
+    }
+
+    private async Task<string> FetchHtmlAsync(string addr, CancellationToken ct)
+    {
+        // Endpoint text.html odrzuca Accept: application/json (406) — żądamy jawnie text/html.
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"acts/{addr}/text.html");
+        req.Headers.Accept.Clear();
+        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+        using var resp = await http.SendAsync(req, ct);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadAsStringAsync(ct);
+    }
+
+    private async Task<byte[]> FetchPdfAsync(string addr, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"acts/{addr}/text.pdf");
+        req.Headers.Accept.Clear();
+        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/pdf"));
+        using var resp = await http.SendAsync(req, ct);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadAsByteArrayAsync(ct);
     }
 }
