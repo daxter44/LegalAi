@@ -94,4 +94,31 @@ Console.WriteLine();
 Console.WriteLine(EvalScorer.Aggregate(verdicts, threshold).Format());
 var best = EvalScorer.BestThreshold(calib);
 Console.WriteLine($"Kalibracja progu: najlepszy ≈ {best.Threshold:F2} (trafność abstynencji {best.Accuracy:P0} na golden secie).");
-Console.WriteLine("Jeśli najlepsza trafność jest niska, rozkłady similarity w korpusie i poza korpusem nakładają się → potrzebny reranker (5.4).");
+
+// --- Diagnoza rozkładu similarity: czy liczby się różnią i czy „mamy odpowiedź" leży WYŻEJ niż „nie mamy" ---
+var byId = items.ToDictionary(i => i.Id);
+Console.WriteLine("\n=== SIMILARITY per pytanie (malejąco) ===");
+foreach (var v in verdicts.OrderByDescending(v => v.MaxSimilarity))
+{
+    var oczek = byId[v.Id].ShouldAbstain ? "ODMOWA" : "ODPOWIEDŹ";
+    Console.WriteLine($"  {v.MaxSimilarity:F4}  [{v.Category,-14}] oczek={oczek,-9} {v.Id}");
+}
+
+var distinct = verdicts.Select(v => Math.Round(v.MaxSimilarity, 4)).Distinct().Count();
+Console.WriteLine($"\nRóżnych wartości similarity: {distinct} / {verdicts.Count}  (gdyby 1 → BUG: score nie zależy od pytania)");
+
+Console.WriteLine("\n=== Średnia similarity per kategoria ===");
+foreach (var g in verdicts.GroupBy(v => v.Category).OrderByDescending(g => g.Average(v => v.MaxSimilarity)))
+    Console.WriteLine($"  {g.Key,-14}: śr={g.Average(v => v.MaxSimilarity):F4}  min={g.Min(v => v.MaxSimilarity):F4}  max={g.Max(v => v.MaxSimilarity):F4}  (n={g.Count()})");
+
+// Kluczowy test: czy istnieje próg rozdzielający „mamy odpowiedź" od „nie mamy".
+var mam = verdicts.Where(v => byId[v.Id] is { ShouldAbstain: false, NeedsLawyer: false }).Select(v => v.MaxSimilarity).ToList();
+var nieMam = verdicts.Where(v => byId[v.Id].ShouldAbstain).Select(v => v.MaxSimilarity).ToList();
+if (mam.Count > 0 && nieMam.Count > 0)
+{
+    Console.WriteLine($"\n„Mamy odpowiedź\" : śr={mam.Average():F4}  najniższy={mam.Min():F4}");
+    Console.WriteLine($"„Nie mamy\"       : śr={nieMam.Average():F4}  najwyższy={nieMam.Max():F4}");
+    Console.WriteLine(mam.Min() > nieMam.Max()
+        ? $"→ ROZDZIELONE: każde „mamy\" ({mam.Min():F4}) jest wyżej niż każde „nie mamy\" ({nieMam.Max():F4}) — PRÓG ZADZIAŁA."
+        : $"→ NAKŁADAJĄ SIĘ: najniższe „mamy\" ({mam.Min():F4}) ≤ najwyższe „nie mamy\" ({nieMam.Max():F4}) — brak czystego progu, bramka na etapie LLM (--chat).");
+}
