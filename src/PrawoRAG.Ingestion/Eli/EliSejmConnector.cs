@@ -46,8 +46,9 @@ public sealed class EliSejmConnector(
     }
 
     /// <summary>
-    /// Odkrywa adresy aktów z list roczników ELI wg konfiguracji Discover (typ + akceptowany status +
-    /// tekst HTML). Jedno wywołanie na rocznik zwraca wszystkie akty rocznika — filtrujemy po stronie klienta.
+    /// Odkrywa adresy aktów z list roczników ELI wg konfiguracji Discover (typ + akceptowany status).
+    /// Jedno wywołanie na rocznik zwraca wszystkie akty rocznika — filtrujemy po stronie klienta.
+    /// NIE wymaga HTML: nowe akty „born-PDF" (2025+) też wchodzą — connector pobierze ich PDF.
     /// </summary>
     public async Task<IReadOnlyList<string>> DiscoverAddressesAsync(CancellationToken ct)
     {
@@ -77,7 +78,7 @@ public sealed class EliSejmConnector(
             }
             if (items is null) continue;
 
-            var wanted = items.Where(i => ShouldInclude(i.Eli, i.Type, i.Status, i.TextHtml, types, statuses))
+            var wanted = items.Where(i => ShouldInclude(i.Eli, i.Type, i.Status, types, statuses))
                 .Select(i => i.Eli!).ToList();
             result.AddRange(wanted);
             log.LogInformation("ELI {Publisher}/{Year}: {Wanted} pasujących z {Total}.", d.Publisher, year, wanted.Count, items.Count);
@@ -87,11 +88,12 @@ public sealed class EliSejmConnector(
     }
 
     /// <summary>Predykat wyboru aktu z listy rocznika (czysty — testowalny bez sieci). <paramref name="statuses"/>
-    /// pusta = dowolny status; inaczej status musi być na liście (case-insensitive, przekaż HashSet z komparatorem).</summary>
-    public static bool ShouldInclude(string? eli, string? type, string? status, bool textHtml,
+    /// pusta = dowolny status; inaczej status musi być na liście (case-insensitive, przekaż HashSet z komparatorem).
+    /// NIE wymaga tekstu HTML — connector rozwiązuje treść do najnowszego t.j. i pobiera PDF, gdy brak HTML
+    /// (ELI od 2025 publikuje nowe akty tylko w PDF); akt bez pobieralnej treści connector pomija bezpiecznie.</summary>
+    public static bool ShouldInclude(string? eli, string? type, string? status,
         IReadOnlyCollection<string> types, IReadOnlyCollection<string> statuses) =>
         !string.IsNullOrWhiteSpace(eli)
-        && textHtml
         && type is not null && types.Contains(type)
         && (statuses.Count == 0 || (status is not null && statuses.Contains(status)));
 
