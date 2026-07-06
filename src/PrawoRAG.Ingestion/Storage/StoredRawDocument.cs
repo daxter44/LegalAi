@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PrawoRAG.Domain;
 using PrawoRAG.Domain.Sources;
 
 namespace PrawoRAG.Ingestion.Storage;
@@ -18,6 +19,10 @@ public sealed record StoredRawDocument
     public required string ExternalId { get; init; }
     public required string DocType { get; init; }
     public required string RawContent { get; init; }
+
+    /// <summary>Format <see cref="RawContent"/>; brak w starszych plikach = HTML (zgodność wsteczna).</summary>
+    public string ContentFormat { get; init; } = ContentFormats.Html;
+
     public string? SourceUrl { get; init; }
     public DateTimeOffset? SourceModificationDate { get; init; }
     public JsonElement? SourcePayload { get; init; }
@@ -34,6 +39,7 @@ public sealed record StoredRawDocument
         ExternalId = raw.ExternalId,
         DocType = raw.DocType,
         RawContent = raw.RawContent,
+        ContentFormat = raw.ContentFormat,
         SourceUrl = raw.SourceUrl,
         SourceModificationDate = raw.SourceModificationDate,
         SourcePayload = raw.SourcePayload?.Clone(),
@@ -47,6 +53,7 @@ public sealed record StoredRawDocument
         ExternalId = ExternalId,
         DocType = DocType,
         RawContent = RawContent,
+        ContentFormat = ContentFormat,
         SourceUrl = SourceUrl,
         SourceModificationDate = SourceModificationDate,
         SourcePayload = SourcePayload,

@@ -10,6 +10,20 @@ public static class SourceKeys
     public const string Eli = "ELI";
 }
 
+/// <summary>
+/// Format głównej treści <see cref="Sources.RawDocument.RawContent"/> — normalizer wybiera ścieżkę parsowania.
+/// ELI od stycznia 2025 przestał publikować HTML: nowe akty i najnowsze teksty jednolite (też kodeksów)
+/// są tylko w PDF, więc aktualne prawo wymaga ścieżki PDF obok HTML.
+/// </summary>
+public static class ContentFormats
+{
+    /// <summary>Strukturalny HTML (ELI <c>text.html</c>, SAOS <c>textContent</c>) — parsowanie po węzłach DOM.</summary>
+    public const string Html = "html";
+
+    /// <summary>Płaski tekst wyekstrahowany z PDF (tekst jednolity ELI) — parsowanie po znacznikach „Art."/„§".</summary>
+    public const string PdfText = "pdf-text";
+}
+
 /// <summary>Typy dokumentów — sterują wyborem normalizera i kształtem metadanych/lokalizatora cytatu.</summary>
 public static class DocTypes
 {

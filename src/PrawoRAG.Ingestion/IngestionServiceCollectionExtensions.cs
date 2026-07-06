@@ -62,6 +62,7 @@ public static class IngestionServiceCollectionExtensions
         });
         services.AddTransient<ISourceConnector>(sp => sp.GetRequiredService<EliSejmConnector>());
 
+        services.AddSingleton<Pdf.IPdfTextExtractor, Pdf.PdfPigTextExtractor>();
         services.AddSingleton<IDocumentNormalizer, JudgmentNormalizer>();
         services.AddSingleton<IDocumentNormalizer, ActNormalizer>();
         services.AddTransient<IChunker, TokenAwareChunker>();

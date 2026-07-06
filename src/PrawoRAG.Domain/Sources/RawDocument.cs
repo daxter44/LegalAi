@@ -19,8 +19,13 @@ public sealed record RawDocument
     /// <summary>Typ dokumentu, np. <see cref="DocTypes.Judgment"/> — wskazuje normalizer.</summary>
     public required string DocType { get; init; }
 
-    /// <summary>Główna treść: HTML orzeczenia (SAOS <c>textContent</c>) lub <c>text.html</c> aktu (ELI).</summary>
+    /// <summary>Główna treść: HTML orzeczenia (SAOS <c>textContent</c>), <c>text.html</c> aktu (ELI) lub tekst
+    /// wyekstrahowany z PDF (tekst jednolity ELI) — interpretację wskazuje <see cref="ContentFormat"/>.</summary>
     public required string RawContent { get; init; }
+
+    /// <summary>Format <see cref="RawContent"/> (<see cref="ContentFormats"/>) — steruje ścieżką parsowania w normalizerze.
+    /// Domyślnie HTML (zgodność wsteczna: surowe pliki sprzed pola PDF deserializują się jako HTML).</summary>
+    public string ContentFormat { get; init; } = ContentFormats.Html;
 
     /// <summary>URL oryginału (do cytowania i weryfikacji przez prawnika).</summary>
     public string? SourceUrl { get; init; }
