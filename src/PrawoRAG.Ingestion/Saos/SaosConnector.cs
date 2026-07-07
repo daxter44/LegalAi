@@ -43,7 +43,8 @@ public sealed class SaosConnector(HttpClient http, IOptions<SaosOptions> options
         {
             var url = $"search/judgments?pageSize={_opt.PageSize}&pageNumber={page}" +
                       $"&courtType={_opt.CourtType}" +
-                      (_opt.CcCourtType is { } cc ? $"&ccCourtType={cc}" : "") +
+                      // ccCourtType dotyczy tylko sądów powszechnych; pusty/biały = pomiń (sądy wyższe: SN/TK/KIO).
+                      (!string.IsNullOrWhiteSpace(_opt.CcCourtType) ? $"&ccCourtType={_opt.CcCourtType}" : "") +
                       $"&judgmentDateFrom={_opt.JudgmentDateFrom}&judgmentDateTo={today}" +
                       "&sortingField=DATABASE_ID&sortingDirection=ASC";
 
@@ -89,7 +90,15 @@ public sealed class SaosConnector(HttpClient http, IOptions<SaosOptions> options
         {
             using var doc = await GetJsonAsync($"judgments/{id}", ct);
             if (!doc.RootElement.TryGetProperty("data", out var data)) return null;
-            return BuildRawDocument(data);
+            var raw = BuildRawDocument(data);
+            // Część orzeczeń SAOS ma tylko metadane, bez treści (puste textContent) — nie da się ich osadzić.
+            // Pomijamy przy fetchu, by nie zaśmiecać magazynu i bazy 0-chunkowymi dokumentami (~2,5% zbioru).
+            if (string.IsNullOrWhiteSpace(raw.RawContent))
+            {
+                log.LogInformation("Pomijam orzeczenie {Id} — brak treści (textContent puste w SAOS).", id);
+                return null;
+            }
+            return raw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
