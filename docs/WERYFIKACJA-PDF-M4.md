@@ -105,6 +105,27 @@ przykłady — to kandydaci do OCR (poza obecnym zakresem, świadomie).
 
 ---
 
+## Znalezione i NAPRAWIONE (weryfikacja M4, 2026-07)
+
+Ścieżka PDF zaliczona: A (40/40 dok. dały segmenty, 0 błędów/issues, w tym 25 born-PDF; ryzyko preambuły
+nie wystąpiło), B (KK art. 37 = „30 lat"), C (kwarantanna 0/40).
+
+**Bug w ścieżce HTML (naprawiony, commit `fix(eli): pomiń przepisy CYTOWANE…`).** Obwieszczenie t.j. w HTML
+ma sekcję „Treść obwieszczenia" cytującą przepisy ustaw nowelizujących (klasa `pro-cite-text`) o tych
+samych numerach co prawdziwe artykuły z załącznika → oba trafiały do bazy pod jednym numerem.
+Zmierzone kolizje: KSH 8, ustrój sądów powszechnych 9, obrót instrumentami 12. Fix: `ActNormalizer` bierze
+tylko `pro-text`. Regresja w testach.
+
+**Do re-weryfikacji na M4:** przetwórz ponownie te 3 akty i potwierdź, że fałszywe fragmenty zniknęły:
+```bash
+# fetch+process KSH (DU/2000/1037), ustrój sądów powszechnych, obrót instrumentami
+# — dodaj ich adresy do Eli:Acts albo pobierz przez discovery, potem:
+Ingestion__Source=ELI Ingestion__Mode=fetch-process dotnet run --project src/PrawoRAG.Ingestion
+# W bazie: dla żadnego artykułu nie powinno być 2 chunków z tym samym numerem, gdzie jeden to
+# klauzula „Ustawa wchodzi w życie…". Szybki test: /api/search o „zgłoszenie spółki partnerskiej"
+# ma zwrócić realny art. 93 KSH, nie klauzulę wejścia w życie.
+```
+
 ## Co zgłosić z powrotem (zwięźle)
 1. Raport (A): czy `bez_segmentów=0` i `błędy=0` na mieszanych typach? Które typy sprawdzone.
 2. Born-PDF nie-obwieszczenie: czy preambuła jest poprawnie pomijana (albo `ExternalId` defektu)?
