@@ -1,0 +1,157 @@
+@page "/"
+@rendermode InteractiveServer
+@using PrawoRAG.Llm.Grounding
+@inject IChatService ChatService
+@implements IDisposable
+
+<h1 class="sr-only">Czat z asystentem prawnym</h1>
+
+<div class="chat">
+    <div class="chat-log">
+        @if (_exchanges.Count == 0)
+        {
+            <div class="empty">
+                <p class="empty-title">Zapytaj o przepis lub orzeczenie</p>
+                <p class="empty-hint">Odpowiedzi powstają wyłącznie z cytowanych źródeł. To wstępny research — zawsze weryfikuj przy źródle.</p>
+            </div>
+        }
+        @foreach (var ex in _exchanges)
+        {
+            <div class="msg msg-user">@ex.Question</div>
+            <div class="msg msg-assistant">
+                @if (ex.Abstained)
+                {
+                    <div class="banner banner-warn" role="status">@ex.AbstainMessage</div>
+                }
+                else
+                {
+                    <div class="answer" aria-live="polite">
+                        @if (ex.Answer.Length > 0)
+                        {
+                            @((MarkupString)MarkdownRenderer.ToSafeHtml(ex.Answer))
+                        }
+                        else if (ex.Streaming)
+                        {
+                            <span class="typing" aria-label="generowanie odpowiedzi">…</span>
+                        }
+                    </div>
+
+                    @if (ex.Done)
+                    {
+                        <div class="verify-banner" role="note">
+                            ⚖️ Wstępny research do weryfikacji — sprawdź w źródłach poniżej.
+                            @if (ex.Check is { IsClean: false })
+                            {
+                                <span class="badge badge-danger" title="Model mógł przywołać coś spoza źródeł">
+                                    ⚠ cytaty do sprawdzenia
+                                </span>
+                            }
+                            else if (ex.Check is not null)
+                            {
+                                <span class="badge badge-ok" title="Cytaty zgodne z dostarczonymi źródłami">✓ cytaty zgodne</span>
+                            }
+                        </div>
+                    }
+
+                    @if (ex.Sources.Count > 0)
+                    {
+                        <details class="sources" open>
+                            <summary>Źródła (@ex.Sources.Count)</summary>
+                            @foreach (var s in ex.Sources)
+                            {
+                                <div class="source-card">
+                                    <div class="source-head">
+                                        <span class="source-n">[@s.Index]</span>
+                                        <span class="source-label">@s.Label</span>
+                                        @if (!string.IsNullOrWhiteSpace(s.Url))
+                                        {
+                                            <a class="source-link" href="@s.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
+                                        }
+                                    </div>
+                                    <blockquote class="source-snippet">@s.Snippet</blockquote>
+                                </div>
+                            }
+                        </details>
+                    }
+                }
+                @if (ex.Error is not null)
+                {
+                    <div class="banner banner-danger" role="alert">Błąd: @ex.Error</div>
+                }
+            </div>
+        }
+    </div>
+
+    <form class="chat-input" @onsubmit="Send" @onsubmit:preventDefault>
+        <textarea @bind="_input" @bind:event="oninput" @onkeydown="OnKeyDown"
+                  placeholder="Zadaj pytanie prawne…" rows="2" disabled="@_busy"
+                  aria-label="Pytanie"></textarea>
+        <button type="submit" class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_input))">
+            @(_busy ? "…" : "Wyślij")
+        </button>
+    </form>
+</div>
+
+@code {
+    private readonly List<Exchange> _exchanges = new();
+    private string _input = "";
+    private bool _busy;
+    private CancellationTokenSource? _cts;
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && e.CtrlKey) await Send();
+    }
+
+    private async Task Send()
+    {
+        var question = _input.Trim();
+        if (question.Length == 0 || _busy) return;
+
+        _input = "";
+        _busy = true;
+        var ex = new Exchange { Question = question, Streaming = true };
+        _exchanges.Add(ex);
+
+        _cts = new CancellationTokenSource();
+        try
+        {
+            await foreach (var evt in ChatService.AskAsync(question, _cts.Token))
+            {
+                switch (evt)
+                {
+                    case SourcesEvent s: ex.Sources = s.Sources; break;
+                    case TokenEvent t: ex.Answer += t.Text; break;
+                    case AbstainEvent a: ex.Abstained = true; ex.AbstainMessage = a.Message; break;
+                    case DoneEvent d: ex.Done = true; ex.Check = d.Check; ex.Model = d.Model; break;
+                    case ChatErrorEvent err: ex.Error = err.Message; break;
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { /* przerwane przez użytkownika */ }
+        catch (Exception e) { ex.Error = e.Message; }
+        finally
+        {
+            ex.Streaming = false;
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() => _cts?.Cancel();
+
+    private sealed class Exchange
+    {
+        public required string Question { get; init; }
+        public string Answer { get; set; } = "";
+        public IReadOnlyList<ChatSource> Sources { get; set; } = [];
+        public bool Abstained { get; set; }
+        public string? AbstainMessage { get; set; }
+        public CitationCheck? Check { get; set; }
+        public string? Model { get; set; }
+        public bool Streaming { get; set; }
+        public bool Done { get; set; }
+        public string? Error { get; set; }
+    }
+}

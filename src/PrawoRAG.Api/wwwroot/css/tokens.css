@@ -1,0 +1,31 @@
+/* System projektowy — tokeny (FE-1.1). Spójność przez zmienne, nie przez konwencje w głowie. */
+:root {
+    /* Kolor: neutralna baza + jeden akcent (atrament/granat) + semantyczne */
+    --c-bg: #f7f8fa;
+    --c-surface: #ffffff;
+    --c-border: #e2e5ea;
+    --c-text: #1a1f2b;
+    --c-text-muted: #5b6472;
+    --c-accent: #1f3a8a;
+    --c-accent-weak: #eaf0ff;
+    --c-ok: #1b7f4b;
+    --c-ok-weak: #e7f6ee;
+    --c-warn: #8a5a00;
+    --c-warn-weak: #fdf3e0;
+    --c-danger: #a11b2e;
+    --c-danger-weak: #fdecef;
+
+    /* Typografia */
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --fs-12: .75rem; --fs-14: .875rem; --fs-16: 1rem; --fs-18: 1.125rem; --fs-24: 1.5rem; --fs-32: 2rem;
+    --lh-body: 1.6;
+
+    /* Spacing */
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-6: 24px; --s-8: 32px; --s-12: 48px;
+
+    /* Kształt / głębia */
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 1px 3px rgba(20, 25, 40, .08), 0 4px 12px rgba(20, 25, 40, .05);
+    --focus: 0 0 0 3px var(--c-accent-weak);
+}

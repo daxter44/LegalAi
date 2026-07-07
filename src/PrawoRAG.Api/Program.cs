@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using PrawoRAG.Api.Services;
 using PrawoRAG.Domain.Llm;
 using PrawoRAG.Domain.Retrieval;
 using PrawoRAG.Embeddings;
@@ -19,6 +20,10 @@ builder.Services.AddTeiReranker(builder.Configuration);  // IReranker tylko gdy 
 builder.Services.AddScoped<IRetriever, HybridRetriever>();
 builder.Services.Configure<RetrievalOptions>(builder.Configuration.GetSection("Retrieval"));
 builder.Services.AddOpenApi();
+
+// Blazor Server (UI demo) w tym samym hoście — te same serwisy przez DI, bez skoku HTTP.
+builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+builder.Services.AddScoped<IChatService, ChatService>();
 if (builder.Environment.IsDevelopment())
     builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 
@@ -28,6 +33,9 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
     app.UseCors(); // pozwala odpalić tools/chat-tester.html jako plik lokalny (inne origin)
 }
+
+app.UseStaticFiles();
+app.UseAntiforgery();
 
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 
@@ -89,6 +97,8 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
     }
 });
 
+app.MapRazorComponents<PrawoRAG.Api.Components.App>().AddInteractiveServerRenderMode();
+
 app.Run();
 
 static RetrievalQuery ToQuery(string text, FiltersDto? f, int topK, RetrievalOptions o) => new()
@@ -107,7 +117,7 @@ internal sealed record FiltersDto(string? CourtType, DateOnly? DateFrom, DateOnl
 internal sealed record SearchRequest(string Query, FiltersDto? Filters, int? TopK);
 internal sealed record ChatRequest(string Question, FiltersDto? Filters);
 
-internal sealed class RetrievalOptions
+public sealed class RetrievalOptions
 {
     public int TopK { get; set; } = 8;
     public int CandidatesPerPath { get; set; } = 50;
