@@ -205,6 +205,23 @@ Otwórz `http://localhost:5024/` → czat.
 Uwagi: logowania jeszcze nie ma (tryb dev-open — OK lokalnie; auth = FE-5). Persystencja jest best-effort —
 jeśli migracja nie jest wgrana, czat i tak odpowie, ale nie zapisze rozmowy/feedbacku.
 
+## Weryfikacja retrievalu strukturalnego (QU — pytania „o konkretny artykuł")
+
+Naprawa pudłowania przy „co mówi art. X kodeksu Y" (plan: `PLAN-QUERY-UNDERSTANDING.md`). Wymaga migracji
+`AddChunkArticleNo` — dodaje kolumnę `ArticleNo`, rozszerzenie `pg_trgm` i **backfilluje istniejące chunki
+z lokatorów (bez re-embeddingu)**:
+```bash
+dotnet ef database update --project src/PrawoRAG.Storage
+```
+Weryfikacja (na korpusie z KW/KK/…):
+```bash
+# powinno teraz zwrócić art. 94 Kodeksu wykroczeń NA GÓRZE (wcześniej: losowe KPC/KK):
+curl -s localhost:5024/api/search -H 'content-type: application/json' \
+  -d '{"query":"a co z Art. 94 § 2 w zw. z § 1 Kodeksu wykroczeń"}' | jq '.chunks[] | {locator, similarity}'
+```
+Zgłoś: czy właściwy art. 94 KW jest w wyniku (i wysoko). Regresja: pytania pojęciowe (np. „kara za jazdę
+bez przeglądu") mają działać jak dotąd — strukturalne trafienia tylko DOKŁADAJĄ, nie usuwają semantycznych.
+
 ## Uwagi
 - **Magazyn surowych** ląduje w `src/PrawoRAG.Ingestion/data/raw/` (bo `dotnet run` ustawia CWD na katalog
   projektu). Jest gitignorowany. Na inną lokalizację ustaw `RawStore__RootPath` (ścieżka absolutna).
