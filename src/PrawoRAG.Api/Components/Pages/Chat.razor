@@ -2,6 +2,8 @@
 @rendermode InteractiveServer
 @using PrawoRAG.Llm.Grounding
 @inject IChatService ChatService
+@inject IConversationStore Store
+@inject ICurrentUser CurrentUser
 @implements IDisposable
 
 <h1 class="sr-only">Czat z asystentem prawnym</h1>
@@ -42,9 +44,7 @@
                             ⚖️ Wstępny research do weryfikacji — sprawdź w źródłach poniżej.
                             @if (ex.Check is { IsClean: false })
                             {
-                                <span class="badge badge-danger" title="Model mógł przywołać coś spoza źródeł">
-                                    ⚠ cytaty do sprawdzenia
-                                </span>
+                                <span class="badge badge-danger" title="Model mógł przywołać coś spoza źródeł">⚠ cytaty do sprawdzenia</span>
                             }
                             else if (ex.Check is not null)
                             {
@@ -78,13 +78,30 @@
                 {
                     <div class="banner banner-danger" role="alert">Błąd: @ex.Error</div>
                 }
+
+                @if (ex.Done && ex.MessageId is not null)
+                {
+                    <div class="feedback">
+                        @if (ex.FeedbackGiven is null)
+                        {
+                            <span class="feedback-label">Ocena:</span>
+                            <button class="btn-ghost" @onclick='() => Feedback(ex, "up")' title="Trafna odpowiedź">👍</button>
+                            <button class="btn-ghost" @onclick='() => Feedback(ex, "wrong-answer")'>zła odpowiedź</button>
+                            <button class="btn-ghost" @onclick='() => Feedback(ex, "needless-refusal")'>niepotrzebna odmowa</button>
+                        }
+                        else
+                        {
+                            <span class="feedback-thanks">Dziękujemy za ocenę ✓</span>
+                        }
+                    </div>
+                }
             </div>
         }
     </div>
 
     <form class="chat-input" @onsubmit="Send" @onsubmit:preventDefault>
         <textarea @bind="_input" @bind:event="oninput" @onkeydown="OnKeyDown"
-                  placeholder="Zadaj pytanie prawne…" rows="2" disabled="@_busy"
+                  placeholder="Zadaj pytanie prawne… (Ctrl+Enter wysyła)" rows="2" disabled="@_busy"
                   aria-label="Pytanie"></textarea>
         <button type="submit" class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_input))">
             @(_busy ? "…" : "Wyślij")
@@ -96,6 +113,7 @@
     private readonly List<Exchange> _exchanges = new();
     private string _input = "";
     private bool _busy;
+    private Guid? _conversationId;
     private CancellationTokenSource? _cts;
 
     private async Task OnKeyDown(KeyboardEventArgs e)
@@ -112,11 +130,16 @@
         _busy = true;
         var ex = new Exchange { Question = question, Streaming = true };
         _exchanges.Add(ex);
-
         _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        // Persystencja jest best-effort — awaria zapisu NIE blokuje odpowiedzi.
+        _conversationId ??= await Try(() => Store.CreateConversationAsync(CurrentUser.UserId, question, ct));
+        if (_conversationId is { } cid) await Try(() => Store.AddUserMessageAsync(cid, question, ct));
+
         try
         {
-            await foreach (var evt in ChatService.AskAsync(question, _cts.Token))
+            await foreach (var evt in ChatService.AskAsync(question, ct))
             {
                 switch (evt)
                 {
@@ -134,9 +157,37 @@
         finally
         {
             ex.Streaming = false;
+            if (_conversationId is { } cid2)
+            {
+                var content = ex.Abstained ? (ex.AbstainMessage ?? "") : ex.Answer;
+                ex.MessageId = await Try(() => Store.AddAssistantMessageAsync(
+                    cid2, content, ex.Sources, ex.Abstained, ex.Check?.IsClean, ex.Model, CancellationToken.None));
+            }
             _busy = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private async Task Feedback(Exchange ex, string verdict)
+    {
+        if (ex.MessageId is not { } mid || ex.FeedbackGiven is not null) return;
+        try
+        {
+            await Store.AddFeedbackAsync(mid, CurrentUser.UserId, verdict, null, CancellationToken.None);
+            ex.FeedbackGiven = verdict;
+        }
+        catch { /* feedback best-effort */ }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static async Task<Guid?> Try(Func<Task<Guid>> op)
+    {
+        try { return await op(); } catch { return null; }
+    }
+
+    private static async Task Try(Func<Task> op)
+    {
+        try { await op(); } catch { /* best-effort */ }
     }
 
     public void Dispose() => _cts?.Cancel();
@@ -153,5 +204,7 @@
         public bool Streaming { get; set; }
         public bool Done { get; set; }
         public string? Error { get; set; }
+        public Guid? MessageId { get; set; }
+        public string? FeedbackGiven { get; set; }
     }
 }

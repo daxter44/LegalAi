@@ -22,6 +22,11 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options) : Db
     public DbSet<ChunkEntity> Chunks => Set<ChunkEntity>();
     public DbSet<SyncStateEntity> SyncStates => Set<SyncStateEntity>();
 
+    // --- warstwa demo (rozmowy + feedback) ---
+    public DbSet<ConversationEntity> Conversations => Set<ConversationEntity>();
+    public DbSet<MessageEntity> Messages => Set<MessageEntity>();
+    public DbSet<FeedbackEntity> Feedbacks => Set<FeedbackEntity>();
+
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.HasPostgresExtension("vector");
@@ -70,6 +75,43 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options) : Db
         {
             e.ToTable("sync_state");
             e.HasKey(x => x.Source);
+        });
+
+        b.Entity<ConversationEntity>(e =>
+        {
+            e.ToTable("conversations");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UserId).HasMaxLength(320); // długość adresu e-mail wg RFC
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.HasIndex(x => new { x.UserId, x.UpdatedAt }); // lista własnych rozmów, najnowsze pierwsze
+        });
+
+        b.Entity<MessageEntity>(e =>
+        {
+            e.ToTable("messages");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Role).HasMaxLength(20);
+            e.Property(x => x.RetrievedSources).HasColumnType("jsonb");
+            e.Property(x => x.Model).HasMaxLength(200);
+            e.HasOne(x => x.Conversation)
+                .WithMany(c => c.Messages)
+                .HasForeignKey(x => x.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.ConversationId, x.CreatedAt });
+            e.HasIndex(x => x.CreatedAt); // retencja: czyszczenie starszych niż 6 mies.
+        });
+
+        b.Entity<FeedbackEntity>(e =>
+        {
+            e.ToTable("feedback");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UserId).HasMaxLength(320);
+            e.Property(x => x.Verdict).HasMaxLength(30);
+            e.Property(x => x.Note).HasMaxLength(2000);
+            e.HasOne(x => x.Message)
+                .WithOne(m => m.Feedback)
+                .HasForeignKey<FeedbackEntity>(x => x.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

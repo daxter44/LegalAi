@@ -24,6 +24,10 @@ builder.Services.AddOpenApi();
 // Blazor Server (UI demo) w tym samym hoście — te same serwisy przez DI, bez skoku HTTP.
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddScoped<IChatService, ChatService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+builder.Services.AddScoped<IConversationStore, ConversationStore>();
+builder.Services.AddHostedService<RetentionService>(); // retencja logów 6 mies. (C9/FE-4.4)
 if (builder.Environment.IsDevelopment())
     builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 

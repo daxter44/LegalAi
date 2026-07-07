@@ -83,3 +83,12 @@ body {
     border: 1px solid transparent; cursor: pointer; }
 .btn-primary { background: var(--c-accent); color: #fff; }
 .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Feedback */
+.feedback { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-3);
+    font-size: var(--fs-14); color: var(--c-text-muted); flex-wrap: wrap; }
+.feedback-label { font-weight: 600; }
+.btn-ghost { font: inherit; font-size: var(--fs-14); background: transparent; border: 1px solid var(--c-border);
+    border-radius: 999px; padding: 1px var(--s-3); cursor: pointer; color: var(--c-text); }
+.btn-ghost:hover { background: var(--c-accent-weak); border-color: var(--c-accent); }
+.feedback-thanks { color: var(--c-ok); }
