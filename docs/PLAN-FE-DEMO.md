@@ -10,6 +10,11 @@ prawników**. Dokument planistyczny — do przeglądu PRZED implementacją; nic 
 - **Autoryzacja:** Google OIDC (logowanie kontem Google) + **allowlista e-maili** w configu.
 - **LLM na demo:** Bielik lokalny (pakiet Diamond, dane nie opuszczają maszyny). Przełącznik
   `Llm:Provider = local | claude` zostaje (awaryjne przełączenie bez przebudowy).
+- **Hosting Bielika:** osobna usługa GPU na **Cloud Run (scale-to-zero)** na czas demo — płacimy tylko za
+  zapytania; przy napływie użytkowników migracja na **always-on GPU VM** (ucieczka od zimnych startów).
+  Ollama na Cloud Run wystawia API zgodne z OpenAI → integracja tylko przez `Llm:Local:BaseUrl`, bez zmian kodu.
+- **Render odpowiedzi:** **markdown sanitizowany** (Markdig z konfiguracją bez surowego HTML).
+- **Retencja logów pytań:** **6 miesięcy** na start (rewizja przy wzroście rozmiaru/wolumenu).
 - **Skala:** 2–3 użytkowników, niski ruch. Optymalizujemy pod prostotę i bezpieczeństwo, nie pod skalę.
 
 ## Zasada nadrzędna: UI = warstwa „bezpiecznej porażki"
@@ -92,8 +97,9 @@ OIDC; brak na liście → `AccessDenied`), nigdy tylko w UI.
 **C2. Autoryzacja / własność danych.** Każde zapytanie o historię/feedback filtrowane po `UserId`
 z tożsamości (claim), **nigdy po id z klienta**. Brak dostępu do cudzych rozmów nawet przy zgadniętym id.
 
-**C3. XSS / renderowanie treści.** Odpowiedź LLM renderujemy jako **tekst albo sanitizowany markdown**
-(bez surowego HTML). Fragmenty źródeł to już czysty tekst (normalizery produkują plain text) — renderujemy
+**C3. XSS / renderowanie treści.** Odpowiedź LLM renderujemy jako **sanitizowany markdown** (Markdig,
+konfiguracja bez surowego HTML — żadnych bloków HTML ani `<script>`). Fragmenty źródeł to już czysty
+tekst (normalizery produkują plain text) — renderujemy
 z auto-enkodowaniem Blazora. Linki źródłowe: walidacja schematu (`https` do isap/saos), `rel="noopener
 noreferrer"`. Zero `MarkupString` na danych pochodzących od LLM/użytkownika.
 
@@ -115,8 +121,9 @@ zmieniać instrukcji systemowych — utrzymać rozdział ról w promptcie, logow
 obrona poza zakresem demo, ale rozdział prompt systemowy/użytkownika obowiązkowy.
 
 **C9. RODO / poufność logów.** Pytania prawników mogą zawierać dane osobowe/wrażliwe sprawy. Log pytań =
-dane poufne: dostęp tylko dla admina, jawna retencja, brak wysyłki do stron trzecich (spójne z wyborem
-Bielika lokalnego). Krótka nota prywatności na demo. Kryterium: świadoma decyzja o retencji zapisana.
+dane poufne: dostęp tylko dla admina, brak wysyłki do stron trzecich (spójne z wyborem Bielika lokalnego).
+**Retencja: 6 miesięcy** (zadanie automatycznego czyszczenia starszych wpisów; rewizja przy wzroście).
+Krótka nota prywatności na demo. Kryterium: retencja 6 mies. wdrożona i udokumentowana.
 
 **C10. Obwód Blazor (circuit).** Obsługa utraty połączenia (reconnect UI), limit czasu obwodu, brak
 wrażliwych danych w stanie klienta. Autoryzacja sprawdzana serwerowo per akcja, nie tylko przy wejściu.
@@ -163,12 +170,13 @@ Format: `[FE-x.y] tytuł — kryterium akceptacji`.
 - [FE-3.1] `SourcePanel`/`SourceCard`: sygnatura/artykuł, **dosłowny cytat**, link do ISAP/SAOS (walidowany). *Kryt.: każda odpowiedź ma widoczne źródła.*
 - [FE-3.2] `AnswerBanner` „wstępny research do weryfikacji" + stan odmowy („brak wystarczających źródeł").
 - [FE-3.3] `CitationCheckBadge` — wynik anty-fabrykacji wyeksponowany (czyste/podejrzane cytaty).
-- [FE-3.4] Sanitizacja renderu odpowiedzi (C3). *Kryt.: wstrzyknięty HTML/markup nie wykonuje się.*
+- [FE-3.4] Render odpowiedzi: **markdown sanitizowany** (Markdig bez raw HTML) (C3). *Kryt.: wstrzyknięty HTML/`<script>` nie wykonuje się; formatowanie md działa.*
 
 ### FE-4 — Feedback + log pytań
 - [FE-4.1] Migracja: `Conversation`/`Message`/`Feedback` (D).
 - [FE-4.2] Zapis każdej wymiany (pytanie, źródła, abstained, citationClean) do `Message`.
 - [FE-4.3] `FeedbackBar` (👍 / zła odpowiedź / niepotrzebna odmowa + nota) → `Feedback`. *Kryt.: ocena ląduje w bazie z kontekstem.*
+- [FE-4.4] Retencja: zadanie czyszczące wpisy starsze niż 6 miesięcy (C9). *Kryt.: stare logi znikają automatycznie.*
 
 ### FE-5 — Autoryzacja
 - [FE-5.1] Google OIDC + cookie (C1), przyciski logowania/wylogowania, `UserMenu`.
@@ -187,8 +195,11 @@ Format: `[FE-x.y] tytuł — kryterium akceptacji`.
 
 ### FE-8 — Konteneryzacja + deploy
 - [FE-8.1] Dockerfile hosta + `compose` (app + Postgres + TEI). [FE-8.2] Reverse proxy z auto-HTTPS (C11).
-- [FE-8.3] VM: Bielik przez Ollamę (GPU) **lub** LLM z M4 na czas demo; wgranie embeddingów korpusu.
-- [FE-8.4] Backup Postgresa + firewall. *Kryt.: publiczny URL po HTTPS, logowanie Google działa, czat odpowiada z korpusu.*
+- [FE-8.3] **Bielik jako osobna usługa GPU na Cloud Run** (Ollama, scale-to-zero, quota GPU/region).
+  Konfiguracja `Llm:Local:BaseUrl` → URL Cloud Run. Mitygacja zimnego startu: `min-instances=1` na czas
+  sesji demo. *Kryt.: czat odpowiada z Bielika przez Cloud Run.*
+- [FE-8.4] Wgranie embeddingów korpusu do Postgresa; backup Postgresa + firewall. *Kryt.: publiczny URL po HTTPS, logowanie Google działa, czat odpowiada z korpusu.*
+- [FE-8.5] (przy ruchu) Migracja Bielika na always-on GPU VM — koniec zimnych startów.
 
 ---
 
@@ -200,13 +211,16 @@ Format: `[FE-x.y] tytuł — kryterium akceptacji`.
 - Styleguide (FE-1) i bezpieczeństwo (C) są przekrojowe — FE-1 na początku (spójność od startu),
   checklista C zamykana w FE-7, ale zasady (C2/C3) stosowane od pierwszego kodu.
 
-## G. Ryzyka i decyzje otwarte
+## G. Ryzyka i decyzje
 
-- **Bielik na demo** wymaga GPU na serwującej VM (koszt) albo LLM z M4 (wtedy VM bez GPU, ale zależność od
-  M4). Do rozstrzygnięcia przy FE-8. Bielik częściej fabrykuje → FE-3.3 (citationCheck) tym ważniejsze.
-- **Blazor Server + jedna VM**: stanowy obwód lubi always-on; przy jednej VM OK. Skalowanie poza demo = temat później.
-- **RODO/retencja logów** (C9): świadoma decyzja przed wpuszczeniem prawdziwych pytań.
-- **Markdown w odpowiedzi**: jeśli chcemy formatowanie, wybrać sanitizowany renderer; inaczej czysty tekst.
+- **Bielik na Cloud Run — zimny start (świadomy trade-off).** Scale-to-zero → pierwsze zapytanie po
+  bezczynności ładuje model 11B do VRAM (kilkadziesiąt s – ~min). Akceptowalne na demo; mitygacja
+  `min-instances=1` na czas sesji. Wymaga GPU-quota i regionu z GPU na Cloud Run. Migracja na VM przy ruchu (FE-8.5).
+  Bielik częściej fabrykuje → FE-3.3 (citationCheck) tym ważniejsze.
+- **Hosting aplikacji (Blazor Server)** — stanowy obwód (SignalR) lubi always-on. Cloud Run z `min-instances=1`
+  + affinity ALBO mała VM. Do rozstrzygnięcia przy FE-8 (Bielik i tak jest osobną usługą GPU).
+- ✅ **Retencja logów: 6 miesięcy** (C9, FE-4.4) — rewizja przy wzroście.
+- ✅ **Render: markdown sanitizowany** (Markdig bez raw HTML, C3/FE-3.4).
 
 ## Poza zakresem demo (świadomie później)
 
