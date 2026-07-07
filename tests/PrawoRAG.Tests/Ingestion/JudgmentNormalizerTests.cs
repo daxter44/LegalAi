@@ -69,6 +69,40 @@ public class JudgmentNormalizerTests
         Assert.Equal(64, a.ContentHash.Length);     // SHA-256 hex
         Assert.Equal(a.ContentHash, b.ContentHash);
     }
+
+    [Fact] // T-NORM #7: formularz uzasadnienia (checkboxy + stałe etykiety rubryk) usunięty z sekcji uzasadnienie
+    public void Strips_formularz_boilerplate_from_uzasadnienie()
+    {
+        var doc = _sut.Normalize(SaosFixtures.LoadJudgment(900001));
+        var uzasadnienie = doc.Segments.Single(s => s.Label == "uzasadnienie").Text;
+
+        Assert.DoesNotContain("☐", uzasadnienie);
+        Assert.DoesNotContain("☒", uzasadnienie);
+        Assert.DoesNotContain("Zwięźle o powodach", uzasadnienie);
+        Assert.DoesNotContain("Nie dotyczy", uzasadnienie);
+        Assert.DoesNotContain("STANOWISKO SĄDU ODWOŁAWCZEGO", uzasadnienie);
+    }
+
+    [Fact] // T-NORM #8: rzeczywista treść zarzutów i rozumowania sądu PRZETRWAŁA czyszczenie formularza
+    public void Keeps_substantive_content_after_stripping_formularz()
+    {
+        var doc = _sut.Normalize(SaosFixtures.LoadJudgment(900001));
+        var uzasadnienie = doc.Segments.Single(s => s.Label == "uzasadnienie").Text;
+
+        Assert.Contains("obrazy art. 7 kpk", uzasadnienie);
+        Assert.Contains("ocena dowodów przeprowadzona przez sąd pierwszej instancji", uzasadnienie);
+        Assert.Contains("rażąco nie uwzględniała stopnia demoralizacji", uzasadnienie);
+    }
+
+    [Fact] // T-NORM #9: odmiana liczby mnogiej etykiety rubryki ("zarzutów"/"wniosków"/"zasadne") też odsiana
+    public void Strips_plural_form_of_formularz_labels()
+    {
+        var doc = _sut.Normalize(SaosFixtures.LoadJudgment(900001));
+        var uzasadnienie = doc.Segments.Single(s => s.Label == "uzasadnienie").Text;
+
+        Assert.DoesNotContain("Zwięźle o powodach uznania wniosków za zasadne", uzasadnienie);
+        Assert.Contains("brak podstaw dowodowych do zmiany kwalifikacji prawnej", uzasadnienie);
+    }
 }
 
 internal static class NormalizedDocumentTestExtensions

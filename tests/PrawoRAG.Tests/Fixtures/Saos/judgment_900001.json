@@ -1,0 +1,30 @@
+{
+  "links": [
+    { "rel": "self", "href": "https://www.saos.org.pl/api/judgments/900001" }
+  ],
+  "data": {
+    "id": 900001,
+    "courtType": "COMMON",
+    "href": "https://www.saos.org.pl/api/judgments/900001",
+    "courtCases": [
+      { "caseNumber": "II AKa 900001/23" }
+    ],
+    "judgmentType": "SENTENCE",
+    "judgmentDate": "2023-10-19",
+    "judges": [
+      { "name": "Testowa Sędzia", "function": null, "specialRoles": ["PRESIDING_JUDGE"] }
+    ],
+    "source": {
+      "code": "COMMON_COURT",
+      "judgmentUrl": "http://orzeczenia.ms.gov.pl/ncourt-api/judgement/details?id=test_900001",
+      "judgmentId": "test_900001",
+      "publisher": "Test",
+      "reviser": "Test",
+      "publicationDate": "2023-11-01"
+    },
+    "courtReporters": [],
+    "decision": null,
+    "summary": null,
+    "textContent": "<p>Sygn. akt II AKa 900001/23</p><div><h2>WYROK</h2><h5>W IMIENIU RZECZYPOSPOLITEJ POLSKIEJ</h5><p>Dnia 19 października 2023 roku</p><p>Sąd Apelacyjny w Gdańsku II Wydział Karny w składzie:</p><p>Przewodniczący: SSA Testowa Sędzia</p></div><div><h2>UZASADNIENIE</h2><p>3.</p><p>STANOWISKO SĄDU ODWOŁAWCZEGO WOBEC ZGŁOSZONYCH ZARZUTÓW i wniosków</p><p>Lp.</p><p>Zarzut</p><p>1.</p><p>Apelacja obrońcy– zarzuty:</p><p>1. obrazy art. 7 kpk.</p><p>2. błędu w ustaleniach faktycznych;</p><p>☐ zasadny</p><p>☐częściowo zasadny</p><p>☒ niezasadny</p><p>Zwięźle o powodach uznania zarzutu za zasadny, częściowo zasadny albo niezasadny</p><p>Sąd odwoławczy uznał za niezasadny zarzut obrazy art. 7 kpk, ponieważ ocena dowodów przeprowadzona przez sąd pierwszej instancji mieściła się w granicach swobodnej oceny dowodów i nie naruszała zasad logiki ani doświadczenia życiowego.</p><p>2.</p><p>Apelacja prokuratora – rażąca niewspółmierność kary</p><p>☒ zasadny</p><p>☐ częściowo zasadny</p><p>☐ niezasadny</p><p>Zwięźle o powodach uznania zarzutu za zasadny, częściowo zasadny albo niezasadny</p><p>Zarzut zasadny w części dotyczącej wymiaru kary pozbawienia wolności, która w ocenie sądu odwoławczego rażąco nie uwzględniała stopnia demoralizacji oskarżonego oraz uprzedniej wielokrotnej karalności.</p><p>Dowód</p><p>Zwięźle o powodach nieuwzględnienia dowodu</p><p>Nie dotyczy</p><p>4.</p><p>OKOLICZNOŚCI PODLEGAJĄCE UWZGLĘDNIENIU Z URZĘDU</p><p>Nie dotyczy</p><p>Zwięźle o powodach uwzględnienia okoliczności</p><p>Nie dotyczy</p><p>Wnioski obrońcy:</p><p>1. o zmianę wyroku poprzez złagodzenie kary.</p><p>☐ zasadne</p><p>☒ niezasadne</p><p>Zwięźle o powodach uznania wniosków za zasadne, częściowo zasadne albo niezasadne.</p><p>Sąd uznał wnioski za niezasadne z uwagi na brak podstaw dowodowych do zmiany kwalifikacji prawnej przypisanego czynu.</p></div>"
+  }
+}

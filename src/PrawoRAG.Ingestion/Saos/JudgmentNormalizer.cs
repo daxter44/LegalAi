@@ -21,6 +21,23 @@ public sealed partial class JudgmentNormalizer : IDocumentNormalizer
     private static readonly string[] SentenceMarkers = ["WYROK", "POSTANOWIENIE", "UCHWAŁA", "ZARZĄDZENIE"];
     private const string JustificationMarker = "UZASADNIENIE";
 
+    // Formularz uzasadnienia (obowiązkowy dla apelacji karnych od 2019, art. 99a k.p.k.) powtarza dla
+    // KAŻDEGO zarzutu identyczny szablon: checkbox (☐/☒) + stałe etykiety rubryk. Bez czyszczenia, przy
+    // apelacji z wieloma zarzutami, chunk może wylądować głównie na powtórzeniach szablonu — zero treści
+    // specyficznej dla sprawy. Zmierzone na M4: taki chunk (Sąd Apelacyjny w Gdańsku, II AKa 11/23) dostawał
+    // sztucznie podniesiony cosine (0,78) do zupełnie niezwiązanego pytania — powtarzalna struktura tworzy
+    // wektor „uśredniony". Usuwamy WYŁĄCZNIE jednoznaczny bojlerplate (linie z samym checkboxem, stałe
+    // nagłówki rubryk, filler „Nie dotyczy") — nigdy właściwą treść uzasadnienia (zarzuty, rozumowanie sądu).
+    //
+    // Etykiety rubryk odmieniają się przez liczbę/rodzaj („zarzutu"/„zarzutów", „zasadny"/„zasadne",
+    // „uznania dowodu"/„nieuwzględnienia dowodu"…) — dopasowanie po PREFIKSIE, nie sztywnej liście
+    // (zmierzone na realnym wyroku wielowątkowym: cztery różne odmiany „Zwięźle o powodach…" w jednym dokumencie).
+    private static readonly string[] FormularzLabelPrefixes =
+    [
+        "Zwięźle o powodach",
+        "STANOWISKO SĄDU ODWOŁAWCZEGO",
+    ];
+
     public NormalizedDocument Normalize(RawDocument raw)
     {
         var issues = new List<string>();
@@ -93,6 +110,7 @@ public sealed partial class JudgmentNormalizer : IDocumentNormalizer
         {
             if (start < 0 || end <= start) return;
             var slice = text[start..end].Trim();
+            if (label == "uzasadnienie") slice = StripFormularzBoilerplate(slice);
             if (slice.Length == 0) return;
             segs.Add(new DocumentSegment
             {
@@ -112,6 +130,21 @@ public sealed partial class JudgmentNormalizer : IDocumentNormalizer
         if (sentenceIdx >= 0) Add("sentencja", sentenceIdx, sentenceEnd);
         if (justIdx >= 0) Add("uzasadnienie", justIdx, text.Length);
         return segs;
+    }
+
+    /// <summary>Usuwa linie formularza uzasadnienia (checkbox + stałe etykiety rubryk + filler „Nie dotyczy")
+    /// z sekcji „uzasadnienie". Zostawia właściwą treść (zarzuty, rozumowanie sądu) bez zmian.</summary>
+    private static string StripFormularzBoilerplate(string text)
+    {
+        var kept = text.Split('\n')
+            .Where(line =>
+            {
+                var t = line.Trim();
+                if (CheckboxLineRegex().IsMatch(line.TrimStart())) return false;
+                if (t.Equals("Nie dotyczy", StringComparison.OrdinalIgnoreCase)) return false;
+                return !FormularzLabelPrefixes.Any(l => t.StartsWith(l, StringComparison.OrdinalIgnoreCase));
+            });
+        return MultiBlankRegex().Replace(string.Join('\n', kept), "\n\n").Trim();
     }
 
     // --- Data: walidacja + fallback z treści ---
@@ -216,4 +249,10 @@ public sealed partial class JudgmentNormalizer : IDocumentNormalizer
 
     [GeneratedRegex(@"[Dd]nia\s+(\d{1,2})\s+([a-ząćęłńóśźż]+)\s+(\d{4})", RegexOptions.CultureInvariant)]
     private static partial Regex DniaRegex();
+
+    [GeneratedRegex(@"^[☐☒]\s*.*$", RegexOptions.CultureInvariant)]
+    private static partial Regex CheckboxLineRegex();
+
+    [GeneratedRegex(@"\n{3,}", RegexOptions.CultureInvariant)]
+    private static partial Regex MultiBlankRegex();
 }
