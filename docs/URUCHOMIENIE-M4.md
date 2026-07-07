@@ -176,6 +176,35 @@ rerankera) i wstaw do `Retrieval:AbstentionThreshold`, oraz włącz `Reranker:En
 Uwaga: reranking działa na score sigmoidowym (~0..1), więc **próg będzie inny niż dla cosine** — dlatego
 kalibrujemy go od nowa właśnie na tym sygnale.
 
+## Interfejs demo (FE) — klikalny czat w przeglądarce
+
+Zamiast `curl`a: host `PrawoRAG.Api` serwuje teraz UI Blazor pod `/` (endpointy `/api/*` zostają).
+Wymaga tego samego stacku co czat: Postgres + TEI (Metal) + Ollama/Bielik + korpus w bazie (kroki 1–5 wyżej).
+
+```bash
+# 0. Migracje MUSZĄ być aktualne — doszły tabele demo (rozmowy/feedback):
+dotnet ef database update --project src/PrawoRAG.Storage
+
+# 1. Odpal host z UI + lokalnym Bielikiem (UI i API w jednym procesie):
+Llm__Provider=local \
+Llm__Local__Model="SpeakLeash/bielik-11b-v3.0-instruct:Q5_K_M" \
+  dotnet run --project src/PrawoRAG.Api
+# Port z profilu = 5024 (log "Now listening on:"); własny URL → dodaj --no-launch-profile i ASPNETCORE_URLS.
+```
+Otwórz `http://localhost:5024/` → czat.
+
+**Na co patrzeć (i co zgłosić):**
+- **Panel źródeł** — czy cytat i sygnatura/artykuł są czytelne, czy link „oryginał ↗" prowadzi do ISAP/SAOS.
+- **Baner „wstępny research do weryfikacji"** + **badge cytatów** (✓ zgodne / ⚠ do sprawdzenia) — Bielik
+  częściej fabrykuje, więc badge „⚠" będzie się pojawiać; to sygnał, nie bug.
+- **Streaming** — czy odpowiedź „leci" płynnie; **odmowa** — czy przy pytaniu spoza korpusu pokazuje
+  „Nie mam wystarczających źródeł".
+- **Feedback** (👍 / zła odpowiedź / niepotrzebna odmowa) — trafia do tabeli `feedback` (materiał do strojenia).
+- **UX**: układ, czytelność długiej odpowiedzi (markdown), zachowanie na wąskim ekranie.
+
+Uwagi: logowania jeszcze nie ma (tryb dev-open — OK lokalnie; auth = FE-5). Persystencja jest best-effort —
+jeśli migracja nie jest wgrana, czat i tak odpowie, ale nie zapisze rozmowy/feedbacku.
+
 ## Uwagi
 - **Magazyn surowych** ląduje w `src/PrawoRAG.Ingestion/data/raw/` (bo `dotnet run` ustawia CWD na katalog
   projektu). Jest gitignorowany. Na inną lokalizację ustaw `RawStore__RootPath` (ścieżka absolutna).
