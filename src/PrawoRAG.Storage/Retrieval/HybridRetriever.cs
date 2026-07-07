@@ -95,23 +95,92 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
 
         var maxSim = sim.Count > 0 ? sim.Values.Max() : 0;
 
-        // Reranking (opcjonalny): cross-encoder przelicza trafność deduplikowanych kandydatów.
-        // Gdy włączony, jego TOP-score steruje bramką abstynencji (MaxSimilarity) — jest lepiej
-        // rozdzielony niż surowy cosine. Gdy wyłączony (reranker == null) — zachowanie jak dotąd.
+        // Ranking semantyczny (pełna lista kandydatów). Reranking (opcjonalny): cross-encoder przelicza
+        // trafność; gdy włączony, jego TOP-score steruje bramką abstynencji (lepiej rozdzielony niż cosine).
+        List<RetrievedChunk> ranked;
+        double signal;
         if (reranker is not null && deduped.Count > 0)
         {
             var scores = await reranker.RerankAsync(query.Text, deduped.Select(c => c.Text).ToList(), ct);
             var byIndex = scores.ToDictionary(x => x.Index, x => x.Score);
-            var reranked = deduped
+            ranked = deduped
                 .Select((c, i) => c with { RerankScore = byIndex.GetValueOrDefault(i) })
                 .OrderByDescending(c => c.RerankScore ?? double.MinValue)
-                .Take(query.TopK)
                 .ToList();
-            var topRerank = reranked.Count > 0 ? reranked[0].RerankScore ?? 0 : 0;
-            return new RetrievalResult(reranked, topRerank);
+            signal = ranked.Count > 0 ? ranked[0].RerankScore ?? 0 : 0;
+        }
+        else
+        {
+            ranked = deduped; // już posortowane po Score (RRF)
+            signal = maxSim;
         }
 
-        return new RetrievalResult(deduped.Take(query.TopK).ToList(), maxSim);
+        // QU-3: retrieval strukturalny — gdy pytanie zawiera cytat („art. 94 KW"), pobierz DOKŁADNIE ten
+        // artykuł po metadanych i wstaw na górę (gwarantowane sloty). DOKŁADA, nigdy nie usuwa semantycznych;
+        // brak rozpoznania aktu → zachowanie jak dziś (zero regresji).
+        var structural = await StructuralAsync(query, ct);
+        var final = structural.Concat(ranked)
+            .GroupBy(c => c.ChunkId).Select(g => g.First()) // dedup; strukturalne (pierwsze) wygrywają slot
+            .Take(query.TopK)
+            .ToList();
+
+        return new RetrievalResult(final, signal);
+    }
+
+    /// <summary>Dokładne trafienia po lokalizatorze dla cytatów wykrytych w pytaniu (QU-3). Omija
+    /// <c>MinChunkTokens</c> (P5 — krótki § nie może wypaść) i pobiera CAŁY artykuł (P3).</summary>
+    private async Task<List<RetrievedChunk>> StructuralAsync(RetrievalQuery query, CancellationToken ct)
+    {
+        var cites = CitationParser.Parse(query.Text);
+        if (cites.Count == 0) return [];
+
+        var result = new List<RetrievedChunk>();
+        var seen = new HashSet<Guid>();
+        foreach (var c in cites.Take(4))
+        {
+            var actExtId = await ResolveActAsync(c.ActHint, ct);
+            if (actExtId is null) continue; // bez rozpoznanego aktu nie floodujemy art. N ze wszystkich kodeksów (P6)
+
+            var hits = await db.Chunks.Include(x => x.Document)
+                .Where(x => x.ArticleNo == c.Article && x.Document!.ExternalId == actExtId)
+                .OrderBy(x => x.ChunkIndex)
+                .Take(20)
+                .ToListAsync(ct);
+
+            foreach (var h in hits)
+            {
+                if (!seen.Add(h.Id)) continue;
+                result.Add(new RetrievedChunk
+                {
+                    ChunkId = h.Id, DocumentId = h.DocumentId, Text = h.Text, Section = h.Section,
+                    Source = h.Document!.Source, DocType = h.Document.DocType, Title = h.Document.Title,
+                    SourceUrl = h.Document.SourceUrl, Locator = Deserialize(h.Locator),
+                    Score = double.MaxValue, Similarity = null, // trafienie dokładne — zawsze na górę
+                });
+            }
+        }
+        return result;
+    }
+
+    /// <summary>Rozpoznaje akt z wskazówki: skrót (mapa aliasów → najkrótszy pasujący tytuł, np. KK≠KKW),
+    /// fraza → dopasowanie rozmyte pg_trgm do tytułów aktów. Null = brak pewnego dopasowania (QU-2).</summary>
+    private async Task<string?> ResolveActAsync(string? hint, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(hint)) return null;
+
+        if (ActAliases.Canonical(hint) is { } canonical)
+            return await db.Documents
+                .Where(d => d.DocType == "act" && EF.Functions.ILike(d.Title, "%" + canonical + "%"))
+                .OrderBy(d => d.Title.Length) // najkrótszy tytuł = właściwy kodeks (KK przed „KK wykonawczy")
+                .Select(d => d.ExternalId)
+                .FirstOrDefaultAsync(ct);
+
+        var best = await db.Documents
+            .Where(d => d.DocType == "act")
+            .Select(d => new { d.ExternalId, Sim = EF.Functions.TrigramsSimilarity(d.Title, hint) })
+            .OrderByDescending(x => x.Sim)
+            .FirstOrDefaultAsync(ct);
+        return best is not null && best.Sim >= 0.15 ? best.ExternalId : null;
     }
 
     private static IQueryable<ChunkEntity> ApplyFilters(IQueryable<ChunkEntity> q, RetrievalQuery query)

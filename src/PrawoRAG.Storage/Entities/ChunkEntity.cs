@@ -30,6 +30,10 @@ public class ChunkEntity
     /// <summary>Lokalizator cytatu (jsonb) — ELI+artykuł albo sąd+sygnatura+data.</summary>
     public JsonDocument? Locator { get; set; }
 
+    /// <summary>Numer artykułu zdenormalizowany z lokalizatora (indeksowany) — dokładny, tani filtr dla
+    /// retrievalu strukturalnego „co mówi art. X" (QU-1). Tekst, bo bywa „43bb", „175da". Null dla orzeczeń.</summary>
+    public string? ArticleNo { get; set; }
+
     /// <summary>Kolumna tsvector (generowana) do wyszukiwania pełnotekstowego BM25.</summary>
     public NpgsqlTsVector? SearchVector { get; set; }
 }

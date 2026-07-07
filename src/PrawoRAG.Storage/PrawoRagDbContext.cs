@@ -66,6 +66,8 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options) : Db
 
             e.HasIndex(x => new { x.DocumentId, x.ChunkIndex }).IsUnique();
             e.HasIndex(x => x.EmbeddedWith);
+            e.Property(x => x.ArticleNo).HasMaxLength(16);
+            e.HasIndex(x => x.ArticleNo); // dokładny filtr retrievalu strukturalnego (QU-1)
             // HNSW (cosine) dla retrieval gęstego; GIN dla BM25.
             e.HasIndex(x => x.Embedding).HasMethod("hnsw").HasOperators("vector_cosine_ops");
             e.HasIndex(x => x.SearchVector).HasMethod("gin");

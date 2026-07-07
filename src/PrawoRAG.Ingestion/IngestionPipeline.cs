@@ -105,6 +105,7 @@ public sealed class IngestionPipeline(
                 Text = c.Text, Section = c.Section, CharStart = c.CharStart, CharEnd = c.CharEnd,
                 TokenCount = c.TokenCount, Embedding = new Vector(vectors[i]), EmbeddedWith = embedder.ModelId,
                 Locator = c.Locator is null ? null : JsonSerializer.SerializeToDocument(c.Locator),
+                ArticleNo = c.Locator?.Article, // denormalizacja dla retrievalu strukturalnego (QU-1)
             });
         }
 
