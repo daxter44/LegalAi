@@ -57,6 +57,8 @@ public sealed class ActNormalizer : IDocumentNormalizer
                 ? "Nie znaleziono jednostek (Art./§) w tekście PDF — sprawdź ekstrakcję/strukturę."
                 : "Nie znaleziono artykułów (div.unit_arti) — sprawdź strukturę text.html.");
 
+        DisambiguateDuplicateUnits(segments, issues);
+
         var metadata = new Dictionary<string, object?>
         {
             ["actType"] = StringProp(p, "type"),
@@ -191,6 +193,40 @@ public sealed class ActNormalizer : IDocumentNormalizer
                 SourceUrl = sourceUrl,
             },
         });
+    }
+
+    /// <summary>
+    /// Gwarantuje unikalność lokalizatora w dokumencie. Tekst jednolity potrafi zawierać jednostkę o tym
+    /// samym numerze w dwóch brzmieniach — obowiązującym i wchodzącym w życie z przyszłą datą — i OBA są
+    /// prawdziwą treścią aktu (pro-text), więc filtr pro-cite-text ich nie łapie. Bez tego dwa chunki
+    /// lądują pod tym samym „Art. N". Nie usuwamy (wybór „które obowiązuje" zależy od daty i bywa nietrwały):
+    /// oznaczamy wariantami (etykieta + nagłówek + treść) i zgłaszamy QualityIssue do przeglądu.
+    /// Działa na wyniku OBU ścieżek (HTML i PDF).
+    /// </summary>
+    private static void DisambiguateDuplicateUnits(List<DocumentSegment> segments, List<string> issues)
+    {
+        var dupes = segments
+            .Select((s, i) => (s, i))
+            .Where(x => x.s.Locator?.Article is not null)
+            .GroupBy(x => (x.s.Locator!.Article, x.s.Locator.Paragraph, x.s.Locator.Point))
+            .Where(g => g.Count() > 1)
+            .ToList();
+
+        foreach (var g in dupes)
+        {
+            var members = g.ToList();
+            var n = members.Count;
+            issues.Add($"Duplikat jednostki „{members[0].s.Label}” — {n} wersje (np. różne brzmienie czasowe); oznaczono wariantami.");
+            for (var k = 0; k < n; k++)
+            {
+                var (seg, idx) = members[k];
+                var suffix = $" (wariant {k + 1}/{n})";
+                var newHeader = (seg.ContextHeader ?? "") + suffix;
+                var nl = seg.Text.IndexOf('\n');
+                var newText = nl >= 0 ? newHeader + seg.Text[nl..] : newHeader + "\n" + seg.Text;
+                segments[idx] = seg with { Label = (seg.Label ?? "") + suffix, ContextHeader = newHeader, Text = newText };
+            }
+        }
     }
 
     /// <summary>Emituje segment(y) dla jednego § (unit_para): jeśli ma ≥2 punkty wyliczenia — wstęp + segment
