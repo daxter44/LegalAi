@@ -4,6 +4,7 @@
 @inject IChatService ChatService
 @inject IConversationStore Store
 @inject ICurrentUser CurrentUser
+@inject RateGuard RateGuard
 @implements IDisposable
 
 <h1 class="sr-only">Czat z asystentem prawnym</h1>
@@ -99,6 +100,10 @@
         }
     </div>
 
+    @if (_notice is not null)
+    {
+        <div class="banner banner-warn" role="status">@_notice</div>
+    }
     <form class="chat-input" @onsubmit="Send" @onsubmit:preventDefault>
         <textarea @bind="_input" @bind:event="oninput" @onkeydown="OnKeyDown"
                   placeholder="Zadaj pytanie prawne… (Ctrl+Enter wysyła)" rows="2" disabled="@_busy"
@@ -110,8 +115,10 @@
 </div>
 
 @code {
+    private const int MaxQuestionLen = 4000;
     private readonly List<Exchange> _exchanges = new();
     private string _input = "";
+    private string? _notice;
     private bool _busy;
     private Guid? _conversationId;
     private CancellationTokenSource? _cts;
@@ -125,6 +132,18 @@
     {
         var question = _input.Trim();
         if (question.Length == 0 || _busy) return;
+
+        _notice = null;
+        if (question.Length > MaxQuestionLen)
+        {
+            _notice = $"Pytanie jest za długie (limit {MaxQuestionLen} znaków).";
+            return;
+        }
+        if (!RateGuard.TryAcquire(CurrentUser.UserId))
+        {
+            _notice = "Za dużo zapytań w krótkim czasie — spróbuj ponownie za chwilę.";
+            return;
+        }
 
         _input = "";
         _busy = true;

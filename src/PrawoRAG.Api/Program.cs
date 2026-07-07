@@ -1,5 +1,8 @@
 using System.Text;
 using System.Text.Json;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using PrawoRAG.Api.Services;
 using PrawoRAG.Domain.Llm;
@@ -28,10 +31,40 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IConversationStore, ConversationStore>();
 builder.Services.AddHostedService<RetentionService>(); // retencja logów 6 mies. (C9/FE-4.4)
+
+// --- Hardening (FE-7) ---
+builder.Services.AddSingleton<RateGuard>(); // limiter kosztu ścieżki interaktywnej (Blazor/SignalR)
+// DataProtection: klucze trwałe (ustaw DataProtection:KeysPath na wolumen w deployu — inaczej po
+// restarcie psują się ciasteczka/sesje). Bez ścieżki = klucze efemeryczne (tylko dev).
+var dp = builder.Services.AddDataProtection().SetApplicationName("PrawoRAG");
+if (builder.Configuration["DataProtection:KeysPath"] is { Length: > 0 } keysPath)
+    dp.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+// Rate limiting HTTP dla /api/* (ścieżka interaktywna Blazora limitowana osobno przez RateGuard).
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddFixedWindowLimiter("api", opt => { opt.Window = TimeSpan.FromMinutes(1); opt.PermitLimit = 60; opt.QueueLimit = 0; });
+});
 if (builder.Environment.IsDevelopment())
     builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 
 var app = builder.Build();
+
+// Nagłówki bezpieczeństwa (C4). CSP dostrojony pod Blazor Server: skrypt frameworka z 'self',
+// websocket SignalR w connect-src, style inline (UI reconnect/scoped). TLS/HSTS — na reverse proxy (C11).
+app.Use(async (ctx, next) =>
+{
+    var h = ctx.Response.Headers;
+    h["X-Content-Type-Options"] = "nosniff";
+    h["X-Frame-Options"] = "DENY";
+    h["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    h["Content-Security-Policy"] =
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
+        "font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+    await next();
+});
+app.UseRateLimiter();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -53,7 +86,7 @@ app.MapPost("/api/search", async (SearchRequest req, IRetriever retriever, IOpti
         wouldAbstain = AbstentionPolicy.ShouldAbstain(result, opt.Value.AbstentionThreshold),
         chunks = result.Chunks.Select(c => new { c.Text, c.Section, c.Source, c.Title, c.SourceUrl, c.Score, c.Similarity, locator = GroundedPrompt.LocatorLabel(c) }),
     });
-});
+}).RequireRateLimiting("api");
 
 // --- Chat z ugruntowaniem (SSE) ---
 app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever retriever, ILlmProvider llm, IOptions<RetrievalOptions> opt, CancellationToken ct) =>
@@ -99,7 +132,7 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
     {
         await Send("error", new { message = ex.Message });
     }
-});
+}).RequireRateLimiting("api");
 
 app.MapRazorComponents<PrawoRAG.Api.Components.App>().AddInteractiveServerRenderMode();
 
