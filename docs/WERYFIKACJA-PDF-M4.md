@@ -133,6 +133,34 @@ Ingestion__Source=ELI Ingestion__Mode=fetch-process dotnet run --project src/Pra
 # ma zwrócić realny art. 93 KSH, nie klauzulę wejścia w życie.
 ```
 
+## Budowa pełnego korpusu v1 (zakres zablokowany)
+
+Zmierzone wolumeny i zakres: **ELI całość (13 988) + SN+TK+KIO całość (~70k) + COMMON 2008+ (~467k) ≈ 551k dok.**
+≈ 4,9 mln chunków ≈ ~27 GB DB. Embedding ~1 h / ~1 USD na GPU; fetch ~dzień (sieć, wznawialny). Walidacja
+per typ sądu: zaliczona (parser radzi sobie ze wszystkimi typami; puste `textContent` pomijane automatycznie).
+
+```bash
+# === FETCH (sieć, wznawialny — można na laptopie lub M4; NIE wymaga GPU/DB) ===
+# SAOS — 4 przebiegi (po jednym typie sądu), od 2008, bez MaxItems (całość):
+for CT in COMMON SUPREME CONSTITUTIONAL_TRIBUNAL NATIONAL_APPEAL_CHAMBER; do
+  Ingestion__Source=SAOS Ingestion__Mode=fetch \
+  Saos__CourtType=$CT Saos__CcCourtType= Saos__JudgmentDateFrom=2008-01-01 \
+    dotnet run --project src/PrawoRAG.Ingestion -c Release
+done
+# ELI — pełny zakres (born-PDF 2025+ wchodzą, connector bierze najnowszy t.j.):
+Ingestion__Source=ELI Ingestion__Mode=fetch \
+  Eli__Discover__Enabled=true Eli__Discover__YearFrom=1994 Eli__Discover__YearTo=2026 \
+    dotnet run --project src/PrawoRAG.Ingestion -c Release
+
+# === PROCESS = chunk + embedding → Postgres (wymaga TEI/Metal + Postgres) ===
+# Powtarzalne po zmianie kodu bez ponownego fetchu; pomija niezmienione (content_hash).
+Ingestion__Source=SAOS Ingestion__Mode=process dotnet run --project src/PrawoRAG.Ingestion -c Release
+Ingestion__Source=ELI  Ingestion__Mode=process dotnet run --project src/PrawoRAG.Ingestion -c Release
+```
+Wskazówki: fetch wznawialny — magazyn `data/raw/` pomija już pobrane (idempotencja po ExternalId).
+Najpierw puść `process` na małym wycinku (walidacja embeddingu na Metal), potem pełny na wynajętym GPU.
+Magazyn `data/raw/` przenieś między maszynami (zip/rsync), by nie pobierać dwa razy.
+
 ## Co zgłosić z powrotem (zwięźle)
 1. Raport (A): czy `bez_segmentów=0` i `błędy=0` na mieszanych typach? Które typy sprawdzone.
 2. Born-PDF nie-obwieszczenie: czy preambuła jest poprawnie pomijana (albo `ExternalId` defektu)?
