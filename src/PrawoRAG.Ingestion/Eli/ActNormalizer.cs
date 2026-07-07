@@ -24,6 +24,10 @@ public sealed class ActNormalizer : IDocumentNormalizer
 {
     public string DocType => DocTypes.Act;
 
+    // Domknięcie predykatu XPath: „…i NIE jest tekstem cytowanym (pro-cite-text z preambuły obwieszczenia)".
+    private const string NotCited =
+        " and not(contains(concat(' ', normalize-space(@class), ' '), ' pro-cite-text '))]";
+
     private static readonly Regex ArtRe = new(@"Art\.\s*(\d+[a-zA-Z]*)", RegexOptions.Compiled);
     private static readonly Regex ParaRe = new(@"§\s*(\d+[a-zA-Z]*)", RegexOptions.Compiled);
     private static readonly Regex PointRe = new(@"^(\d+[a-zA-Z]*)\)", RegexOptions.Compiled);
@@ -95,8 +99,12 @@ public sealed class ActNormalizer : IDocumentNormalizer
         doc.LoadHtml(html);
 
         // Artykuł = div z klasą-tokenem „unit_arti" (dopasowanie po całym tokenie, nie podłańcuchu).
+        // WYKLUCZAMY „pro-cite-text": to fragmenty CYTOWANE w preambule obwieszczenia (rejestr zmian
+        // przywołuje przepisy ustaw nowelizujących). Mają te same numery co prawdziwe artykuły z załącznika
+        // (np. „Art. 93" = klauzula wejścia w życie obcej ustawy vs realny art. 93 aktu) → bez wykluczenia
+        // fałszywa treść trafia do bazy pod numerem prawdziwego przepisu. Prawdziwy tekst = „pro-text".
         var articleNodes = doc.DocumentNode.SelectNodes(
-            "//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_arti ')]");
+            "//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_arti ')" + NotCited);
         var shortTitle = ShortTitle(title);
 
         foreach (var node in articleNodes ?? Enumerable.Empty<HtmlNode>())
@@ -139,7 +147,7 @@ public sealed class ActNormalizer : IDocumentNormalizer
         if (segments.Count == 0)
         {
             var topParas = doc.DocumentNode.SelectNodes(
-                "//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_para ')]");
+                "//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_para ')" + NotCited);
             foreach (var para in topParas ?? Enumerable.Empty<HtmlNode>())
                 EmitParagraph(segments, full, para, article: null, ChapterTitle(para),
                     shortTitle, eliId, displayAddress, htmlIdFallback: null, sourceUrl);
