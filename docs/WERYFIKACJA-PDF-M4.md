@@ -116,7 +116,14 @@ samych numerach co prawdziwe artykuły z załącznika → oba trafiały do bazy 
 Zmierzone kolizje: KSH 8, ustrój sądów powszechnych 9, obrót instrumentami 12. Fix: `ActNormalizer` bierze
 tylko `pro-text`. Regresja w testach.
 
-**Do re-weryfikacji na M4:** przetwórz ponownie te 3 akty i potwierdź, że fałszywe fragmenty zniknęły:
+**Bug #2 — duplikat tej samej normy (naprawiony, commit `fix(eli): rozróżnij duplikaty…`).** W ustroju
+sądów powszechnych `Art. 175da` wystąpił dwukrotnie — OBA `pro-text`: jeden obowiązujący, drugi wchodzący
+w życie 14 marca 2024. To ta sama norma w dwóch brzmieniach czasowych (mniej groźne niż #1, ale wciąż dwa
+chunki pod jednym numerem). Fix: `ActNormalizer.DisambiguateDuplicateUnits` — nie usuwa (który wariant
+obowiązuje zależy od daty), lecz oznacza „(wariant k/n)" i zgłasza QualityIssue. Działa na obu ścieżkach.
+
+**Do re-weryfikacji na M4:** przetwórz ponownie te 3 akty i potwierdź, że (a) fałszywe cytaty zniknęły
+oraz (b) artykuły w dwóch brzmieniach są oznaczone „(wariant k/n)", nie zdublowane pod gołym numerem:
 ```bash
 # fetch+process KSH (DU/2000/1037), ustrój sądów powszechnych, obrót instrumentami
 # — dodaj ich adresy do Eli:Acts albo pobierz przez discovery, potem:
