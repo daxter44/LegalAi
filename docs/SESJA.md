@@ -15,6 +15,11 @@ MVP zbudowane i przetestowane w warstwie ingestii i retrievalu/czatu:
   (domyślnie 45s) zamiast domyślnych 10s resilience handlera.
 - ✅ **E2 — akty ELI/ISAP** (2026-07): kodeksy KK/KPK/KC/KPC przez API Sejm (`EliSejmConnector` +
   `ActNormalizer`, artykuł=chunk z lokalizatorem `eli_id`+`article`). Fetch: `Ingestion__Source=ELI`.
+- ✅ **Ścieżka PDF — aktualność prawa** (2026-07): ELI od stycznia 2025 nie publikuje HTML (a `text.html`
+  kodeksów jest przestarzały — art. 37 KK „15 lat" sprzed reformy X 2023). Connector rozwiązuje treść do
+  **najnowszego tekstu jednolitego** (HTML gdy jest, inaczej PDF przez PdfPig, bez OCR); `ActTextParser`
+  segmentuje płaski tekst; discovery bez wymogu HTML → **13 988 aktów** (born-PDF 2025+ włączone).
+  **Do weryfikacji na M4** (pełny stack): [WERYFIKACJA-PDF-M4.md](WERYFIKACJA-PDF-M4.md).
 - **40 testów zielonych** (T-NORM, T-CHUNK, T-IDEM na żywym PG, T-ABST, T-FABR + round-trip magazynu,
   fetch/process, SSE lokalnego LLM, T-ACT + integracyjny aktu).
 - Smoke end-to-end: realne orzeczenia apelacyjne przeszły cały pipeline; `/api/search` i `/api/chat` działają.
