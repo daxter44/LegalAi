@@ -2,11 +2,13 @@
 @rendermode InteractiveServer
 @using PrawoRAG.Llm.Grounding
 @using PrawoRAG.Domain.Llm
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IChatService ChatService
 @inject IConversationStore Store
 @inject ICurrentUser CurrentUser
 @inject RateGuard RateGuard
 @inject CostGuard CostGuard
+@inject AuthenticationStateProvider AuthState
 @implements IDisposable
 
 <h1 class="sr-only">Czat z asystentem prawnym</h1>
@@ -146,13 +148,24 @@
     private bool _busy;
     private Guid? _conversationId;
     private CancellationTokenSource? _cts;
+    private string _userId = "demo@local";
 
-    protected override async Task OnInitializedAsync() => await RefreshConversationsAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        // Tożsamość z AuthenticationState (niezawodna w obwodzie Blazora), NIE z IHttpContextAccessor —
+        // akcesor bywa null w interaktywnym renderowaniu (rekonekty, inne wątki) i cichy fallback na
+        // wspólny placeholder MIESZAŁBY rozmowy i limity testerów. Rozwiązana RAZ na obwód.
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name }
+            ? name
+            : CurrentUser.UserId; // bramka wyłączona (dev/M4) → placeholder jak dotąd
+        await RefreshConversationsAsync();
+    }
 
     /// <summary>Lista rozmów w sidebarze — best-effort (brak bazy nie blokuje czatu).</summary>
     private async Task RefreshConversationsAsync()
     {
-        try { _conversations = (await Store.ListConversationsAsync(CurrentUser.UserId, 50, CancellationToken.None)).ToList(); }
+        try { _conversations = (await Store.ListConversationsAsync(_userId, 50, CancellationToken.None)).ToList(); }
         catch { /* best-effort */ }
     }
 
@@ -171,7 +184,7 @@
     {
         if (_busy || id == _conversationId) return;
         List<StoredMessage> messages;
-        try { messages = (await Store.GetMessagesAsync(id, CurrentUser.UserId, CancellationToken.None)).ToList(); }
+        try { messages = (await Store.GetMessagesAsync(id, _userId, CancellationToken.None)).ToList(); }
         catch { _notice = "Nie udało się wczytać rozmowy."; return; }
         if (messages.Count == 0) return; // nie istnieje albo nie moja
 
@@ -230,13 +243,13 @@
             _notice = $"Pytanie jest za długie (limit {MaxQuestionLen} znaków).";
             return;
         }
-        if (!RateGuard.TryAcquire(CurrentUser.UserId))
+        if (!RateGuard.TryAcquire(_userId))
         {
             _notice = "Za dużo zapytań w krótkim czasie — spróbuj ponownie za chwilę.";
             return;
         }
         // Twardy dzienny cap kosztów LLM (3.7) — obok okna minutowego RateGuard.
-        if (!CostGuard.TryAcquire(CurrentUser.UserId, out var limitReason))
+        if (!CostGuard.TryAcquire(_userId, out var limitReason))
         {
             _notice = CostGuard.LimitMessage(limitReason);
             return;
@@ -262,7 +275,7 @@
         var ct = _cts.Token;
 
         // Persystencja jest best-effort — awaria zapisu NIE blokuje odpowiedzi.
-        _conversationId ??= await Try(() => Store.CreateConversationAsync(CurrentUser.UserId, question, ct));
+        _conversationId ??= await Try(() => Store.CreateConversationAsync(_userId, question, ct));
         if (_conversationId is { } cid) await Try(() => Store.AddUserMessageAsync(cid, question, ct));
 
         try
@@ -285,7 +298,7 @@
         finally
         {
             ex.Streaming = false;
-            CostGuard.Record(CurrentUser.UserId, ex.Answer.Length); // dolicz wyjście do dziennego budżetu
+            CostGuard.Record(_userId, ex.Answer.Length); // dolicz wyjście do dziennego budżetu
             if (_conversationId is { } cid2)
             {
                 var content = ex.Abstained ? (ex.AbstainMessage ?? "") : ex.Answer;
@@ -303,7 +316,7 @@
         if (ex.MessageId is not { } mid || ex.FeedbackGiven is not null) return;
         try
         {
-            await Store.AddFeedbackAsync(mid, CurrentUser.UserId, verdict, null, CancellationToken.None);
+            await Store.AddFeedbackAsync(mid, _userId, verdict, null, CancellationToken.None);
             ex.FeedbackGiven = verdict;
         }
         catch { /* feedback best-effort */ }

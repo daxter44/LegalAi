@@ -117,6 +117,12 @@ public sealed class ConversationStore(IServiceScopeFactory scopeFactory) : IConv
     public async Task AddFeedbackAsync(Guid messageId, string userId, string verdict, string? note, CancellationToken ct)
     {
         await using var db = Db();
+        // Ocena tylko WŁASNEJ wiadomości (spójnie z odczytem: filtr po UserId po stronie serwera) —
+        // cudzy messageId nie zaśmieca danych kalibracyjnych.
+        var owns = await db.Messages.AnyAsync(
+            m => m.Id == messageId && m.Conversation!.UserId == userId, ct);
+        if (!owns) return;
+
         db.Feedbacks.Add(new FeedbackEntity
         {
             Id = Guid.CreateVersion7(), MessageId = messageId, UserId = userId,
