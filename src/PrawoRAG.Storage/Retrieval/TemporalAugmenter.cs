@@ -88,6 +88,7 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
             Locator = ch.Locator is null ? null : ch.Locator.Deserialize<CitationLocator>(),
             Score = double.MaxValue, // świeża nowela — prominentnie
             Similarity = null,
+            AmendmentEffectiveDate = am.EffectiveDate, // AKT-4: pod chip w UI, niezależnie od markera w Text
         };
     }
 }

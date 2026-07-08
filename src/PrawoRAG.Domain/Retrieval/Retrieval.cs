@@ -47,6 +47,10 @@ public sealed record RetrievedChunk
 
     /// <summary>Score rerankera (cross-encoder), jeśli reranking był włączony. Null = bez rerankingu.</summary>
     public double? RerankScore { get; init; }
+
+    /// <summary>AKT-4: data wejścia w życie, gdy chunk to fragment nowelizacji NIEWCHŁONIĘTEJ do tekstu
+    /// jednolitego (dołożony przez <see cref="ITemporalAugmenter"/>). Null = zwykłe źródło.</summary>
+    public string? AmendmentEffectiveDate { get; init; }
 }
 
 /// <summary>Wynik retrievalu + najwyższe podobieństwo (sygnał dla bramki abstynencji).</summary>

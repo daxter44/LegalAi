@@ -54,6 +54,7 @@ body {
 .badge { font-size: var(--fs-12); padding: 1px var(--s-2); border-radius: 999px; font-weight: 600; }
 .badge-ok { background: var(--c-ok-weak); color: var(--c-ok); }
 .badge-danger { background: var(--c-danger-weak); color: var(--c-danger); }
+.badge-warn { background: var(--c-warn-weak); color: var(--c-warn); }
 
 /* Banery stanu */
 .banner { padding: var(--s-3) var(--s-4); border-radius: var(--radius-sm); font-size: var(--fs-14); }

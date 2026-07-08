@@ -5,8 +5,9 @@ using PrawoRAG.Domain.Retrieval;
 
 namespace PrawoRAG.Llm.Grounding;
 
-/// <summary>Źródło pokazywane użytkownikowi i numerowane [n] w prompcie/odpowiedzi.</summary>
-public sealed record SourceRef(int Index, string Label, string Title, string? SourceUrl, string Snippet);
+/// <summary>Źródło pokazywane użytkownikowi i numerowane [n] w prompcie/odpowiedzi. AKT-4:
+/// <see cref="AmendmentEffectiveDate"/> niepuste ⇔ fragment nowelizacji niewchłoniętej do t.j. (chip w UI).</summary>
+public sealed record SourceRef(int Index, string Label, string Title, string? SourceUrl, string Snippet, string? AmendmentEffectiveDate = null);
 
 /// <summary>
 /// Buduje ugruntowany prompt: twardy system prompt (odpowiadaj tylko ze źródeł, cytuj [n],
@@ -43,7 +44,7 @@ public static class GroundedPrompt
         {
             var n = i + 1;
             var label = LocatorLabel(chunks[i]);
-            sources.Add(new SourceRef(n, label, chunks[i].Title, chunks[i].SourceUrl, Snippet(chunks[i].Text)));
+            sources.Add(new SourceRef(n, label, chunks[i].Title, chunks[i].SourceUrl, Snippet(chunks[i].Text), chunks[i].AmendmentEffectiveDate));
             sb.Append('[').Append(n).Append("] ").Append(label).Append('\n')
               .Append(chunks[i].Text).Append("\n\n");
         }

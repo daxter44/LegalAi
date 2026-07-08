@@ -42,7 +42,7 @@ public sealed class ChatService(
 
         var (request, sources) = GroundedPrompt.Build(question, chunks);
         yield return new SourcesEvent(sources
-            .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet)).ToList());
+            .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet, s.AmendmentEffectiveDate)).ToList());
 
         var full = new StringBuilder();
         await foreach (var delta in llm.StreamCompletionAsync(request, ct))

@@ -79,3 +79,28 @@ public class CitationValidatorTests
         Assert.True(check.IsClean);
     }
 }
+
+/// <summary>AKT-4: AmendmentEffectiveDate z RetrievedChunk trafia do SourceRef (chip w UI).</summary>
+public class GroundedPromptAmendmentTests
+{
+    private static RetrievedChunk Chunk(string text, string? amendmentDate = null) => new()
+    {
+        Text = text, Source = "ELI", DocType = "act", Title = "t", Score = 1,
+        AmendmentEffectiveDate = amendmentDate,
+    };
+
+    [Fact] // zwykłe źródło → brak daty nowelizacji w SourceRef
+    public void Regular_source_has_no_amendment_date()
+    {
+        var (_, sources) = GroundedPrompt.Build("pytanie", [Chunk("treść przepisu")]);
+        Assert.Null(sources[0].AmendmentEffectiveDate);
+    }
+
+    [Fact] // źródło dołożone przez TemporalAugmenter → data przechodzi do SourceRef
+    public void Amendment_source_carries_effective_date()
+    {
+        var (_, sources) = GroundedPrompt.Build("pytanie",
+            [Chunk("[NOWELIZACJA — obowiązuje od 2026-07-08...]\ntreść zmiany", "2026-07-08")]);
+        Assert.Equal("2026-07-08", sources[0].AmendmentEffectiveDate);
+    }
+}

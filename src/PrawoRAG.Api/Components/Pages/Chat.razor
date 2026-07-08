@@ -64,6 +64,10 @@
                                     <div class="source-head">
                                         <span class="source-n">[@s.Index]</span>
                                         <span class="source-label">@s.Label</span>
+                                        @if (!string.IsNullOrWhiteSpace(s.AmendmentEffectiveDate))
+                                        {
+                                            <span class="badge badge-warn" title="Fragment nowelizacji jeszcze niewchłoniętej do tekstu jednolitego">🕓 nowelizacja — obowiązuje od @s.AmendmentEffectiveDate</span>
+                                        }
                                         @if (!string.IsNullOrWhiteSpace(s.Url))
                                         {
                                             <a class="source-link" href="@s.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
