@@ -160,6 +160,12 @@
             ? name
             : CurrentUser.UserId; // bramka wyłączona (dev/M4) → placeholder jak dotąd
         await RefreshConversationsAsync();
+
+        // AUTO-WZNOWIENIE ostatniej rozmowy. _conversationId żyje w pamięci obwodu — odświeżenie strony,
+        // rekonekt SignalR albo wejście na /o-systemie i powrót NISZCZĄ komponent; bez wznowienia każde
+        // kolejne pytanie zakładało NOWĄ rozmowę (sidebar puchł wpisem per pytanie). „Nowa rozmowa"
+        // jawnie zaczyna od zera.
+        if (_conversations.Count > 0) await LoadConversation(_conversations[0].Id);
     }
 
     /// <summary>Lista rozmów w sidebarze — best-effort (brak bazy nie blokuje czatu).</summary>
