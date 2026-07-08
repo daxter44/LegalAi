@@ -13,14 +13,21 @@ bez świeżych źródeł → cicho łamie gwarancję ugruntowania (rdzeń produk
 
 ## Rozwiązanie (Krok 1 — deterministyczna heurystyka, bez dodatkowego wywołania LLM)
 
-### Retrieval: dwa warianty, wygrywa silniejszy sygnał
+### Retrieval: dwa warianty, wybór ASYMETRYCZNY z marginesem
 Przy follow-upie (`history.Count > 0`) retrieval liczony 2x, SEKWENCYJNIE (wspólny scoped DbContext
 nie jest thread-safe):
 - (a) samo nowe pytanie,
 - (b) `FollowUpQuery.Contextualize` — 2 ostatnie poprzednie pytania użytkownika + bieżące, sklejone.
 
-Wygrywa wynik z wyższym `MaxSimilarity` (przy rerankerze = top-score rerankera); remis → surowe
-(zmiana tematu nie jest skażona starym tematem). **Bramka abstynencji liczona z WYBRANEGO wyniku.**
+**Wybór (`FollowUpQuery.PickContextual`): kontekstowy wygrywa, chyba że surowy pobije go o margines**
+(`Retrieval:FollowUpSignalMargin`, domyślnie 0.02). Symetryczne „wygrywa wyższy sygnał" NIE działa —
+zmierzone na M4: surowe „a co z § 2?" miało cosine 0.879 do PRZYPADKOWYCH fragmentów (krótkie pytanie
+bez treści ma wysokie cosine do wszystkiego), kontekstowe 0.879 do właściwego art. 367; różnica 8e-6
+to szum, a ostre `>` wybierało gorszy wariant. Asymetria odzwierciedla koszty pomyłek: fałszywe SUROWE
+= źródła-śmieci albo fałszywa odmowa (psuje funkcję); fałszywe KONTEKSTOWE = sklejony tekst i tak
+zawiera całe nowe pytanie, do promptu idzie oryginał — degradacja łagodna. Sam mechanizm istnieje,
+BO dopytanie nie niesie treści — porównanie łeb w łeb temu przeczyło.
+**Bramka abstynencji liczona z WYBRANEGO wyniku.**
 
 **Synergia za darmo:** sklejony tekst niesie cytaty z historii („art. 367 KPC") → retrieval
 strukturalny (QU-3) i `TemporalAugmenter` (nowele, AKT-2) działają na follow-upach bez zmian

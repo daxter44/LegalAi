@@ -108,7 +108,7 @@ public class ChatServiceFollowUpTests
     [Fact]
     public async Task Topic_switch_raw_question_wins()
     {
-        // Nowy temat: surowe pytanie retrievuje mocniej niż rozmyte sklejenie — brak skażenia starym tematem.
+        // Nowy temat: surowe pytanie retrievuje mocniej O WIĘCEJ NIŻ MARGINES — brak skażenia starym tematem.
         var retriever = new FakeRetriever(q => q.StartsWith("jaka kara") ? 0.85 : 0.60);
         var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
         var history = new[] { new ChatTurn("co mówi art. 367 KPC?", "Art. 367 stanowi…") };
@@ -117,6 +117,21 @@ public class ChatServiceFollowUpTests
 
         Assert.Equal(2, retriever.Queries.Count);
         Assert.Equal("jaka kara grozi za zabójstwo?", augmenter.LastQueryText); // wygrało surowe
+    }
+
+    [Fact]
+    public async Task Noise_level_raw_advantage_does_not_beat_contextual()
+    {
+        // Regresja z M4: surowe „a co z § 2?" miało cosine 0.879008 do PRZYPADKOWYCH fragmentów,
+        // kontekstowe 0.879000 do właściwego art. 367 — różnica 8e-6 to szum, a ostre `>` wybierało
+        // gorszy surowy wariant. Z marginesem wygrywa kontekstowe.
+        var retriever = new FakeRetriever(q => q.Contains("art. 367") ? 0.879000 : 0.879008);
+        var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
+        var history = new[] { new ChatTurn("co mówi art. 367 KPC?", "Art. 367 stanowi…") };
+
+        await Drain(Service(retriever, augmenter, llm).AskAsync("a co z § 2?", history, default));
+
+        Assert.Equal("co mówi art. 367 KPC? a co z § 2?", augmenter.LastQueryText); // kontekstowe mimo niższego sygnału
     }
 
     [Fact]

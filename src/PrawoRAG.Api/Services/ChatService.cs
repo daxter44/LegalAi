@@ -27,9 +27,11 @@ public sealed class ChatService(
         };
 
         // Follow-upy: dopytanie („a co z § 2?") samo embeduje się bezwartościowo. Retrieval liczony 2x —
-        // (a) samo pytanie, (b) pytanie + poprzednie pytania użytkownika sklejone; wygrywa silniejszy sygnał.
-        // SEKWENCYJNIE (wspólny scoped DbContext nie jest thread-safe). Sklejony tekst niesie cytaty
-        // z historii („art. 367 KPC") → retrieval strukturalny (QU) i augmenter działają na follow-upach.
+        // (a) samo pytanie, (b) pytanie + poprzednie pytania użytkownika sklejone. Wybór ASYMETRYCZNY
+        // z marginesem (FollowUpQuery.PickContextual): różnice sygnału bywają szumem rzędu 1e-6, a koszt
+        // fałszywego surowego (śmieciowe źródła) >> koszt fałszywego kontekstowego. SEKWENCYJNIE (wspólny
+        // scoped DbContext nie jest thread-safe). Sklejony tekst niesie cytaty z historii („art. 367 KPC")
+        // → retrieval strukturalny (QU) i augmenter działają na follow-upach.
         var query = Query(question);
         var result = await retriever.RetrieveAsync(query, ct);
         if (history.Count > 0)
@@ -37,7 +39,8 @@ public sealed class ChatService(
             var ctxText = FollowUpQuery.Contextualize(history.Select(t => t.Question).ToList(), question);
             var ctxQuery = Query(ctxText);
             var ctxResult = await retriever.RetrieveAsync(ctxQuery, ct);
-            if (ctxResult.MaxSimilarity > result.MaxSimilarity) (query, result) = (ctxQuery, ctxResult); // remis → surowe
+            if (FollowUpQuery.PickContextual(result.MaxSimilarity, ctxResult.MaxSimilarity, o.FollowUpSignalMargin))
+                (query, result) = (ctxQuery, ctxResult);
         }
 
         // BRAMKA ABSTYNENCJI — brak pokrycia w źródłach → nie generujemy.

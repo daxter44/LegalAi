@@ -109,8 +109,10 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
             .Select(t => new ChatTurn(t.Question, t.Answer))
             .ToList();
 
-        // Follow-upy (parytet z UI/ChatService): retrieval 2x — samo pytanie vs pytanie + poprzednie pytania
-        // użytkownika; wygrywa silniejszy sygnał. Sekwencyjnie (scoped DbContext nie jest thread-safe).
+        // Follow-upy (parytet z UI/ChatService): retrieval 2x — samo pytanie vs pytanie + poprzednie
+        // pytania użytkownika. Wybór ASYMETRYCZNY z marginesem (FollowUpQuery.PickContextual): różnice
+        // sygnału bywają szumem rzędu 1e-6, a koszt fałszywego surowego (śmieciowe źródła) >> koszt
+        // fałszywego kontekstowego. Sekwencyjnie (scoped DbContext nie jest thread-safe).
         var q = ToQuery(req.Question, req.Filters, o.TopK, o);
         var result = await retriever.RetrieveAsync(q, ct);
         if (history.Count > 0)
@@ -118,7 +120,8 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
             var ctxText = FollowUpQuery.Contextualize(history.Select(t => t.Question).ToList(), req.Question);
             var ctxQuery = ToQuery(ctxText, req.Filters, o.TopK, o);
             var ctxResult = await retriever.RetrieveAsync(ctxQuery, ct);
-            if (ctxResult.MaxSimilarity > result.MaxSimilarity) (q, result) = (ctxQuery, ctxResult); // remis → surowe
+            if (FollowUpQuery.PickContextual(result.MaxSimilarity, ctxResult.MaxSimilarity, o.FollowUpSignalMargin))
+                (q, result) = (ctxQuery, ctxResult);
         }
 
         // BRAMKA ABSTYNENCJI — rdzeń wartości: brak pokrycia → nie generujemy.
@@ -188,4 +191,8 @@ public sealed class RetrievalOptions
 
     /// <summary>Minimalna liczba tokenów chunka w retrievalu (odsiew zdegenerowanych mini-chunków).</summary>
     public int MinChunkTokens { get; set; } = 20;
+
+    /// <summary>Margines sygnału przy follow-upach: surowe dopytanie musi pobić wariant kontekstowy
+    /// o tyle, żeby wygrać (różnice rzędu 1e-6 to szum — patrz <see cref="FollowUpQuery"/>).</summary>
+    public double FollowUpSignalMargin { get; set; } = FollowUpQuery.DefaultSignalMargin;
 }
