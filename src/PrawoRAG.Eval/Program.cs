@@ -32,6 +32,7 @@ builder.Services.AddTeiEmbeddings(builder.Configuration);
 builder.Services.AddPrawoRagLlm(builder.Configuration);
 builder.Services.AddTeiReranker(builder.Configuration);  // IReranker tylko gdy Reranker:Enabled=true
 builder.Services.AddScoped<IRetriever, HybridRetriever>();
+builder.Services.AddScoped<ITemporalAugmenter, TemporalAugmenter>(); // AKT-2: dokłada świeże nowele (parytet z /api/chat)
 
 using var host = builder.Build();
 var cfg = host.Services.GetRequiredService<IConfiguration>();
@@ -53,11 +54,19 @@ foreach (var item in items)
 {
     using var scope = host.Services.CreateScope();
     var retriever = scope.ServiceProvider.GetRequiredService<IRetriever>();
-    var res = await retriever.RetrieveAsync(
-        new RetrievalQuery { Text = item.Question, TopK = topK, MinChunkTokens = minChunkTokens }, default);
+    var query = new RetrievalQuery { Text = item.Question, TopK = topK, MinChunkTokens = minChunkTokens };
+    var res = await retriever.RetrieveAsync(query, default);
 
+    // AKT-2/6: augmentacja temporalna (parytet z /api/chat) — dokłada niewchłonięte nowele do źródeł.
+    // Best-effort: brak nowel/awaria nie psuje ewaluacji. Score „Freshness" liczy się z augmentowanych źródeł.
+    var augmenter = scope.ServiceProvider.GetRequiredService<ITemporalAugmenter>();
+    IReadOnlyList<RetrievedChunk> amend = [];
+    try { amend = await augmenter.AugmentAsync(query, res.Chunks, default); } catch { /* best-effort */ }
+    var chunks = amend.Count > 0 ? res.Chunks.Concat(amend).ToList() : res.Chunks;
+
+    // Abstynencja liczona z SUROWEGO retrievalu (augmentacja tylko dokłada, nie zmienia bramki progu).
     var wouldAbstain = AbstentionPolicy.ShouldAbstain(res, threshold);
-    var retrieved = res.Chunks
+    var retrieved = chunks
         .Select(c => new RetrievedLocator(c.Locator?.EliId, c.Locator?.Article, c.Locator?.CaseNumber))
         .ToList();
 
@@ -68,7 +77,7 @@ foreach (var item in items)
         else
         {
             var llm = scope.ServiceProvider.GetRequiredService<ILlmProvider>();
-            var (req, sources) = GroundedPrompt.Build(item.Question, res.Chunks);
+            var (req, sources) = GroundedPrompt.Build(item.Question, chunks);
             var sb = new StringBuilder();
             await foreach (var d in llm.StreamCompletionAsync(req, default)) sb.Append(d);
             var answer = sb.ToString();

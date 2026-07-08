@@ -65,6 +65,48 @@ public class EvalScorerTests
     }
 
     [Fact]
+    public void Freshness_hit_when_expected_amendment_in_sources()
+    {
+        var item = new GoldenItem
+        {
+            Id = "f", Question = "q", Category = GoldenCategory.Freshness, ShouldAbstain = false,
+            ExpectedAmendmentEli = "DU/2026/473", NeedsLawyer = true,
+        };
+        // Źródła po augmentacji: akt bazowy + niewchłonięta nowela → trafienie świeżości.
+        var hit = EvalScorer.Score(item, Obs(false, 0.8,
+            new RetrievedLocator("DU/1964/296", "367", null),
+            new RetrievedLocator("DU/2026/473", null, null)));
+        Assert.True(hit.FreshnessHit);
+        // NeedsLawyer NIE wyłącza świeżości (obiektywna: obecność noweli), ale wyłącza recall.
+        Assert.Null(hit.RetrievalHit);
+
+        // Bez noweli w źródłach → miss (regresja augmentera/świeżości).
+        var miss = EvalScorer.Score(item, Obs(false, 0.8, new RetrievedLocator("DU/1964/296", "367", null)));
+        Assert.False(miss.FreshnessHit);
+    }
+
+    [Fact]
+    public void Freshness_not_scored_without_expected_amendment()
+    {
+        var item = new GoldenItem { Id = "f", Question = "q", Category = GoldenCategory.Freshness, ShouldAbstain = false };
+        Assert.Null(EvalScorer.Score(item, Obs(false, 0.8)).FreshnessHit);
+    }
+
+    [Fact]
+    public void Aggregate_computes_freshness_recall()
+    {
+        var verdicts = new[]
+        {
+            new ItemVerdict("f1", GoldenCategory.Freshness, 0.80, null, true, null, null, FreshnessHit: true),
+            new ItemVerdict("f2", GoldenCategory.Freshness, 0.75, null, true, null, null, FreshnessHit: false),
+            new ItemVerdict("i",  GoldenCategory.InCorpus,  0.70, RetrievalHit: true, AbstentionCorrect: true, NoHallucination: null, ChatAbstentionCorrect: null),
+        };
+        var r = EvalScorer.Aggregate(verdicts, 0.55);
+        Assert.Equal(0.5, r.FreshnessRecall);  // 1 z 2 pozycji Freshness
+        Assert.Equal(2, r.ScoredFreshness);
+    }
+
+    [Fact]
     public void Aggregate_computes_metrics()
     {
         var verdicts = new[]

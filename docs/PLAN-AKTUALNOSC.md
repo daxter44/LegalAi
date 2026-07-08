@@ -84,7 +84,12 @@ PO zmianie, cytując oba. Świeżość korpusu utrzymuje **codzienny delta-sync 
   okno ≤1 dzień). Odświeżanie payloadu w raw-store poza zakresem.
 
 ### AKT-6 — Pomiar (E5)
-- [AKT-6.1] Golden set: kategoria `Freshness` — pytanie o przepis z niewchłoniętą nowelą; oczekiwane: nowela w źródłach + poprawne zestawienie. *Kryt.: mierzone przed/po; strażnik regresji.*
+- [AKT-6.1] ✅ Golden set: kategoria `Freshness` — pytanie o przepis z niewchłoniętą nowelą. Harness Eval
+  wpina `TemporalAugmenter` po retrievalu (parytet z `/api/chat`) i scoruje **obiektywne**: metryka
+  `FreshnessRecall` = czy oczekiwana nowela (`ExpectedAmendmentEli`) jest w źródłach po augmentacji. „Poprawne
+  zestawienie" stary↔nowy stan jest niuansowe → `needsLawyer` (nie scorujemy automatycznie). Strażnik regresji
+  augmentera (AKT-2) i świeżości (AKT-5): mierzone przed/po. Wpis `fresh-kpc-nowela` (KPC + nowela po t.j.) —
+  pytany artykuł i dokładny ELI noweli do potwierdzenia na M4 (runbook Krok 3/4), potem korekta `expected*`.
 
 ## Kolejność
 

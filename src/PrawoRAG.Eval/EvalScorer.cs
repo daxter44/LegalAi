@@ -26,7 +26,14 @@ public static class EvalScorer
         if (!item.NeedsLawyer && obs.Abstained is not null)
             chatAbstentionCorrect = obs.Abstained.Value == item.ShouldAbstain;
 
-        return new ItemVerdict(item.Id, item.Category, obs.MaxSimilarity, hit, abstentionCorrect, noHallucination, chatAbstentionCorrect);
+        // Świeżość (AKT): dla pozycji Freshness z oczekiwaną nowelą — czy nowela jest wśród źródeł PO augmentacji.
+        // Obiektywne (obecność), nie merytoryczne („zestawienie" ocenia prawnik).
+        bool? freshnessHit = null;
+        if (item.Category == GoldenCategory.Freshness && item.ExpectedAmendmentEli is not null)
+            freshnessHit = obs.Retrieved.Any(r =>
+                string.Equals(r.Eli, item.ExpectedAmendmentEli, StringComparison.OrdinalIgnoreCase));
+
+        return new ItemVerdict(item.Id, item.Category, obs.MaxSimilarity, hit, abstentionCorrect, noHallucination, chatAbstentionCorrect, freshnessHit);
     }
 
     private static bool HasExpected(GoldenItem i) =>
@@ -52,8 +59,10 @@ public static class EvalScorer
         var withHit = verdicts.Where(v => v.RetrievalHit is not null).ToList();
         var traps = verdicts.Where(v => v.NoHallucination is not null).ToList();
         var chat = verdicts.Where(v => v.ChatAbstentionCorrect is not null).ToList();
-        var inSims = verdicts.Where(v => v.Category == GoldenCategory.InCorpus).Select(v => v.MaxSimilarity).ToList();
-        var outSims = verdicts.Where(v => v.Category != GoldenCategory.InCorpus).Select(v => v.MaxSimilarity).ToList();
+        var fresh = verdicts.Where(v => v.FreshnessHit is not null).ToList();
+        // Freshness dzieli z InCorpus oczekiwanie „mamy odpowiedź" (nie abstynencja) → do puli „w korpusie".
+        var inSims = verdicts.Where(v => v.Category is GoldenCategory.InCorpus or GoldenCategory.Freshness).Select(v => v.MaxSimilarity).ToList();
+        var outSims = verdicts.Where(v => v.Category is not (GoldenCategory.InCorpus or GoldenCategory.Freshness)).Select(v => v.MaxSimilarity).ToList();
 
         return new EvalReport
         {
@@ -63,11 +72,13 @@ public static class EvalScorer
             AbstentionAccuracy = verdicts.Count == 0 ? 0 : verdicts.Count(v => v.AbstentionCorrect) / (double)verdicts.Count,
             AntiHallucination = traps.Count == 0 ? null : traps.Count(v => v.NoHallucination == true) / (double)traps.Count,
             ChatAbstentionAccuracy = chat.Count == 0 ? null : chat.Count(v => v.ChatAbstentionCorrect == true) / (double)chat.Count,
+            FreshnessRecall = fresh.Count == 0 ? null : fresh.Count(v => v.FreshnessHit == true) / (double)fresh.Count,
             MeanSimInCorpus = inSims.Count == 0 ? 0 : inSims.Average(),
             MeanSimOutOfCorpus = outSims.Count == 0 ? 0 : outSims.Average(),
             ScoredRecall = withHit.Count,
             ScoredTraps = traps.Count,
             ScoredChat = chat.Count,
+            ScoredFreshness = fresh.Count,
         };
     }
 

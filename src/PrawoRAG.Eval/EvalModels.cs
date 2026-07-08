@@ -16,6 +16,11 @@ public enum GoldenCategory
     /// (np. „licencja pilota" → przepisy o kwalifikacjach sędziów; „VAT" → Ordynacja podatkowa). Retriever zwraca
     /// pokrewny, ale NIE odpowiadający przepis z wysokim score — najtrudniejszy przypadek dla bramki. Oczekiwana abstynencja.</summary>
     RelatedButWrong,
+    /// <summary>Pytanie o przepis z NIEWCHŁONIĘTĄ nowelą (AKT). Oczekiwane: po augmentacji nowela
+    /// (<see cref="GoldenItem.ExpectedAmendmentEli"/>) jest wśród źródeł. „Poprawne zestawienie" starego i nowego
+    /// stanu jest niuansowe → ocenia prawnik; tu scorujemy OBIEKTYWNE: obecność noweli w źródłach. Strażnik
+    /// regresji dla augmentera (AKT-2) i świeżości korpusu (AKT-5).</summary>
+    Freshness,
 }
 
 /// <summary>
@@ -36,6 +41,10 @@ public sealed record GoldenItem
     public string? ExpectedEli { get; init; }
     public string? ExpectedArticle { get; init; }
     public string? ExpectedCaseNumber { get; init; }
+
+    /// <summary>(Freshness) ELI niewchłoniętej noweli, która MUSI trafić do źródeł po augmentacji.
+    /// Null = nie scorujemy świeżości dla tej pozycji.</summary>
+    public string? ExpectedAmendmentEli { get; init; }
 
     /// <summary>Pytanie niuansowe — poprawność merytoryczną oceni prawnik; recall/jakości nie scorujemy teraz.</summary>
     public bool NeedsLawyer { get; init; }
@@ -61,7 +70,8 @@ public sealed record ItemObservation
 
 public sealed record ItemVerdict(
     string Id, GoldenCategory Category, double MaxSimilarity,
-    bool? RetrievalHit, bool AbstentionCorrect, bool? NoHallucination, bool? ChatAbstentionCorrect);
+    bool? RetrievalHit, bool AbstentionCorrect, bool? NoHallucination, bool? ChatAbstentionCorrect,
+    bool? FreshnessHit = null);
 
 /// <summary>Zagregowany raport ewaluacji.</summary>
 public sealed record EvalReport
@@ -72,11 +82,13 @@ public sealed record EvalReport
     public double AbstentionAccuracy { get; init; }
     public double? AntiHallucination { get; init; }
     public double? ChatAbstentionAccuracy { get; init; }
+    public double? FreshnessRecall { get; init; }
     public double MeanSimInCorpus { get; init; }
     public double MeanSimOutOfCorpus { get; init; }
     public int ScoredRecall { get; init; }
     public int ScoredTraps { get; init; }
     public int ScoredChat { get; init; }
+    public int ScoredFreshness { get; init; }
 
     public string Format()
     {
@@ -87,6 +99,7 @@ public sealed record EvalReport
         sb.AppendLine($"Trafność abstynencji: {AbstentionAccuracy:P0}   (na wszystkich {Total})");
         sb.AppendLine($"Anty-halucynacja (pułapki): {(AntiHallucination is { } h ? $"{h:P0}" : "— (czat nieuruchomiony)")}   (na {ScoredTraps} pułapkach)");
         sb.AppendLine($"Abstynencja END-TO-END (LLM/czat): {(ChatAbstentionAccuracy is { } ca ? $"{ca:P0}" : "— (czat nieuruchomiony)")}   (na {ScoredChat} poz. z czatem) ← realna bramka");
+        sb.AppendLine($"Świeżość (nowela w źródłach): {(FreshnessRecall is { } f ? $"{f:P0}" : "—")}   (na {ScoredFreshness} poz. Freshness) ← strażnik regresji AKT");
         sb.AppendLine($"Śr. similarity: w korpusie {MeanSimInCorpus:F3} vs poza {MeanSimOutOfCorpus:F3}  (rozdział {MeanSimInCorpus - MeanSimOutOfCorpus:+0.000;-0.000})");
         return sb.ToString();
     }

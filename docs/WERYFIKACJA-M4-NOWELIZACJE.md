@@ -103,17 +103,18 @@ się przez fetch (skip-existing) ani process (treść bez zmian). Relink dobiera
 i patchuje listę w bazie — bez re-embeddingu. Nie sterujemy publikacją ELI, więc stan ustalony **symulujemy**:
 
 ```bash
-# 1. Wyzeruj listę nowel wybranego aktu bazowego (podmień ExternalId na akt z niewchłoniętą nowelą, np. KPC):
-psql "$ConnectionStrings__Postgres" -c \
-  "UPDATE documents SET typed_metadata = jsonb_set(typed_metadata,'{unabsorbedAmendments}','[]'::jsonb) \
-   WHERE source='ELI' AND external_id='DU/1964/296';"
+# 1. Wyzeruj listę nowel wybranego aktu bazowego (podmień ExternalId na akt z niewchłoniętą nowelą, np. KPC).
+#    Uwaga: tabele są lowercase (documents), kolumny PascalCase w cudzysłowach ("TypedMetadata"), klucze JSON camelCase.
+psql "$PRAWORAG_DB" -c \
+  "UPDATE documents SET \"TypedMetadata\" = jsonb_set(\"TypedMetadata\",'{unabsorbedAmendments}','[]'::jsonb) \
+   WHERE \"ExternalId\"='DU/1964/296';"
 
 # 2. Relink (część sync-eli) odtwarza listę z ELI:
 Ingestion__Source=ELI Ingestion__Mode=sync-eli dotnet run --project src/PrawoRAG.Ingestion
 
 # 3. Sprawdź, że lista wróciła:
-psql "$ConnectionStrings__Postgres" -c \
-  "SELECT external_id, typed_metadata->'unabsorbedAmendments' FROM documents WHERE external_id='DU/1964/296';"
+psql "$PRAWORAG_DB" -c \
+  "SELECT \"ExternalId\", \"TypedMetadata\"->'unabsorbedAmendments' FROM documents WHERE \"ExternalId\"='DU/1964/296';"
 ```
 Oczekiwane: log `SYNC-ELI RELINK: … refreshed=1 …`; lista niewchłoniętych nowel odtworzona; zapytanie augmentera
 (art. z niewchłoniętą nowelą, jak w Krokach 4–5) → nowela znów w źródłach. **Idempotencja:** drugie uruchomienie
