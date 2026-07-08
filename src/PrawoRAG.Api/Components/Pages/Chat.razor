@@ -6,6 +6,7 @@
 @inject IConversationStore Store
 @inject ICurrentUser CurrentUser
 @inject RateGuard RateGuard
+@inject CostGuard CostGuard
 @implements IDisposable
 
 <h1 class="sr-only">Czat z asystentem prawnym</h1>
@@ -149,6 +150,12 @@
             _notice = "Za dużo zapytań w krótkim czasie — spróbuj ponownie za chwilę.";
             return;
         }
+        // Twardy dzienny cap kosztów LLM (3.7) — obok okna minutowego RateGuard.
+        if (!CostGuard.TryAcquire(CurrentUser.UserId, out var limitReason))
+        {
+            _notice = CostGuard.LimitMessage(limitReason);
+            return;
+        }
 
         _input = "";
         _busy = true;
@@ -189,6 +196,7 @@
         finally
         {
             ex.Streaming = false;
+            CostGuard.Record(CurrentUser.UserId, ex.Answer.Length); // dolicz wyjście do dziennego budżetu
             if (_conversationId is { } cid2)
             {
                 var content = ex.Abstained ? (ex.AbstainMessage ?? "") : ex.Answer;

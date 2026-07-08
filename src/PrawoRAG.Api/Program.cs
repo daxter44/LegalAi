@@ -1,6 +1,9 @@
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
@@ -32,6 +35,29 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IConversationStore, ConversationStore>();
 builder.Services.AddHostedService<RetentionService>(); // retencja logów 6 mies. (C9/FE-4.4)
+
+// --- Bramka dostępu na zamknięty test (3.7) — kody zaproszeń + twarde dzienne limity kosztów ---
+// Access:Enabled=false (domyślnie) = zachowanie jak dotąd; włączana dopiero w deployu.
+builder.Services.Configure<AccessOptions>(builder.Configuration.GetSection(AccessOptions.SectionName));
+var access = builder.Configuration.GetSection(AccessOptions.SectionName).Get<AccessOptions>() ?? new AccessOptions();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<CostGuard>(); // twardy dzienny cap kosztów LLM (obok RateGuard — inna oś)
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(o =>
+    {
+        o.LoginPath = "/wejscie";
+        o.ExpireTimeSpan = TimeSpan.FromDays(30);
+        o.SlidingExpiration = true;
+        o.Cookie.Name = "praworag.auth";
+        // API (JSON/SSE) nie chcemy przekierowywać na HTML — 401 zamiast 302:
+        o.Events.OnRedirectToLogin = ctx =>
+        {
+            if (ctx.Request.Path.StartsWithSegments("/api")) { ctx.Response.StatusCode = 401; return Task.CompletedTask; }
+            ctx.Response.Redirect(ctx.RedirectUri);
+            return Task.CompletedTask;
+        };
+    });
+builder.Services.AddAuthorization();
 
 // --- Hardening (FE-7) ---
 builder.Services.AddSingleton<RateGuard>(); // limiter kosztu ścieżki interaktywnej (Blazor/SignalR)
@@ -73,13 +99,66 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 
-// --- Retrieval (debug / panel źródeł E4) ---
-app.MapPost("/api/search", async (SearchRequest req, IRetriever retriever, IOptions<RetrievalOptions> opt, CancellationToken ct) =>
+// --- Bramka dostępu (3.7): strona wejścia (statyczny HTML, bez Blazora — omija pułapki render-mode
+// przy SignInAsync) + wylogowanie. Zawsze dostępne bez auth. ---
+static string WejscieHtml(string? error) => $$"""
+    <!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>PrawoRAG — wejście</title>
+    <style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f4}
+    .card{background:#fff;padding:2rem 2.5rem;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);max-width:22rem}
+    h1{font-size:1.2rem;margin:0 0 .5rem}p{color:#555;font-size:.9rem}input{width:100%;padding:.6rem;margin:.75rem 0;border:1px solid #ccc;border-radius:8px;box-sizing:border-box}
+    button{width:100%;padding:.6rem;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-size:1rem;cursor:pointer}
+    .err{color:#b91c1c;font-size:.85rem}</style></head><body>
+    <form class="card" method="post" action="/wejscie">
+      <h1>PrawoRAG — zamknięty test</h1>
+      <p>Podaj kod zaproszenia otrzymany od zespołu.</p>
+      {{(error is null ? "" : $"<p class=\"err\">{error}</p>")}}
+      <input name="code" type="password" placeholder="kod zaproszenia" autofocus required>
+      <button type="submit">Wejdź</button>
+    </form></body></html>
+    """;
+
+app.MapGet("/wejscie", () => Results.Content(WejscieHtml(null), "text/html; charset=utf-8"));
+
+// Login-CSRF przy kodzie zaproszenia = ryzyko pomijalne (statyczny formularz bez tokenu) → DisableAntiforgery.
+app.MapPost("/wejscie", async (HttpContext http, IOptions<AccessOptions> acc) =>
 {
+    var code = http.Request.Form["code"].ToString();
+    if (!acc.Value.TryResolveInvite(code, out var tester))
+        return Results.Content(WejscieHtml("Nieprawidłowy kod zaproszenia."), "text/html; charset=utf-8");
+
+    var claims = new List<Claim> { new(ClaimTypes.Name, tester), new(ClaimTypes.Email, tester) };
+    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
+        new ClaimsPrincipal(identity), new AuthenticationProperties { IsPersistent = true });
+    return Results.Redirect("/");
+}).DisableAntiforgery();
+
+app.MapGet("/wyjscie", async (HttpContext http) =>
+{
+    await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.Redirect("/wejscie");
+});
+
+// Autoryzacja API: cookie ALBO nagłówek X-Invite-Code (wygoda curl/runbooków). Zwraca tożsamość testera
+// (nazwę) do limitów, albo null = odmowa. Gdy bramka wyłączona — placeholder jak dotąd.
+string? ResolveApiUser(HttpContext http)
+{
+    if (!access.Enabled) return http.User?.Identity?.Name ?? "demo@local";
+    if (http.User?.Identity?.IsAuthenticated == true) return http.User.Identity.Name;
+    return access.TryResolveInvite(http.Request.Headers["X-Invite-Code"], out var tester) ? tester : null;
+}
+
+// --- Retrieval (debug / panel źródeł E4) ---
+app.MapPost("/api/search", async (HttpContext http, SearchRequest req, IRetriever retriever, IOptions<RetrievalOptions> opt, CancellationToken ct) =>
+{
+    if (ResolveApiUser(http) is null) return Results.Unauthorized(); // bramka 3.7 (cookie lub X-Invite-Code)
     var result = await retriever.RetrieveAsync(ToQuery(req.Query, req.Filters, req.TopK ?? opt.Value.TopK, opt.Value), ct);
     return Results.Ok(new
     {
@@ -90,8 +169,11 @@ app.MapPost("/api/search", async (SearchRequest req, IRetriever retriever, IOpti
 }).RequireRateLimiting("api");
 
 // --- Chat z ugruntowaniem (SSE) ---
-app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> opt, CancellationToken ct) =>
+app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> opt, CostGuard costGuard, CancellationToken ct) =>
 {
+    // Bramka 3.7: tożsamość (cookie lub X-Invite-Code) PRZED otwarciem streamu — 401 zamiast SSE.
+    if (ResolveApiUser(http) is not { } apiUser) return Results.Unauthorized();
+
     http.Response.ContentType = "text/event-stream";
     http.Response.Headers.CacheControl = "no-cache";
 
@@ -103,6 +185,14 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
 
     try
     {
+        // Twardy dzienny cap kosztów LLM (obok rate-limitera HTTP) — parytet z UI/Chat.razor.
+        if (!costGuard.TryAcquire(apiUser, out var limitReason))
+        {
+            await Send("error", new { message = CostGuard.LimitMessage(limitReason) });
+            await Send("done", new { abstained = true });
+            return Results.Empty;
+        }
+
         var o = opt.Value;
         var history = (req.History ?? [])
             .Where(t => !string.IsNullOrWhiteSpace(t.Question))
@@ -129,7 +219,7 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         {
             await Send("abstain", new { message = AbstentionPolicy.Message, maxSimilarity = result.MaxSimilarity });
             await Send("done", new { abstained = true });
-            return;
+            return Results.Empty;
         }
 
         // AKT-2/4b: oznacz źródła-nowele (niezależnie jak trafiły do wyników) + dołóż nowe fragmenty
@@ -153,14 +243,20 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         var contextTexts = chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
         var check = CitationValidator.Validate(full.ToString(), contextTexts, sources.Count);
         await Send("done", new { abstained = false, model = llm.ModelId, citationCheck = check });
+
+        costGuard.Record(apiUser, full.Length); // dolicz wyjście do dziennego budżetu znaków
+        return Results.Empty;
     }
     catch (Exception ex)
     {
         await Send("error", new { message = ex.Message });
+        return Results.Empty;
     }
 }).RequireRateLimiting("api");
 
-app.MapRazorComponents<PrawoRAG.Api.Components.App>().AddInteractiveServerRenderMode();
+// Bramka 3.7 na UI: niezalogowany → 302 na /wejscie (LoginPath cookie handlera). Gdy wyłączona — jak dotąd.
+var components = app.MapRazorComponents<PrawoRAG.Api.Components.App>().AddInteractiveServerRenderMode();
+if (access.Enabled) components.RequireAuthorization();
 
 app.Run();
 
