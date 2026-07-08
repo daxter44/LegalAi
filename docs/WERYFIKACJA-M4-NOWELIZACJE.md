@@ -71,18 +71,6 @@ curl -s localhost:5024/api/chat -N -H 'content-type: application/json' \
 ```
 **Oczekiwane / zgłoś:** BRAK markera „[NOWELIZACJA…]" — augmenter nic nie dokłada, zachowanie jak dotąd.
 
----
-
-## Co zgłosić z powrotem
-
-1. Krok 2: KPC ma `consolidatedTextId=DU/2026/468` i listę niewchłoniętych (473/830, bez 1172)?
-2. Krok 4: nowela dołączona do źródeł (marker) i LLM zestawił stan po zmianie z datą?
-3. Krok 5: brak nowel tam, gdzie ich nie ma (zero fałszywych dołączeń)?
-4. Uwagi do treści zestawienia (czy Bielik poprawnie łączy stary tekst + zmianę — czy myli).
-
-Augmentacja działa w OBU torach — UI (`ChatService`) i endpoint SSE (`/api/chat`) — więc weryfikacja
-przez `curl` i przez przeglądarkę daje ten sam wynik.
-
 ## Krok 6 — codzienny delta-sync (AKT-5, opcjonalnie)
 
 ```bash
@@ -122,3 +110,43 @@ tego samego dnia → `refreshed=0` (ELI bez zmian). Wyłącznik relinku: `Eli__S
 
 Trade-off (udokumentowany): pełny offline `process` (rebuild z surowych) cofnąłby link do następnego dziennego
 `sync-eli` — raw-store nie jest odświeżany (samonaprawcze, okno ≤1 dzień).
+
+---
+
+## Co zgłosić z powrotem
+
+1. Krok 2: KPC ma `consolidatedTextId=DU/2026/468` i listę niewchłoniętych (473/830, bez 1172)?
+2. Krok 4: nowela dołączona do źródeł (marker) i LLM zestawił stan po zmianie z datą?
+3. Krok 5: brak nowel tam, gdzie ich nie ma (zero fałszywych dołączeń)?
+4. Uwagi do treści zestawienia (czy Bielik poprawnie łączy stary tekst + zmianę — czy myli).
+5. Krok 6/7 (AKT-5): delta-sync nie pobiera dwa razy tego samego dnia? Relink odtwarza listę nowel?
+
+Augmentacja działa w OBU torach — UI (`ChatService`) i endpoint SSE (`/api/chat`) — więc weryfikacja
+przez `curl` i przez przeglądarkę daje ten sam wynik.
+
+---
+
+## Wynik weryfikacji M4 (2026-07-08) — Krok 1–5 zaliczone, Krok 6–7 (AKT-5) do zrobienia
+
+1. **Krok 2:** potwierdzone dokładnie zgodnie z oczekiwaniem: `consolidatedTextId=DU/2026/468`,
+   niewchłonięte = `DU/2026/473` + `DU/2026/830` (bez `DU/2025/1172`).
+2. **Krok 3 — pułapka warta odnotowania:** treść noweli `DU/2026/830` zawierała „w art. 4**[1]**
+   dodaje się zdanie drugie" — nawias kwadratowy w ekstrakcji PDF to zapis **indeksu górnego**
+   (art. 4¹, artykuł dodany między 4 a 5), NIE „art. 41". Pierwsza próba weryfikacji z „art. 41 KPC"
+   dała pusty wynik (augmenter słusznie nic nie dołożył — to faktycznie inny artykuł). Właściwy,
+   jednoznaczny test: `DU/2026/473` Art. 2 zmienia **art. 631 i 632 KPC** (zwykłe numery, bez indeksu).
+3. **Krok 4:** zaliczony. Pytanie „co mówi art. 631 Kodeksu postępowania cywilnego?" → `sources`
+   zawiera 3 fragmenty z markerem `[NOWELIZACJA — obowiązuje od 2026-07-08, jeszcze niewchłonięta do
+   tekstu jednolitego]` (Art. 2, Art. 631, Art. 632 z DU/2026/473). Odpowiedź Bielika: poprawnie
+   zidentyfikował art. 631 jako nowo wprowadzony tą nowelizacją, zacytował źródło `[10]`, podał datę
+   wejścia w życie (8 lipca 2026). (Art. 631 jest nowym przepisem, nie zmianą istniejącego — więc
+   „zestawienie starego i nowego" naturalnie sprowadza się do jednoznacznego „to nowy przepis".)
+4. **Krok 5:** zaliczony. Pytanie o art. 148 KK (bez świeżych nowel) → zero wystąpień markera
+   „NOWELIZACJA" w źródłach. Brak fałszywych dołączeń.
+
+**Uwaga dot. korpusu weryfikacyjnego:** obie nowele (`DU/2026/473`, `DU/2026/830`) pobrano celowo
+punktowo (dodane tymczasowo do `Eli:Acts`, potem usunięte) — NIE przez pełne discovery rocznika 2026
+(które przy uruchomieniu zaczęło ściągać cały rocznik, ~500+ dokumentów; przerwane jako nieproporcjonalne
+do potrzeby jednej weryfikacji). Dane tych dwóch nowel zostają w bazie; AKT-5 (codzienny delta-sync)
+pozostaje nieodhaczone — to osobna decyzja skalowania, jak pełny korpus v1. Kroki 6/7 (delta-sync, relink)
+przybyły w międzyczasie na main po tej weryfikacji — jeszcze nie sprawdzone na M4.
