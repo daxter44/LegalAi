@@ -5,7 +5,17 @@ using PrawoRAG.Storage.Entities;
 
 namespace PrawoRAG.Api.Services;
 
-/// <summary>Trwały zapis rozmów, wiadomości i feedbacku (FE-4). Materiał do golden setu i kalibracji.</summary>
+/// <summary>Nagłówek rozmowy na listę w sidebarze (bez treści).</summary>
+public sealed record ConversationSummary(Guid Id, string Title, DateTimeOffset UpdatedAt);
+
+/// <summary>Wiadomość wczytana z historii — do odtworzenia rozmowy w UI.</summary>
+public sealed record StoredMessage(
+    Guid Id, string Role, string Content, IReadOnlyList<ChatSource> Sources,
+    bool Abstained, bool? CitationClean, string? Model);
+
+/// <summary>Trwały zapis i ODCZYT rozmów, wiadomości i feedbacku (FE-4). Materiał do golden setu
+/// i kalibracji + historia czatów w UI. Odczyt zawsze filtrowany po <c>userId</c> po stronie serwera
+/// (tester nie otworzy cudzej rozmowy po zgadnięciu ID).</summary>
 public interface IConversationStore
 {
     Task<Guid> CreateConversationAsync(string userId, string title, CancellationToken ct);
@@ -13,6 +23,12 @@ public interface IConversationStore
     Task<Guid> AddAssistantMessageAsync(Guid conversationId, string content,
         IReadOnlyList<ChatSource> sources, bool abstained, bool? citationClean, string? model, CancellationToken ct);
     Task AddFeedbackAsync(Guid messageId, string userId, string verdict, string? note, CancellationToken ct);
+
+    /// <summary>Rozmowy użytkownika, najnowsze pierwsze.</summary>
+    Task<IReadOnlyList<ConversationSummary>> ListConversationsAsync(string userId, int limit, CancellationToken ct);
+
+    /// <summary>Wiadomości rozmowy chronologicznie; pusta lista, gdy rozmowa nie należy do usera.</summary>
+    Task<IReadOnlyList<StoredMessage>> GetMessagesAsync(Guid conversationId, string userId, CancellationToken ct);
 }
 
 /// <summary>
@@ -41,9 +57,61 @@ public sealed class ConversationStore(IServiceScopeFactory scopeFactory) : IConv
     public async Task<Guid> AddAssistantMessageAsync(Guid conversationId, string content,
         IReadOnlyList<ChatSource> sources, bool abstained, bool? citationClean, string? model, CancellationToken ct)
     {
-        var json = sources.Count == 0 ? null : JsonSerializer.SerializeToDocument(
-            sources.Select(s => new { s.Index, s.Label, s.Url }));
+        // Pełny ChatSource (nie tylko Index/Label/Url jak dawniej) — żeby wczytana rozmowa miała
+        // kompletny panel źródeł (snippet, tytuł, chip nowelizacji). Stare wpisy czyta tolerancyjnie
+        // ParseSources (brakujące pola → puste).
+        var json = sources.Count == 0 ? null : JsonSerializer.SerializeToDocument(sources);
         return await AddMessageAsync(conversationId, "assistant", content, json, abstained, citationClean, model, ct);
+    }
+
+    public async Task<IReadOnlyList<ConversationSummary>> ListConversationsAsync(string userId, int limit, CancellationToken ct)
+    {
+        await using var db = Db();
+        return await db.Conversations
+            .Where(c => c.UserId == userId)
+            .OrderByDescending(c => c.UpdatedAt)
+            .Take(limit)
+            .Select(c => new ConversationSummary(c.Id, c.Title, c.UpdatedAt))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<StoredMessage>> GetMessagesAsync(Guid conversationId, string userId, CancellationToken ct)
+    {
+        await using var db = Db();
+        var rows = await db.Messages
+            .Where(m => m.ConversationId == conversationId && m.Conversation!.UserId == userId)
+            .OrderBy(m => m.CreatedAt)
+            .ToListAsync(ct);
+        return rows.Select(m => new StoredMessage(
+            m.Id, m.Role, m.Content, ParseSources(m.RetrievedSources),
+            m.Abstained, m.CitationClean, m.Model)).ToList();
+    }
+
+    /// <summary>
+    /// Tolerancyjny odczyt źródeł z jsonb: nowe wpisy = pełny <see cref="ChatSource"/>; stare (sprzed
+    /// rozszerzenia zapisu) mają tylko Index/Label/Url — brakujące pola stają się puste. Czysta — testowalna.
+    /// </summary>
+    public static IReadOnlyList<ChatSource> ParseSources(JsonDocument? json)
+    {
+        if (json is null || json.RootElement.ValueKind != JsonValueKind.Array) return [];
+        var result = new List<ChatSource>();
+        foreach (var el in json.RootElement.EnumerateArray())
+        {
+            if (el.ValueKind != JsonValueKind.Object) continue;
+            result.Add(new ChatSource(
+                Index: Prop(el, "Index") is { ValueKind: JsonValueKind.Number } i ? i.GetInt32() : 0,
+                Label: Str(el, "Label") ?? "",
+                Title: Str(el, "Title") ?? "",
+                Url: Str(el, "Url"),
+                Snippet: Str(el, "Snippet") ?? "",
+                AmendmentEffectiveDate: Str(el, "AmendmentEffectiveDate")));
+        }
+        return result;
+
+        static JsonElement? Prop(JsonElement el, string name) =>
+            el.TryGetProperty(name, out var v) ? v : null;
+        static string? Str(JsonElement el, string name) =>
+            el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
     }
 
     public async Task AddFeedbackAsync(Guid messageId, string userId, string verdict, string? note, CancellationToken ct)

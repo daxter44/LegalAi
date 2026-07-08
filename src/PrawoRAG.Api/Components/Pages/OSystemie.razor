@@ -1,0 +1,67 @@
+@page "/o-systemie"
+
+@* Strona informacyjna dla testerów-prawników (język nietechniczny). Statyczna (SSR, bez rendermode)
+   — zero interaktywności, szybkie ładowanie, działa też jako pierwsza strona po zaproszeniu. *@
+
+<PageTitle>PrawoRAG — o systemie</PageTitle>
+
+<article class="about">
+    <h1>PrawoRAG — asystent researchu prawnego</h1>
+    <p class="about-lead">
+        PrawoRAG odpowiada na pytania prawne <strong>wyłącznie na podstawie źródeł, które pokazuje pod
+        odpowiedzią</strong> — przepisów i orzeczeń, z odnośnikami do oryginałów. Jeśli nie ma źródeł,
+        <strong>mówi wprost, że nie wie</strong>, zamiast zmyślać. To odróżnia go od zwykłych czatów AI,
+        które potrafią z pełnym przekonaniem przywołać nieistniejący paragraf.
+    </p>
+
+    <h2>Co system umie</h2>
+    <ul>
+        <li><strong>Treść przepisów</strong> — pytania w rodzaju „co mówi art. 52 Kodeksu pracy?" albo
+            opisowe: „kiedy pracodawca może zwolnić bez wypowiedzenia?". Korpus obejmuje główne kodeksy
+            (KC, KPC, KK, KPK, KP i inne) w <em>aktualnych tekstach jednolitych</em>.</li>
+        <li><strong>Świeże nowelizacje</strong> — gdy pytany przepis zmieniła nowela, której nie ma jeszcze
+            w żadnym tekście jednolitym, system dokłada ją do odpowiedzi z oznaczeniem
+            <em>„NOWELIZACJA — obowiązuje od…"</em>. Tego nie robi większość narzędzi.</li>
+        <li><strong>Orzecznictwo</strong> — wyszukiwanie orzeczeń sądów apelacyjnych (baza SAOS)
+            po temacie lub sygnaturze.</li>
+        <li><strong>Dopytania</strong> — w ramach rozmowy można drążyć temat („a co z § 2?", „rozwiń") —
+            system pamięta kontekst rozmowy.</li>
+        <li><strong>Historia rozmów</strong> — poprzednie rozmowy są zapisane na pasku bocznym;
+            „Nowa rozmowa" zaczyna od zera (nowy temat = nowa rozmowa, będzie trafniej).</li>
+    </ul>
+
+    <h2>Czego system NIE umie (jeszcze)</h2>
+    <ul>
+        <li><strong>Korpus jest ograniczony</strong> — główne kodeksy i wycinek orzecznictwa apelacyjnego.
+            Nie ma m.in.: prawa UE, interpretacji podatkowych, orzeczeń SN po 2016 r., komentarzy
+            i literatury. Pytanie spoza korpusu → uczciwa odmowa.</li>
+        <li><strong>Nie pisze pism procesowych</strong> ani nie analizuje dokumentów wgranych przez
+            użytkownika — to research, nie kancelaryjny kombajn.</li>
+        <li><strong>Bywa nadostrożny</strong> — czasem odmówi, mimo że odpowiedź jest w korpusie.
+            Taka odmowa to dla nas cenna informacja — proszę kliknąć „niepotrzebna odmowa".</li>
+    </ul>
+
+    <h2>Jak czytać odpowiedź</h2>
+    <ul>
+        <li>Każda teza ma numer źródła <strong>[1], [2]…</strong> — pod odpowiedzią jest panel źródeł
+            z fragmentami i linkami do ISAP/SAOS. <strong>Zawsze można (i warto) zweryfikować przy
+            oryginale</strong> — odpowiedź to wstępny research, nie porada prawna.</li>
+        <li>Znacznik <strong>„✓ cytaty zgodne"</strong> = automatyczna kontrola potwierdziła, że przywołane
+            przepisy i sygnatury faktycznie są w pokazanych źródłach.
+            <strong>„⚠ cytaty do sprawdzenia"</strong> = kontrola coś zakwestionowała — proszę o szczególną
+            ostrożność (i kliknięcie oceny).</li>
+    </ul>
+
+    <h2>Prośby do testujących</h2>
+    <ul>
+        <li>Pytać pełnym zdaniem, po polsku; jeśli znany jest akt — wskazać go („…w rozumieniu KPC").</li>
+        <li><strong>Oceniać odpowiedzi</strong> (👍 / „zła odpowiedź" / „niepotrzebna odmowa") — każda
+            ocena realnie kalibruje system.</li>
+        <li><strong>Nie wpisywać danych osobowych klientów ani szczegółów spraw</strong> — pytania o stan
+            prawny, nie o konkretne sprawy. Rozmowy są zapisywane na potrzeby poprawy jakości.</li>
+        <li>Obowiązuje dzienny limit zapytań (test ma twardy budżet) — po jego wyczerpaniu system
+            poprosi o powrót jutro.</li>
+    </ul>
+
+    <p><a class="btn btn-primary about-cta" href="/">Przejdź do czatu →</a></p>
+</article>
