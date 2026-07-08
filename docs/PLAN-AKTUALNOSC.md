@@ -68,10 +68,20 @@ PO zmianie, cytując oba. Świeżość korpusu utrzymuje **codzienny delta-sync 
 - [AKT-4.2] Baner nieaktualności (fallback D5) widoczny przy odpowiedzi. *Kryt.: prawnik zawsze widzi datę stanu prawnego.*
 
 ### AKT-5 — Codzienny delta-sync ELI (D3, świeżość)
-- [AKT-5.1] Tryb `sync-eli`: pobierz listing bieżącego rocznika DU; nowe pozycje względem checkpointu →
-  Ustawa/Rozp. fetch, Obwieszczenie → re-fetch aktu bazowego.
-- [AKT-5.2] Checkpoint ELI (jak `sync_state` SAOS — dziś ELI go nie ma). Tygodniowy pełny przegląd metadanych.
-- [AKT-5.3] Scheduler (cron/timer zewnętrzny — wzorzec „periodyczność = zewnętrzny scheduler"). *Kryt.: nowy t.j./nowela wchodzi do korpusu w ≤24h.*
+- [AKT-5.1] ✅ Tryb `sync-eli`: discovery bieżącego rocznika (+`Eli:Sync:YearsBack`); RawFetchRunner
+  pomija akty już w magazynie → pobiera TYLKO nowe pozycje (nowe ustawy/rozporządzenia, w tym nowelizacje),
+  potem process. **Delta = skip-existing** (nie trzeba kursora). Scheduler = zewnętrzny cron (jak SAOS).
+- [AKT-5.2] ✅ **Relink w stanie ustalonym:** świeżo pobrana nowela nie odświeżała listy `unabsorbedAmendments`
+  aktu BAZOWEGO — fetch pomija akt bazowy (skip-existing), a `process` pomija niezmienioną treść (`ContentHash`
+  bez zmian → `Skipped`; lista żyje w `SourcePayload.references`, odsprzężona od hasha). Rozwiązanie (opcja A —
+  lekki relink metadanych): na końcu `sync-eli` `AmendmentRelinkRunner` dobiera SAME metadane aktów bazowych
+  (JSON `acts/{addr}`, bez text.html/PDF — tani ruch), przelicza listę współdzieloną logiką
+  `EliSejmConnector.ExtractUnabsorbedAmendments` i — gdy się zmieniła — patchuje TYLKO klucze
+  `unabsorbedAmendments`/`consolidatedTextId` w metadanych (bez re-embeddingu, bez ruszania idempotencji
+  fetchu/process). Wyłącznik: `Eli:Sync:Relink=false`.
+  **Świadomy trade-off:** raw-store na dysku zostaje nieświeży → pełny offline `process` (rebuild z surowych)
+  odtworzyłby listę ze starego payloadu i cofnął linki **do następnego dziennego `sync-eli`** (samonaprawcze,
+  okno ≤1 dzień). Odświeżanie payloadu w raw-store poza zakresem.
 
 ### AKT-6 — Pomiar (E5)
 - [AKT-6.1] Golden set: kategoria `Freshness` — pytanie o przepis z niewchłoniętą nowelą; oczekiwane: nowela w źródłach + poprawne zestawienie. *Kryt.: mierzone przed/po; strażnik regresji.*

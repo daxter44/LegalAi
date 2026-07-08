@@ -82,3 +82,42 @@ curl -s localhost:5024/api/chat -N -H 'content-type: application/json' \
 
 Augmentacja działa w OBU torach — UI (`ChatService`) i endpoint SSE (`/api/chat`) — więc weryfikacja
 przez `curl` i przez przeglądarkę daje ten sam wynik.
+
+## Krok 6 — codzienny delta-sync (AKT-5, opcjonalnie)
+
+```bash
+# Delta: discovery bieżącego rocznika, pobiera TYLKO nowe pozycje (skip-existing), potem embed:
+Ingestion__Source=ELI Ingestion__Mode=sync-eli dotnet run --project src/PrawoRAG.Ingestion
+# lookback na wcześniejsze roczniki (np. 1) — gdy sync odpalany rzadziej:
+Ingestion__Source=ELI Ingestion__Mode=sync-eli Eli__Sync__YearsBack=1 dotnet run --project src/PrawoRAG.Ingestion
+```
+Do produkcji: odpalać codziennie z crona/timera (wzorzec jak SAOS). **Sprawdź / zgłoś:** czy przy drugim
+uruchomieniu tego samego dnia `fetched≈0, skipped_existing` rośnie (delta działa — nie pobiera dwa razy).
+
+`sync-eli` na końcu robi też **relink (AKT-5.2)** — log `SYNC-ELI RELINK: scanned=… refreshed=… unchanged=… failed=…`.
+
+## Krok 7 — relink nowel w stanie ustalonym (AKT-5.2)
+
+W stanie ustalonym świeża nowela trafia do korpusu, ale lista `unabsorbedAmendments` aktu bazowego nie odświeża
+się przez fetch (skip-existing) ani process (treść bez zmian). Relink dobiera SAME metadane aktów bazowych z ELI
+i patchuje listę w bazie — bez re-embeddingu. Nie sterujemy publikacją ELI, więc stan ustalony **symulujemy**:
+
+```bash
+# 1. Wyzeruj listę nowel wybranego aktu bazowego (podmień ExternalId na akt z niewchłoniętą nowelą, np. KPC):
+psql "$ConnectionStrings__Postgres" -c \
+  "UPDATE documents SET typed_metadata = jsonb_set(typed_metadata,'{unabsorbedAmendments}','[]'::jsonb) \
+   WHERE source='ELI' AND external_id='DU/1964/296';"
+
+# 2. Relink (część sync-eli) odtwarza listę z ELI:
+Ingestion__Source=ELI Ingestion__Mode=sync-eli dotnet run --project src/PrawoRAG.Ingestion
+
+# 3. Sprawdź, że lista wróciła:
+psql "$ConnectionStrings__Postgres" -c \
+  "SELECT external_id, typed_metadata->'unabsorbedAmendments' FROM documents WHERE external_id='DU/1964/296';"
+```
+Oczekiwane: log `SYNC-ELI RELINK: … refreshed=1 …`; lista niewchłoniętych nowel odtworzona; zapytanie augmentera
+(art. z niewchłoniętą nowelą, jak w Krokach 4–5) → nowela znów w źródłach. **Idempotencja:** drugie uruchomienie
+tego samego dnia → `refreshed=0` (ELI bez zmian). Wyłącznik relinku: `Eli__Sync__Relink=false`.
+
+Trade-off (udokumentowany): pełny offline `process` (rebuild z surowych) cofnąłby link do następnego dziennego
+`sync-eli` — raw-store nie jest odświeżany (samonaprawcze, okno ≤1 dzień).

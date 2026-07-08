@@ -74,7 +74,33 @@ switch (mode)
         if (addrs.Count > 15) Console.WriteLine($"  … i {addrs.Count - 15} więcej");
         break;
     }
+    case "sync-eli":
+    {
+        // AKT-5: dzienny delta-sync ELI. Discovery bieżącego rocznika (+opcjonalny lookback Eli:Sync:YearsBack);
+        // RawFetchRunner pomija akty już w magazynie → pobiera TYLKO nowe pozycje (nowe ustawy/rozporządzenia,
+        // w tym nowelizacje). Potem process (embed). Odpalać codziennie z crona/timera (jak SAOS).
+        var eliOpt = host.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<PrawoRAG.Ingestion.Eli.EliOptions>>().Value;
+        eliOpt.Discover.Enabled = true;
+        eliOpt.Discover.YearTo = DateTime.UtcNow.Year;
+        eliOpt.Discover.YearFrom = eliOpt.Discover.YearTo - (cfg.GetValue<int?>("Eli:Sync:YearsBack") ?? 0);
+        Console.WriteLine($"SYNC-ELI: discovery {eliOpt.Discover.YearFrom}–{eliOpt.Discover.YearTo} (delta = pozycje spoza magazynu)");
+
+        var syncFetch = host.Services.GetRequiredService<RawFetchRunner>();
+        Console.WriteLine($"SYNC-ELI FETCH: {await syncFetch.RunAsync(SourceKeys.Eli, new FetchRequest { MaxItems = maxItems }, default)}");
+        var syncProc = host.Services.GetRequiredService<RawProcessRunner>();
+        Console.WriteLine($"SYNC-ELI PROCESS: {await syncProc.RunAsync(SourceKeys.Eli, maxItems, default)}");
+
+        // AKT-5.2: relink — świeżo pobrana nowela nie odświeża listy `unabsorbedAmendments` aktu bazowego
+        // przez fetch (skip-existing) ani process (treść bez zmian → skip). Relink dobiera SAME metadane
+        // aktów bazowych z ELI i patchuje listę w bazie (bez re-embeddingu). Wyłączenie: Eli:Sync:Relink=false.
+        if (cfg.GetValue<bool?>("Eli:Sync:Relink") != false)
+        {
+            var relink = host.Services.GetRequiredService<AmendmentRelinkRunner>();
+            Console.WriteLine($"SYNC-ELI RELINK: {await relink.RunAsync(maxItems, default)}");
+        }
+        break;
+    }
     default:
         throw new InvalidOperationException(
-            $"Nieznany Ingestion:Mode '{mode}'. Dozwolone: fetch | process | fetch-process | stream | report | discover.");
+            $"Nieznany Ingestion:Mode '{mode}'. Dozwolone: fetch | process | fetch-process | stream | report | discover | sync-eli.");
 }

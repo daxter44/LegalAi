@@ -124,6 +124,34 @@ public sealed class EliSejmConnector(
         return best;
     }
 
+    /// <summary>
+    /// Nowele z „Akty zmieniające" OGŁOSZONE po tekście jednolitym (klucz ELI większy — AKT-1), więc jeszcze
+    /// niewchłonięte. Pre-filtr = mała lista nawet dla często nowelizowanych kodeksów. Czysta — testowalna bez
+    /// sieci; para z <see cref="NewestConsolidatedText"/> (oba parsują te same <c>references</c>). Współdzielona
+    /// przez <c>ActNormalizer</c> (budowa metadanych) i relink (AKT-5.2, odświeżanie listy w stanie ustalonym).
+    /// </summary>
+    public static List<AmendmentRef> ExtractUnabsorbedAmendments(JsonElement p, string? tjId)
+    {
+        var list = new List<AmendmentRef>();
+        if (tjId is null || p.ValueKind != JsonValueKind.Object
+            || !p.TryGetProperty("references", out var refs) || refs.ValueKind != JsonValueKind.Object
+            || !refs.TryGetProperty("Akty zmieniające", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return list;
+
+        foreach (var el in arr.EnumerateArray())
+        {
+            var id = el.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : null;
+            if (id is null || !Consolidation.IsUnabsorbed(id, tjId)) continue;
+            var date = el.TryGetProperty("date", out var dEl) && dEl.ValueKind == JsonValueKind.String ? dEl.GetString() : null;
+            list.Add(new AmendmentRef(id, date));
+        }
+        return list;
+    }
+
+    /// <summary>Pobiera SAME metadane aktu (JSON <c>acts/{addr}</c>) — bez text.html/PDF. Tani ruch sieciowy
+    /// dla relinku (AKT-5.2): odświeżenie <c>references</c> aktu bazowego bez pobierania jego treści.</summary>
+    public Task<JsonDocument> FetchActMetadataAsync(string addr, CancellationToken ct) => FetchMetaAsync(addr, ct);
+
     private sealed class EliListResponse
     {
         [JsonPropertyName("items")] public List<EliListItem>? Items { get; init; }

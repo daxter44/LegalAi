@@ -62,7 +62,7 @@ public sealed class ActNormalizer : IDocumentNormalizer
         // AKT-0: tożsamość konsolidacji + nowele NIEWCHŁONIĘTE (ogłoszone po t.j.) — pod jawność temporalną
         // i dołączanie świeżych zmian do kontekstu (AKT-2). Pre-filtr przez Consolidation (AKT-1) — mała lista.
         var consolidatedTextId = EliSejmConnector.NewestConsolidatedText(p);
-        var unabsorbed = ExtractUnabsorbedAmendments(p, consolidatedTextId);
+        var unabsorbed = EliSejmConnector.ExtractUnabsorbedAmendments(p, consolidatedTextId);
 
         var metadata = new Dictionary<string, object?>
         {
@@ -376,26 +376,6 @@ public sealed class ActNormalizer : IDocumentNormalizer
             .FirstOrDefault(a => a.GetAttributeValue("class", "").Split(' ').Contains("unit_chpt"));
         var head = chpt?.SelectSingleNode(".//h3");
         return head is null ? null : Collapse(HtmlEntity.DeEntitize(head.InnerText));
-    }
-
-    /// <summary>Nowele z „Akty zmieniające" OGŁOSZONE po tekście jednolitym (klucz ELI większy — AKT-1),
-    /// więc jeszcze niewchłonięte. Pre-filtr = mała lista nawet dla często nowelizowanych kodeksów.</summary>
-    private static List<AmendmentRef> ExtractUnabsorbedAmendments(JsonElement p, string? tjId)
-    {
-        var list = new List<AmendmentRef>();
-        if (tjId is null || p.ValueKind != JsonValueKind.Object
-            || !p.TryGetProperty("references", out var refs) || refs.ValueKind != JsonValueKind.Object
-            || !refs.TryGetProperty("Akty zmieniające", out var arr) || arr.ValueKind != JsonValueKind.Array)
-            return list;
-
-        foreach (var el in arr.EnumerateArray())
-        {
-            var id = el.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : null;
-            if (id is null || !Consolidation.IsUnabsorbed(id, tjId)) continue;
-            var date = el.TryGetProperty("date", out var dEl) && dEl.ValueKind == JsonValueKind.String ? dEl.GetString() : null;
-            list.Add(new AmendmentRef(id, date));
-        }
-        return list;
     }
 
     private static bool? ResolveInForce(JsonElement p)
