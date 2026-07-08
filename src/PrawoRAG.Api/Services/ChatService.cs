@@ -11,7 +11,8 @@ namespace PrawoRAG.Api.Services;
 /// Implementacja fasady czatu — ta sama logika co endpoint SSE /api/chat, ale in-process i jako strumień
 /// <see cref="ChatEvent"/> dla Blazora. Rdzeń wartości (abstynencja + anty-fabrykacja) zostaje tu, nie w UI.
 /// </summary>
-public sealed class ChatService(IRetriever retriever, ILlmProvider llm, IOptions<RetrievalOptions> options) : IChatService
+public sealed class ChatService(
+    IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> options) : IChatService
 {
     public async IAsyncEnumerable<ChatEvent> AskAsync(string question, [EnumeratorCancellation] CancellationToken ct)
     {
@@ -34,7 +35,12 @@ public sealed class ChatService(IRetriever retriever, ILlmProvider llm, IOptions
             yield break;
         }
 
-        var (request, sources) = GroundedPrompt.Build(question, result.Chunks);
+        // AKT-2: dołóż fragmenty nowel NIEWCHŁONIĘTYCH do tekstu jednolitego (best-effort — awaria nie blokuje odpowiedzi).
+        IReadOnlyList<RetrievedChunk> amendments = [];
+        try { amendments = await augmenter.AugmentAsync(query, result.Chunks, ct); } catch { /* best-effort */ }
+        var chunks = amendments.Count > 0 ? result.Chunks.Concat(amendments).ToList() : result.Chunks;
+
+        var (request, sources) = GroundedPrompt.Build(question, chunks);
         yield return new SourcesEvent(sources
             .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet)).ToList());
 
@@ -46,7 +52,7 @@ public sealed class ChatService(IRetriever retriever, ILlmProvider llm, IOptions
         }
 
         // ANTY-FABRYKACJA — czy cytaty [n]/artykuły/sygnatury istnieją w dostarczonym kontekście.
-        var contextTexts = result.Chunks
+        var contextTexts = chunks
             .Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
         var check = CitationValidator.Validate(full.ToString(), contextTexts, sources.Count);
         yield return new DoneEvent(Abstained: false, Model: llm.ModelId, Check: check);

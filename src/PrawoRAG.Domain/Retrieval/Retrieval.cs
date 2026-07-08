@@ -56,3 +56,14 @@ public interface IRetriever
 {
     Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, CancellationToken ct);
 }
+
+/// <summary>
+/// Aktualność (AKT-2): dla zwróconych aktów sprawdza nowele NIEWCHŁONIĘTE do tekstu jednolitego i zwraca
+/// fragmenty tych nowel dotyczące pytanych artykułów — do DOŁOŻENIA do kontekstu (nigdy nie usuwa istniejących).
+/// Zwraca pustą listę, gdy nie ma świeżych nowel — wtedy zachowanie jak dziś.
+/// </summary>
+public interface ITemporalAugmenter
+{
+    Task<IReadOnlyList<RetrievedChunk>> AugmentAsync(
+        RetrievalQuery query, IReadOnlyList<RetrievedChunk> retrieved, CancellationToken ct);
+}

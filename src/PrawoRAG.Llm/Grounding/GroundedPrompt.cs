@@ -26,6 +26,10 @@ public static class GroundedPrompt
            "Nie mam wystarczających źródeł, aby odpowiedzieć." i nic poza tym nie dodawaj.
         4. NIE wymyślaj przepisów, artykułów, sygnatur ani cytatów. Nie korzystaj z wiedzy spoza źródeł.
         5. Cytuj dokładnie; jeśli źródło jest niejednoznaczne — zaznacz to.
+        6. Jeśli wśród źródeł jest fragment oznaczony „[NOWELIZACJA …]", to znaczy, że cytowany przepis
+           ZMIENIŁA nowela jeszcze niewchłonięta do tekstu jednolitego. Przedstaw wtedy stan PO zmianie:
+           wyraźnie napisz, co i od kiedy się zmienia, i zacytuj OBA źródła (tekst jednolity oraz nowelę).
+           NIE przepisuj po cichu przepisu jako niezmienionego — zestaw stary tekst i zmianę.
         Odpowiadaj po polsku, rzeczowo i zwięźle.
         """;
 

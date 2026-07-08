@@ -21,6 +21,7 @@ builder.Services.AddTeiEmbeddings(builder.Configuration);
 builder.Services.AddPrawoRagLlm(builder.Configuration); // claude | local (Ollama/llama.cpp) wg Llm:Provider
 builder.Services.AddTeiReranker(builder.Configuration);  // IReranker tylko gdy Reranker:Enabled=true
 builder.Services.AddScoped<IRetriever, HybridRetriever>();
+builder.Services.AddScoped<ITemporalAugmenter, TemporalAugmenter>(); // AKT-2: dokłada świeże nowele
 builder.Services.Configure<RetrievalOptions>(builder.Configuration.GetSection("Retrieval"));
 builder.Services.AddOpenApi();
 
