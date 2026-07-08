@@ -90,7 +90,7 @@ app.MapPost("/api/search", async (SearchRequest req, IRetriever retriever, IOpti
 }).RequireRateLimiting("api");
 
 // --- Chat z ugruntowaniem (SSE) ---
-app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever retriever, ILlmProvider llm, IOptions<RetrievalOptions> opt, CancellationToken ct) =>
+app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> opt, CancellationToken ct) =>
 {
     http.Response.ContentType = "text/event-stream";
     http.Response.Headers.CacheControl = "no-cache";
@@ -104,7 +104,8 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
     try
     {
         var o = opt.Value;
-        var result = await retriever.RetrieveAsync(ToQuery(req.Question, req.Filters, o.TopK, o), ct);
+        var q = ToQuery(req.Question, req.Filters, o.TopK, o);
+        var result = await retriever.RetrieveAsync(q, ct);
 
         // BRAMKA ABSTYNENCJI — rdzeń wartości: brak pokrycia → nie generujemy.
         if (AbstentionPolicy.ShouldAbstain(result, o.AbstentionThreshold))
@@ -114,7 +115,12 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
             return;
         }
 
-        var (request, sources) = GroundedPrompt.Build(req.Question, result.Chunks);
+        // AKT-2: dołóż świeże nowele niewchłonięte do tekstu jednolitego (best-effort — parytet z UI/ChatService).
+        IReadOnlyList<RetrievedChunk> amend = [];
+        try { amend = await augmenter.AugmentAsync(q, result.Chunks, ct); } catch { /* best-effort */ }
+        var chunks = amend.Count > 0 ? result.Chunks.Concat(amend).ToList() : result.Chunks;
+
+        var (request, sources) = GroundedPrompt.Build(req.Question, chunks);
         await Send("sources", sources);
 
         var full = new StringBuilder();
@@ -125,7 +131,7 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         }
 
         // ANTY-FABRYKACJA — czy cytaty istnieją w dostarczonym kontekście.
-        var contextTexts = result.Chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
+        var contextTexts = chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
         var check = CitationValidator.Validate(full.ToString(), contextTexts, sources.Count);
         await Send("done", new { abstained = false, model = llm.ModelId, citationCheck = check });
     }
