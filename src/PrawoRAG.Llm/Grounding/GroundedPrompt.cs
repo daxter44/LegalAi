@@ -15,6 +15,12 @@ public sealed record SourceRef(int Index, string Label, string Title, string? So
 /// </summary>
 public static class GroundedPrompt
 {
+    /// <summary>Fraza, którą LLM ma napisać DOKŁADNIE (reguła 3 w <see cref="SystemPrompt"/>), gdy źródła
+    /// nie odpowiadają na pytanie. UI sprawdza nią odpowiedź (Contains, bez rozróżniania wielkości liter),
+    /// żeby ukryć panel źródeł — bramka retrievalu (<c>AbstainEvent</c>) tego przypadku nie łapie, bo to
+    /// odmowa NA POZIOMIE TREŚCI (LLM ocenił dostarczone źródła jako nietrafne), nie brak pokrycia w progu.</summary>
+    public const string RefusalMarker = "Nie mam wystarczających źródeł";
+
     public const string SystemPrompt =
         """
         Jesteś asystentem prawnym dla polskich prawników. Odpowiadasz WYŁĄCZNIE na podstawie

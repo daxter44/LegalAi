@@ -57,7 +57,7 @@
                         }
                     </div>
 
-                    @if (ex.Done)
+                    @if (ex.Done && !IsRefusal(ex))
                     {
                         <div class="verify-banner" role="note">
                             ⚖️ Wstępny research do weryfikacji — sprawdź w źródłach poniżej.
@@ -72,7 +72,7 @@
                         </div>
                     }
 
-                    @if (ex.Sources.Count > 0)
+                    @if (ex.Sources.Count > 0 && !IsRefusal(ex))
                     {
                         <details class="sources" open>
                             <summary>Źródła (@ex.Sources.Count)</summary>
@@ -206,6 +206,14 @@
         }
     }
 
+    /// <summary>LLM odmówił NA POZIOMIE TREŚCI (ocenił dostarczone źródła jako nietrafne) — bramka
+    /// retrievalu (<c>ex.Abstained</c>) tego nie łapie, bo próg podobieństwa i tak przepuścił. Bez tego
+    /// panel „Źródła" pokazywał nietrafione fragmenty obok odpowiedzi „Nie mam wystarczających źródeł" —
+    /// mylące (zgłoszone przy pytaniu spoza domeny, gdzie retrieval znalazł tylko przypadkowo podobne
+    /// fragmenty prawnicze). Sprawdzane dopiero gdy tura się skończy (Done) — nie przy każdym tokenie.</summary>
+    private static bool IsRefusal(Exchange ex) =>
+        ex.Done && !ex.Abstained && ex.Answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase);
+
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && e.CtrlKey) await Send();
@@ -238,10 +246,14 @@
         _busy = true;
 
         // Kontekst follow-upów: poprzednie ZAKOŃCZONE tury (bez błędów) — pytanie + odpowiedź
-        // (null przy abstynencji). Limit tur egzekwuje GroundedPrompt/FollowUpQuery.
+        // (null przy abstynencji bramki LUB odmowie LLM w tekście — IsRefusal). Bez tego odmówiona
+        // tura (np. pytanie spoza domeny, na które LLM odpowiedział "Nie mam źródeł" mimo że bramka
+        // retrievalu nie zareagowała) liczyła się jako pełnoprawny temat do kontynuowania — kolejne,
+        // NIEZWIĄZANE pytanie sklejało się z nią jako "dopytanie" i retrieval szukał złego tematu.
+        // Limit tur egzekwuje GroundedPrompt/FollowUpQuery.
         var history = _exchanges
             .Where(e => e.Done && e.Error is null)
-            .Select(e => new ChatTurn(e.Question, e.Abstained ? null : e.Answer))
+            .Select(e => new ChatTurn(e.Question, e.Abstained || IsRefusal(e) ? null : e.Answer))
             .ToList();
 
         var ex = new Exchange { Question = question, Streaming = true };
