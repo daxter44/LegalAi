@@ -30,6 +30,7 @@
     <ProjectReference Include="..\..\src\PrawoRAG.Llm\PrawoRAG.Llm.csproj" />
     <ProjectReference Include="..\..\src\PrawoRAG.Ingestion\PrawoRAG.Ingestion.csproj" />
     <ProjectReference Include="..\..\src\PrawoRAG.Eval\PrawoRAG.Eval.csproj" />
+    <ProjectReference Include="..\..\src\PrawoRAG.Api\PrawoRAG.Api.csproj" />
   </ItemGroup>
 
 </Project>

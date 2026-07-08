@@ -104,8 +104,22 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
     try
     {
         var o = opt.Value;
+        var history = (req.History ?? [])
+            .Where(t => !string.IsNullOrWhiteSpace(t.Question))
+            .Select(t => new ChatTurn(t.Question, t.Answer))
+            .ToList();
+
+        // Follow-upy (parytet z UI/ChatService): retrieval 2x — samo pytanie vs pytanie + poprzednie pytania
+        // użytkownika; wygrywa silniejszy sygnał. Sekwencyjnie (scoped DbContext nie jest thread-safe).
         var q = ToQuery(req.Question, req.Filters, o.TopK, o);
         var result = await retriever.RetrieveAsync(q, ct);
+        if (history.Count > 0)
+        {
+            var ctxText = FollowUpQuery.Contextualize(history.Select(t => t.Question).ToList(), req.Question);
+            var ctxQuery = ToQuery(ctxText, req.Filters, o.TopK, o);
+            var ctxResult = await retriever.RetrieveAsync(ctxQuery, ct);
+            if (ctxResult.MaxSimilarity > result.MaxSimilarity) (q, result) = (ctxQuery, ctxResult); // remis → surowe
+        }
 
         // BRAMKA ABSTYNENCJI — rdzeń wartości: brak pokrycia → nie generujemy.
         if (AbstentionPolicy.ShouldAbstain(result, o.AbstentionThreshold))
@@ -116,11 +130,13 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         }
 
         // AKT-2/4b: oznacz źródła-nowele (niezależnie jak trafiły do wyników) + dołóż nowe fragmenty
-        // dotyczące pytanych artykułów (best-effort — parytet z UI/ChatService).
+        // dotyczące pytanych artykułów (best-effort — parytet z UI/ChatService). Dostaje EFEKTYWNE
+        // zapytanie (może być sklejone z historią) — to ono niesie cytaty z poprzednich tur.
         var chunks = result.Chunks;
         try { chunks = await augmenter.AugmentAsync(q, result.Chunks, ct); } catch { /* best-effort */ }
 
-        var (request, sources) = GroundedPrompt.Build(req.Question, chunks);
+        // Do promptu idzie ORYGINALNE pytanie + historia (nie sklejony tekst retrievalu).
+        var (request, sources) = GroundedPrompt.Build(req.Question, chunks, history);
         await Send("sources", sources);
 
         var full = new StringBuilder();
@@ -159,7 +175,10 @@ static RetrievalQuery ToQuery(string text, FiltersDto? f, int topK, RetrievalOpt
 
 internal sealed record FiltersDto(string? CourtType, DateOnly? DateFrom, DateOnly? DateTo, bool OnlyInForce = false);
 internal sealed record SearchRequest(string Query, FiltersDto? Filters, int? TopK);
-internal sealed record ChatRequest(string Question, FiltersDto? Filters);
+internal sealed record ChatRequest(string Question, FiltersDto? Filters, IReadOnlyList<HistoryTurnDto>? History = null);
+
+/// <summary>Jedna zakończona tura rozmowy w żądaniu SSE (kontekst follow-upów). Answer=null przy abstynencji.</summary>
+internal sealed record HistoryTurnDto(string Question, string? Answer);
 
 public sealed class RetrievalOptions
 {

@@ -14,18 +14,31 @@ namespace PrawoRAG.Api.Services;
 public sealed class ChatService(
     IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> options) : IChatService
 {
-    public async IAsyncEnumerable<ChatEvent> AskAsync(string question, [EnumeratorCancellation] CancellationToken ct)
+    public async IAsyncEnumerable<ChatEvent> AskAsync(
+        string question, IReadOnlyList<ChatTurn> history, [EnumeratorCancellation] CancellationToken ct)
     {
         var o = options.Value;
-        var query = new RetrievalQuery
+        RetrievalQuery Query(string text) => new()
         {
-            Text = question,
+            Text = text,
             TopK = o.TopK,
             CandidatesPerPath = o.CandidatesPerPath,
             MinChunkTokens = o.MinChunkTokens,
         };
 
+        // Follow-upy: dopytanie („a co z § 2?") samo embeduje się bezwartościowo. Retrieval liczony 2x —
+        // (a) samo pytanie, (b) pytanie + poprzednie pytania użytkownika sklejone; wygrywa silniejszy sygnał.
+        // SEKWENCYJNIE (wspólny scoped DbContext nie jest thread-safe). Sklejony tekst niesie cytaty
+        // z historii („art. 367 KPC") → retrieval strukturalny (QU) i augmenter działają na follow-upach.
+        var query = Query(question);
         var result = await retriever.RetrieveAsync(query, ct);
+        if (history.Count > 0)
+        {
+            var ctxText = FollowUpQuery.Contextualize(history.Select(t => t.Question).ToList(), question);
+            var ctxQuery = Query(ctxText);
+            var ctxResult = await retriever.RetrieveAsync(ctxQuery, ct);
+            if (ctxResult.MaxSimilarity > result.MaxSimilarity) (query, result) = (ctxQuery, ctxResult); // remis → surowe
+        }
 
         // BRAMKA ABSTYNENCJI — brak pokrycia w źródłach → nie generujemy.
         if (AbstentionPolicy.ShouldAbstain(result, o.AbstentionThreshold))
@@ -36,11 +49,13 @@ public sealed class ChatService(
         }
 
         // AKT-2/4b: oznacz źródła-nowele (niezależnie jak trafiły do wyników) + dołóż nowe fragmenty
-        // dotyczące pytanych artykułów (best-effort — awaria nie blokuje odpowiedzi).
+        // dotyczące pytanych artykułów (best-effort — awaria nie blokuje odpowiedzi). Dostaje EFEKTYWNE
+        // zapytanie (może być sklejone z historią) — to ono niesie cytaty z poprzednich tur.
         var chunks = result.Chunks;
         try { chunks = await augmenter.AugmentAsync(query, result.Chunks, ct); } catch { /* best-effort */ }
 
-        var (request, sources) = GroundedPrompt.Build(question, chunks);
+        // Do promptu idzie ORYGINALNE pytanie + historia (nie sklejony tekst retrievalu).
+        var (request, sources) = GroundedPrompt.Build(question, chunks, history);
         yield return new SourcesEvent(sources
             .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet, s.AmendmentEffectiveDate)).ToList());
 

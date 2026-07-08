@@ -31,10 +31,30 @@ public static class GroundedPrompt
            ZMIENIŁA nowela jeszcze niewchłonięta do tekstu jednolitego. Przedstaw wtedy stan PO zmianie:
            wyraźnie napisz, co i od kiedy się zmienia, i zacytuj OBA źródła (tekst jednolity oraz nowelę).
            NIE przepisuj po cichu przepisu jako niezmienionego — zestaw stary tekst i zmianę.
+        7. Wcześniejsze wypowiedzi w rozmowie służą WYŁĄCZNIE zrozumieniu kontekstu pytania.
+           Każdą tezę odpowiedzi opieraj wyłącznie na ŹRÓDŁACH bieżącej tury; numeracja [n]
+           dotyczy tylko bieżących źródeł.
         Odpowiadaj po polsku, rzeczowo i zwięźle.
         """;
 
+    /// <summary>Ile ostatnich zakończonych tur rozmowy wchodzi do promptu (kontekst follow-upów).</summary>
+    public const int HistoryTurnsTaken = 4;
+
+    /// <summary>Limit długości JEDNEJ historycznej odpowiedzi w prompcie (koszt/rozmycie kontekstu).</summary>
+    public const int MaxHistoryAnswerChars = 1500;
+
     public static (LlmRequest Request, IReadOnlyList<SourceRef> Sources) Build(string question, IReadOnlyList<RetrievedChunk> chunks)
+        => Build(question, chunks, []);
+
+    /// <summary>
+    /// Wariant z historią rozmowy (follow-upy): wcześniejsze tury wchodzą jako naprzemienne wiadomości
+    /// User/Assistant PRZED finalną wiadomością z pytaniem i źródłami. Odpowiedzi historyczne są
+    /// sanityzowane — markery [n] ZDJĘTE (odnosiły się do źródeł TAMTEJ tury; skopiowane przez model
+    /// przeszłyby walidację anty-fabrykacji wskazując inne źródło) i przycięte do limitu.
+    /// Tura z abstynencją (Answer=null) → tylko wiadomość User.
+    /// </summary>
+    public static (LlmRequest Request, IReadOnlyList<SourceRef> Sources) Build(
+        string question, IReadOnlyList<RetrievedChunk> chunks, IReadOnlyList<ChatTurn> history)
     {
         var sources = new List<SourceRef>(chunks.Count);
         var sb = new StringBuilder();
@@ -49,16 +69,41 @@ public static class GroundedPrompt
               .Append(chunks[i].Text).Append("\n\n");
         }
 
-        var request = new LlmRequest
+        var messages = new List<ChatMessage> { new(ChatRole.System, SystemPrompt) };
+        foreach (var turn in history.TakeLast(HistoryTurnsTaken))
         {
-            Messages =
-            [
-                new ChatMessage(ChatRole.System, SystemPrompt),
-                new ChatMessage(ChatRole.User, sb.ToString()),
-            ],
-            Temperature = 0,
-        };
+            if (string.IsNullOrWhiteSpace(turn.Question)) continue;
+            AddCoalescing(messages, new ChatMessage(ChatRole.User, turn.Question));
+            if (turn.Answer is { } a && !string.IsNullOrWhiteSpace(a))
+                messages.Add(new ChatMessage(ChatRole.Assistant, SanitizeHistoryAnswer(a)));
+        }
+        AddCoalescing(messages, new ChatMessage(ChatRole.User, sb.ToString()));
+
+        var request = new LlmRequest { Messages = messages, Temperature = 0 };
         return (request, sources);
+    }
+
+    /// <summary>Scala kolejne wiadomości tej samej roli (tura z abstynencją = samotny User przed następnym
+    /// User). Messages API dziś łączy takie tury samo, ale historycznie zwracało 400 „roles must alternate",
+    /// a szablony czatu lokalnych modeli (Bielik/llama.cpp) bywają wrażliwe — ścisła naprzemienność jest
+    /// bezpieczna dla KAŻDEGO providera.</summary>
+    private static void AddCoalescing(List<ChatMessage> messages, ChatMessage next)
+    {
+        if (messages.Count > 0 && messages[^1] is { } last && last.Role == next.Role)
+            messages[^1] = last with { Content = last.Content + "\n\n" + next.Content };
+        else
+            messages.Add(next);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex CitationMarkerRe =
+        new(@"\[\d+\]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Historyczna odpowiedź bez markerów [n] (numeracja tamtej tury nie może przeciec do
+    /// bieżącej) i przycięta do <see cref="MaxHistoryAnswerChars"/>.</summary>
+    public static string SanitizeHistoryAnswer(string answer)
+    {
+        var clean = CitationMarkerRe.Replace(answer, "").Trim();
+        return clean.Length <= MaxHistoryAnswerChars ? clean : clean[..MaxHistoryAnswerChars] + "…";
     }
 
     /// <summary>Czytelny lokalizator cytatu: akt → tytuł+art.+ELI; orzeczenie → sąd+sygnatura+data.</summary>

@@ -57,12 +57,12 @@ foreach (var item in items)
     var query = new RetrievalQuery { Text = item.Question, TopK = topK, MinChunkTokens = minChunkTokens };
     var res = await retriever.RetrieveAsync(query, default);
 
-    // AKT-2/6: augmentacja temporalna (parytet z /api/chat) — dokłada niewchłonięte nowele do źródeł.
-    // Best-effort: brak nowel/awaria nie psuje ewaluacji. Score „Freshness" liczy się z augmentowanych źródeł.
+    // AKT-2/4b/6: augmentacja temporalna (parytet z /api/chat) — oznacza źródła-nowele i dokłada nowe
+    // fragmenty; zwraca CAŁĄ zastępczą listę (caller PODMIENIA, nie dokleja). Best-effort: awaria nie
+    // psuje ewaluacji. Score „Freshness" liczy się z augmentowanych źródeł.
     var augmenter = scope.ServiceProvider.GetRequiredService<ITemporalAugmenter>();
-    IReadOnlyList<RetrievedChunk> amend = [];
-    try { amend = await augmenter.AugmentAsync(query, res.Chunks, default); } catch { /* best-effort */ }
-    var chunks = amend.Count > 0 ? res.Chunks.Concat(amend).ToList() : res.Chunks;
+    var chunks = res.Chunks;
+    try { chunks = await augmenter.AugmentAsync(query, res.Chunks, default); } catch { /* best-effort */ }
 
     // Abstynencja liczona z SUROWEGO retrievalu (augmentacja tylko dokłada, nie zmienia bramki progu).
     var wouldAbstain = AbstentionPolicy.ShouldAbstain(res, threshold);

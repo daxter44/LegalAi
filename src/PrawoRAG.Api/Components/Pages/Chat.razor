@@ -1,6 +1,7 @@
 @page "/"
 @rendermode InteractiveServer
 @using PrawoRAG.Llm.Grounding
+@using PrawoRAG.Domain.Llm
 @inject IChatService ChatService
 @inject IConversationStore Store
 @inject ICurrentUser CurrentUser
@@ -151,6 +152,14 @@
 
         _input = "";
         _busy = true;
+
+        // Kontekst follow-upów: poprzednie ZAKOŃCZONE tury (bez błędów) — pytanie + odpowiedź
+        // (null przy abstynencji). Limit tur egzekwuje GroundedPrompt/FollowUpQuery.
+        var history = _exchanges
+            .Where(e => e.Done && e.Error is null)
+            .Select(e => new ChatTurn(e.Question, e.Abstained ? null : e.Answer))
+            .ToList();
+
         var ex = new Exchange { Question = question, Streaming = true };
         _exchanges.Add(ex);
         _cts = new CancellationTokenSource();
@@ -162,7 +171,7 @@
 
         try
         {
-            await foreach (var evt in ChatService.AskAsync(question, ct))
+            await foreach (var evt in ChatService.AskAsync(question, history, ct))
             {
                 switch (evt)
                 {
