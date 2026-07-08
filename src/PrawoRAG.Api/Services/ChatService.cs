@@ -35,10 +35,10 @@ public sealed class ChatService(
             yield break;
         }
 
-        // AKT-2: dołóż fragmenty nowel NIEWCHŁONIĘTYCH do tekstu jednolitego (best-effort — awaria nie blokuje odpowiedzi).
-        IReadOnlyList<RetrievedChunk> amendments = [];
-        try { amendments = await augmenter.AugmentAsync(query, result.Chunks, ct); } catch { /* best-effort */ }
-        var chunks = amendments.Count > 0 ? result.Chunks.Concat(amendments).ToList() : result.Chunks;
+        // AKT-2/4b: oznacz źródła-nowele (niezależnie jak trafiły do wyników) + dołóż nowe fragmenty
+        // dotyczące pytanych artykułów (best-effort — awaria nie blokuje odpowiedzi).
+        var chunks = result.Chunks;
+        try { chunks = await augmenter.AugmentAsync(query, result.Chunks, ct); } catch { /* best-effort */ }
 
         var (request, sources) = GroundedPrompt.Build(question, chunks);
         yield return new SourcesEvent(sources

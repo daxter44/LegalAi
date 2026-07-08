@@ -12,7 +12,14 @@ namespace PrawoRAG.Storage.Retrieval;
 /// AKT-2: gdy retrieval zwrócił akt, dla którego istnieją nowele NIEWCHŁONIĘTE do tekstu jednolitego
 /// (metadane AKT-0/1), dokłada fragmenty tych nowel dotyczące pytanych artykułów. Nowela ma własny numer
 /// artykułu (nie linkuje się przez ArticleNo aktu), więc dopasowujemy po TREŚCI diffu („…w art. 94 § 2…").
-/// Nowela jest mała (kilka chunków) → wczytanie i filtr w pamięci są tanie. DOKŁADA, nigdy nie usuwa.
+/// Nowela jest mała (kilka chunków) → wczytanie i filtr w pamięci są tanie.
+///
+/// AKT-4b: dodatkowo OZNACZA (nie dokłada) każdy chunk JUŻ obecny w wynikach, którego WŁASNY dokument jest
+/// niewchłoniętą nowelą — nawet gdy trafił tam zwykłą ścieżką semantyczną (pytanie opisowe, nie cytat
+/// artykułu), nie przez dopasowanie cytatu wyżej. Zmierzone na M4: pytanie sparafrazowane blisko treści
+/// noweli trafia NA SAMĄ NOWELĘ jako zwykły, nieoznaczony wynik — dla użytkownika to bez różnicy JAK
+/// nowela trafiła do źródeł, oznaczenie ma się pojawić zawsze. Wynik: WHOLE lista (oznaczone + dołożone),
+/// nie tylko dołożenia — caller podmienia całą listę wynikiem, nie dokleja go do starej.
 /// </summary>
 public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
 {
@@ -20,7 +27,21 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
         RetrievalQuery query, IReadOnlyList<RetrievedChunk> retrieved, CancellationToken ct)
     {
         var actDocIds = retrieved.Where(c => c.DocType == DocTypes.Act).Select(c => c.DocumentId).Distinct().ToList();
-        if (actDocIds.Count == 0) return [];
+        if (actDocIds.Count == 0) return retrieved;
+
+        // AKT-4b: globalny słownik ExternalId→EffectiveDate dla WSZYSTKICH niewchłoniętych nowel w korpusie
+        // (nie tylko tych, których akt bazowy jest akurat w retrieved) — do oznaczenia źródeł-nowel, które
+        // trafiły do wyników zwykłym retrievalem. Koszt: skan metadanych aktów (tanie przy dzisiejszej
+        // skali korpusu ~40 aktów; przy „pełnym korpusie" v1 wymagałoby indeksu/cache — poza zakresem teraz).
+        var unabsorbedDates = await BuildUnabsorbedDatesAsync(ct);
+        var extIdByDocId = await db.Documents.Where(d => actDocIds.Contains(d.Id))
+            .Select(d => new { d.Id, d.ExternalId }).ToDictionaryAsync(x => x.Id, x => x.ExternalId, ct);
+
+        var tagged = retrieved.Select(c =>
+            c.AmendmentEffectiveDate is null && extIdByDocId.TryGetValue(c.DocumentId, out var extId)
+                && unabsorbedDates.TryGetValue(extId, out var date)
+                ? c with { AmendmentEffectiveDate = date }
+                : c).ToList();
 
         // Artykuły w zainteresowaniu: z lokatorów zwróconych chunków aktu + z cytatów w pytaniu.
         var articlesByDoc = retrieved
@@ -30,8 +51,7 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
         var citedArticles = CitationParser.Parse(query.Text).Select(x => x.Article).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var docs = await db.Documents.Where(d => actDocIds.Contains(d.Id)).ToListAsync(ct);
-        var result = new List<RetrievedChunk>();
-        var seen = new HashSet<Guid>();
+        var seen = new HashSet<Guid>(tagged.Select(c => c.ChunkId));
 
         foreach (var d in docs)
         {
@@ -50,11 +70,22 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
                 {
                     if (!articles.Any(a => MentionsArticle(ch.Text, a))) continue;
                     if (!seen.Add(ch.Id)) continue;
-                    result.Add(ToAmendmentChunk(ch, am));
+                    tagged.Add(ToAmendmentChunk(ch, am));
                 }
             }
         }
-        return result;
+        return tagged;
+    }
+
+    private async Task<Dictionary<string, string?>> BuildUnabsorbedDatesAsync(CancellationToken ct)
+    {
+        var metas = await db.Documents.Where(d => d.DocType == DocTypes.Act)
+            .Select(d => d.TypedMetadata).ToListAsync(ct);
+        var map = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var meta in metas)
+            foreach (var am in ParseUnabsorbed(meta))
+                map[am.EliId] = am.EffectiveDate;
+        return map;
     }
 
     private static List<AmendmentRef> ParseUnabsorbed(JsonDocument? meta)

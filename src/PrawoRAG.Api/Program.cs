@@ -115,10 +115,10 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
             return;
         }
 
-        // AKT-2: dołóż świeże nowele niewchłonięte do tekstu jednolitego (best-effort — parytet z UI/ChatService).
-        IReadOnlyList<RetrievedChunk> amend = [];
-        try { amend = await augmenter.AugmentAsync(q, result.Chunks, ct); } catch { /* best-effort */ }
-        var chunks = amend.Count > 0 ? result.Chunks.Concat(amend).ToList() : result.Chunks;
+        // AKT-2/4b: oznacz źródła-nowele (niezależnie jak trafiły do wyników) + dołóż nowe fragmenty
+        // dotyczące pytanych artykułów (best-effort — parytet z UI/ChatService).
+        var chunks = result.Chunks;
+        try { chunks = await augmenter.AugmentAsync(q, result.Chunks, ct); } catch { /* best-effort */ }
 
         var (request, sources) = GroundedPrompt.Build(req.Question, chunks);
         await Send("sources", sources);

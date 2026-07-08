@@ -62,9 +62,12 @@ public interface IRetriever
 }
 
 /// <summary>
-/// Aktualność (AKT-2): dla zwróconych aktów sprawdza nowele NIEWCHŁONIĘTE do tekstu jednolitego i zwraca
-/// fragmenty tych nowel dotyczące pytanych artykułów — do DOŁOŻENIA do kontekstu (nigdy nie usuwa istniejących).
-/// Zwraca pustą listę, gdy nie ma świeżych nowel — wtedy zachowanie jak dziś.
+/// Aktualność (AKT-2/4b): zwraca CAŁĄ (zastępczą) listę chunków — oryginalne wejście, z których część może
+/// być OZNACZONA (<see cref="RetrievedChunk.AmendmentEffectiveDate"/> ustawione), gdy jej własny dokument
+/// jest niewchłoniętą nowelą (trafiła zwykłym retrievalem, nie przez dopasowanie cytatu) — plus DOŁOŻONE
+/// nowe fragmenty nowel dotyczące pytanych artykułów. Nigdy nie USUWA istniejących wyników. Gdy nie ma
+/// żadnych świeżych nowel do oznaczenia/dołożenia, zwraca <paramref name="retrieved"/> bez zmian.
+/// Caller PODMIENIA wynikiem, nie dokleja (kontrakt inny niż „tylko dołożenia").
 /// </summary>
 public interface ITemporalAugmenter
 {
