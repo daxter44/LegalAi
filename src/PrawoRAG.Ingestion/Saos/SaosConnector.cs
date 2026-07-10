@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PrawoRAG.Domain;
 using PrawoRAG.Domain.Sources;
+using PrawoRAG.Ingestion.Storage;
 
 namespace PrawoRAG.Ingestion.Saos;
 
@@ -13,9 +14,16 @@ namespace PrawoRAG.Ingestion.Saos;
 /// • initial (request.SinceModificationDate == null): search API z filtrami wycinka → ID → pełny dokument /judgments/{id};
 /// • incremental: dump API z sinceModificationDate + filtr wycinka po stronie klienta.
 /// </summary>
-public sealed class SaosConnector(HttpClient http, IOptions<SaosOptions> options, ILogger<SaosConnector> log) : ISourceConnector
+public sealed class SaosConnector(
+    HttpClient http, IOptions<SaosOptions> options, IOptions<RawStoreOptions> rawStoreOptions,
+    ILogger<SaosConnector> log, IRawDocumentStore store) : ISourceConnector
 {
     private readonly SaosOptions _opt = options.Value;
+    private readonly string _rawStoreRoot = rawStoreOptions.Value.RootPath;
+
+    /// <summary>Ile stron cofnąć się od ostatniego zapisanego checkpointu przy wznowieniu — margines
+    /// bezpieczeństwa (re-skanowane strony są tanie: skip-check bez pobrania pełnej treści).</summary>
+    private const int CheckpointOverlapPages = 20;
 
     public string Source => SourceKeys.Saos;
 
@@ -37,7 +45,7 @@ public sealed class SaosConnector(HttpClient http, IOptions<SaosOptions> options
     private async IAsyncEnumerable<RawDocument> EnumerateViaSearchAsync(FetchRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var page = 0;
+        var page = ReadCheckpointPage();
         var emitted = 0;
         while (!ct.IsCancellationRequested)
         {
@@ -59,11 +67,20 @@ public sealed class SaosConnector(HttpClient http, IOptions<SaosOptions> options
                 log.LogWarning(ex, "Błąd pobrania strony search {Page} — kończę przebieg z tym, co mam.", page);
                 yield break;
             }
+            // Strona search pobrana poprawnie — checkpoint TERAZ, żeby wznowienie po awarii dalej
+            // w pętli (np. na kolejnej stronie) nie musiało przewijać od strony 0.
+            WriteCheckpointPage(page);
             if (ids.Count == 0) yield break;
 
             foreach (var id in ids)
             {
                 ct.ThrowIfCancellationRequested();
+                // Pomiń PRZED pobraniem pełnej treści (nie po — RawFetchRunner skip-checkuje dopiero po
+                // ściągnięciu). Bez tego wznowienie przerwanego biegu (np. po TimeoutRejectedException na
+                // stronie search — zob. komentarz przy FetchSearchPageAsync) zaczyna paginację od strony 0
+                // i re-downloaduje KAŻDE już zapisane orzeczenie po pełną treść, tylko po to by je odrzucić.
+                // Przy dużych typach sądów (COMMON: setki tysięcy) to marnowałoby godziny na próżno.
+                if (await store.ExistsAsync(Source, id.ToString(CultureInfo.InvariantCulture), ct)) continue;
                 var raw = await FetchFullByIdAsync(id, ct);
                 if (raw is not null) yield return raw;
                 if (request.MaxItems is { } max && ++emitted >= max) yield break;
@@ -71,6 +88,47 @@ public sealed class SaosConnector(HttpClient http, IOptions<SaosOptions> options
 
             page++;
             if ((long)page * _opt.PageSize >= total) yield break;
+        }
+    }
+
+    private string CheckpointPath => Path.Combine(_rawStoreRoot, ".checkpoints", $"saos_{_opt.CourtType}.checkpoint");
+
+    /// <summary>Ostatnia zapisana strona minus margines bezpieczeństwa (0, jeśli brak checkpointu lub błąd odczytu).</summary>
+    private int ReadCheckpointPage()
+    {
+        try
+        {
+            var path = CheckpointPath;
+            if (File.Exists(path) && int.TryParse(File.ReadAllText(path).Trim(), out var page))
+            {
+                var resume = Math.Max(0, page - CheckpointOverlapPages);
+                log.LogInformation("Checkpoint {CourtType}: ostatnia strona {Page} → wznawiam od strony {Resume}.",
+                    _opt.CourtType, page, resume);
+                return resume;
+            }
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Nie udało się odczytać checkpointu dla {CourtType} — zaczynam od strony 0.", _opt.CourtType);
+        }
+        return 0;
+    }
+
+    /// <summary>Zapisuje numer ostatnio poprawnie pobranej strony (atomowo, best-effort — błąd zapisu
+    /// nie może przerwać fetchu, tylko oznacza droższe wznowienie).</summary>
+    private void WriteCheckpointPage(int page)
+    {
+        try
+        {
+            var path = CheckpointPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var tmp = path + ".tmp";
+            File.WriteAllText(tmp, page.ToString(CultureInfo.InvariantCulture));
+            File.Move(tmp, path, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Nie udało się zapisać checkpointu strony {Page} dla {CourtType}.", page, _opt.CourtType);
         }
     }
 
