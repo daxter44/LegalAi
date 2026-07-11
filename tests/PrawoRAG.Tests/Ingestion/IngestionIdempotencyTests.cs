@@ -44,6 +44,31 @@ public class IngestionIdempotencyTests
     private static RawDocument Raw(string source, string id, RawDocument fixture, string? content = null) =>
         fixture with { Source = source, ExternalId = id, RawContent = content ?? fixture.RawContent };
 
+    /// <summary>
+    /// Embedder symulujący awarię TEI (ODP-3) — embedding rzuca jak przy padzie serwera, ale
+    /// liczenie tokenów działa (jak w Fake), żeby porażka trafiła dokładnie w etap „embed",
+    /// a nie wcześniejszy „chunk".
+    /// </summary>
+    private sealed class ThrowingEmbedder(string modelId = "fake@v1") : IEmbeddingProvider
+    {
+        public string ModelId => modelId;
+        public int Dimensions => PrawoRagDbContext.EmbeddingDimensions;
+
+        public Task<IReadOnlyList<float[]>> EmbedPassagesAsync(IReadOnlyList<string> passages, CancellationToken ct) =>
+            throw new HttpRequestException("TEI 503: model overloaded");
+
+        public Task<float[]> EmbedQueryAsync(string query, CancellationToken ct) =>
+            throw new HttpRequestException("TEI 503: model overloaded");
+
+        public Task<IReadOnlyList<int>> CountTokensAsync(IReadOnlyList<string> texts, CancellationToken ct)
+        {
+            IReadOnlyList<int> counts = texts
+                .Select(t => t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length)
+                .ToList();
+            return Task.FromResult(counts);
+        }
+    }
+
     [Fact] // T-IDEM #1: dwukrotny ingest tej samej próbki → 0 wywołań embeddingu w 2. przebiegu
     public async Task Second_run_does_no_embedding()
     {
@@ -146,6 +171,50 @@ public class IngestionIdempotencyTests
             Assert.Equal(DocumentStatus.Failed, d.Status);
             Assert.False(string.IsNullOrEmpty(d.FailureReason));
             Assert.Equal(1, d.AttemptCount);
+        }
+        await CleanAsync(src);
+    }
+
+    [Fact] // ODP-3: wyjątek w embeddingu → Failed z etapem „[embed]" w FailureReason, nie gołym message
+    public async Task Embed_failure_records_stage_in_failure_reason()
+    {
+        const string src = "TEST-ODP-EMBED";
+        await CleanAsync(src);
+        var raw = Raw(src, "j1", SaosFixtures.LoadJudgment(227221));
+
+        await using (var db = NewDb())
+        {
+            var result = await Pipeline(db, new ThrowingEmbedder()).ProcessAsync(raw, default);
+            Assert.Equal(IngestOutcome.Failed, result.Outcome);
+            Assert.Equal("embed", result.FailureStage);
+            Assert.NotNull(result.Error); // pełny wyjątek dla raportu JSONL i bezpiecznika
+        }
+
+        await using (var verify = NewDb())
+        {
+            var d = await verify.Documents.SingleAsync(x => x.Source == src);
+            Assert.Equal(DocumentStatus.Failed, d.Status);
+            Assert.StartsWith("[embed]", d.FailureReason);
+            Assert.Contains("TEI 503", d.FailureReason);
+        }
+        await CleanAsync(src);
+    }
+
+    [Fact] // ODP-3 (fix): awaria TEI na ścieżce re-embed → Failed w kwarantannie; przed fixem wyjątek wywalał cały run
+    public async Task Reembed_failure_is_quarantined_not_thrown()
+    {
+        const string src = "TEST-ODP-REEMBED";
+        await CleanAsync(src);
+        var raw = Raw(src, "j1", SaosFixtures.LoadJudgment(227221));
+
+        await using (var db = NewDb())
+            await Pipeline(db, new FakeEmbeddingProvider(modelId: "fake@v1")).ProcessAsync(raw, default);
+
+        await using (var db = NewDb())
+        {
+            var result = await Pipeline(db, new ThrowingEmbedder(modelId: "fake@v2")).ProcessAsync(raw, default);
+            Assert.Equal(IngestOutcome.Failed, result.Outcome);
+            Assert.Equal("re-embed", result.FailureStage);
         }
         await CleanAsync(src);
     }
