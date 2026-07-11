@@ -8,6 +8,13 @@ using PrawoRAG.Storage;
 namespace PrawoRAG.Ingestion;
 
 /// <summary>
+/// ODP-2: run przerwany przez bezpiecznik — seria porażek z rzędu wskazuje awarię infrastruktury
+/// (TEI/DB/sieć), nie złe dokumenty. Po naprawie przyczyny ten sam run wznawia się tanio (fast-skip),
+/// a dokumenty Failed z serii są przetwarzane od nowa (nie ma ich w zbiorze pomijania).
+/// </summary>
+public sealed class ProcessAbortedException(string message) : Exception(message);
+
+/// <summary>
 /// Faza B — przetwarza surowe dokumenty z LOKALNEGO magazynu przez <see cref="IIngestionPipeline"/>.
 /// Działa OFFLINE (zero hitów do źródła): to ścieżka re-processingu po zmianie normalizera/chunkera/modelu.
 /// Każdy dokument w osobnym scope (świeży DbContext per dokument — brak narastania trackingu).
@@ -39,6 +46,7 @@ public sealed class RawProcessRunner(
     public async Task<IngestSummary> RunAsync(string source, int? maxItems, ProcessSkipSet skipSet, CancellationToken ct)
     {
         int inserted = 0, updated = 0, skipped = 0, reembedded = 0, failed = 0, processed = 0;
+        var failStreak = 0; // ODP-2: porażki Z RZĘDU — zerowane każdym innym wynikiem (także fast-skipem)
         log.LogInformation("Process {Source} start (z magazynu surowych)", source);
 
         await foreach (var raw in store.EnumerateAsync(source, ct))
@@ -51,6 +59,7 @@ public sealed class RawProcessRunner(
             if (skipSet.Contains(raw.ExternalId, Hashing.Sha256Hex(raw.RawContent)))
             {
                 skipped++;
+                failStreak = 0;
                 LogProgress();
                 continue;
             }
@@ -65,6 +74,28 @@ public sealed class RawProcessRunner(
                 case IngestOutcome.Skipped: skipped++; break;
                 case IngestOutcome.ReEmbedded: reembedded++; break;
                 case IngestOutcome.Failed: failed++; break;
+            }
+
+            if (outcome == IngestOutcome.Failed)
+            {
+                failStreak++;
+                var limit = options.Value.FailStreakLimit;
+                if (limit > 0 && failStreak >= limit)
+                {
+                    var soFar = new IngestSummary(inserted, updated, skipped, reembedded, failed);
+                    log.LogCritical(
+                        "Bezpiecznik: {Streak} porażek z rzędu (ostatnia: #{Seq} {Source}/{Id}) — to wygląda na awarię " +
+                        "infrastruktury (TEI/DB/sieć), nie na złe dokumenty. Dotychczas: {Summary}. Napraw przyczynę " +
+                        "i uruchom ponownie: fast-skip przewinie gotowe, a dokumenty Failed z tej serii przetworzą się od nowa.",
+                        failStreak, processed, source, raw.ExternalId, soFar);
+                    throw new ProcessAbortedException(
+                        $"Przerwano po {failStreak} porażkach z rzędu (ostatnia: {source}/{raw.ExternalId}, pozycja #{processed}). " +
+                        $"Próg: Ingestion:FailStreakLimit={limit} (0 wyłącza).");
+                }
+            }
+            else
+            {
+                failStreak = 0;
             }
             LogProgress();
         }
