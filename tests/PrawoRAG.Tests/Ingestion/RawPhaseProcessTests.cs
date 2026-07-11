@@ -77,6 +77,7 @@ public sealed class RawPhaseProcessTests : IDisposable
         services.AddOptions<ChunkerOptions>().Configure(configureChunker ?? (_ => { }));
         services.AddTransient<IChunker, TokenAwareChunker>();
         services.AddScoped<IngestionPipeline>();
+        services.AddScoped<IIngestionPipeline>(sp => sp.GetRequiredService<IngestionPipeline>());
         services.AddSingleton(store);
         services.AddSingleton<RawProcessRunner>();
         return services.BuildServiceProvider();
