@@ -14,6 +14,14 @@ namespace PrawoRAG.Ingestion;
 public enum IngestOutcome { Inserted, Updated, Skipped, ReEmbedded, Failed }
 
 /// <summary>
+/// Wynik przetworzenia jednego dokumentu (ODP-3). Dla <see cref="IngestOutcome.Failed"/> niesie
+/// etap (<c>lookup/normalize/chunk/embed/db-write/re-embed</c>) i pełny wyjątek — wyjątek jest
+/// już połknięty (kwarantanna per dokument), a raport porażek i komunikat bezpiecznika muszą
+/// wiedzieć „co i gdzie" bez ponownego uruchamiania z debuggerem.
+/// </summary>
+public sealed record IngestResult(IngestOutcome Outcome, string? FailureStage = null, Exception? Error = null);
+
+/// <summary>
 /// Rdzeń ingestii z idempotencją (plan: „Idempotencja i wznawialność ingestu"):
 /// • skip po (source,externalId)+content_hash+status=Indexed — bez normalizacji i embeddingu;
 /// • zmiana treści → pełne przetworzenie, transakcyjna podmiana chunków (zero osieroconych);
@@ -30,41 +38,51 @@ public sealed class IngestionPipeline(
     private readonly Dictionary<string, IDocumentNormalizer> _normalizers =
         normalizers.ToDictionary(n => n.DocType, StringComparer.OrdinalIgnoreCase);
 
-    public async Task<IngestOutcome> ProcessAsync(RawDocument raw, CancellationToken ct)
+    public async Task<IngestResult> ProcessAsync(RawDocument raw, CancellationToken ct)
     {
+        var stage = "lookup"; // ODP-3: etap trafia do FailureReason ([stage]) i raportu porażek
         var hash = Hashing.Sha256Hex(raw.RawContent);
-        var existing = await db.Documents
-            .Include(d => d.Chunks)
-            .FirstOrDefaultAsync(d => d.Source == raw.Source && d.ExternalId == raw.ExternalId, ct);
-
-        // Skip / warunkowy re-embed dla niezmienionej treści.
-        if (existing is { Status: DocumentStatus.Indexed } && existing.ContentHash == hash)
-        {
-            var stale = existing.Chunks.Where(c => c.EmbeddedWith != embedder.ModelId).ToList();
-            if (stale.Count == 0) return IngestOutcome.Skipped;
-            return await ReEmbedAsync(stale, ct);
-        }
-
+        DocumentEntity? existing = null;
         try
         {
-            return await ProcessFreshAsync(raw, hash, existing, ct);
+            // Lookup też pod try: gdy DB leży, dokument dostaje Failed (zamiast wyjątku wywalającego
+            // run poza bezpiecznikiem) — seria takich porażek przerywa run kontrolowanie (ODP-2).
+            existing = await db.Documents
+                .Include(d => d.Chunks)
+                .FirstOrDefaultAsync(d => d.Source == raw.Source && d.ExternalId == raw.ExternalId, ct);
+
+            // Skip / warunkowy re-embed dla niezmienionej treści.
+            if (existing is { Status: DocumentStatus.Indexed } && existing.ContentHash == hash)
+            {
+                var stale = existing.Chunks.Where(c => c.EmbeddedWith != embedder.ModelId).ToList();
+                if (stale.Count == 0) return new IngestResult(IngestOutcome.Skipped);
+                stage = "re-embed"; // dotąd POZA try — awaria TEI na tej ścieżce wywalała cały run bez MarkFailed
+                return new IngestResult(await ReEmbedAsync(stale, ct));
+            }
+
+            return new IngestResult(await ProcessFreshAsync(raw, hash, existing, s => stage = s, ct));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            log.LogError(ex, "Ingestia nie powiodła się dla {Source}/{Id}", raw.Source, raw.ExternalId);
-            await MarkFailedAsync(raw, hash, existing, ex.Message, ct);
-            return IngestOutcome.Failed;
+            log.LogError(ex, "Ingestia nie powiodła się dla {Source}/{Id} na etapie {Stage}", raw.Source, raw.ExternalId, stage);
+            await MarkFailedAsync(raw, hash, existing, $"[{stage}] {ex.GetBaseException().Message}", ct);
+            return new IngestResult(IngestOutcome.Failed, stage, ex);
         }
     }
 
-    private async Task<IngestOutcome> ProcessFreshAsync(RawDocument raw, string hash, DocumentEntity? existing, CancellationToken ct)
+    private async Task<IngestOutcome> ProcessFreshAsync(
+        RawDocument raw, string hash, DocumentEntity? existing, Action<string> setStage, CancellationToken ct)
     {
+        setStage("normalize");
         if (!_normalizers.TryGetValue(raw.DocType, out var normalizer))
             throw new InvalidOperationException($"Brak normalizera dla typu '{raw.DocType}'.");
 
         var norm = normalizer.Normalize(raw);
+        setStage("chunk");
         var chunks = await chunker.ChunkAsync(norm, ct);
+        setStage("embed");
         var vectors = await embedder.EmbedPassagesAsync(chunks.Select(c => c.Text).ToList(), ct);
+        setStage("db-write");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 

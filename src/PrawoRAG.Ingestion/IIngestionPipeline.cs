@@ -9,5 +9,5 @@ namespace PrawoRAG.Ingestion;
 /// </summary>
 public interface IIngestionPipeline
 {
-    Task<IngestOutcome> ProcessAsync(RawDocument raw, CancellationToken ct);
+    Task<IngestResult> ProcessAsync(RawDocument raw, CancellationToken ct);
 }

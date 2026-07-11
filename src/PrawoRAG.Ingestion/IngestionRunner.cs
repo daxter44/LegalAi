@@ -37,7 +37,7 @@ public sealed class IngestionRunner(IServiceScopeFactory scopeFactory, ILogger<I
             {
                 using var docScope = scopeFactory.CreateScope();
                 var pipeline = docScope.ServiceProvider.GetRequiredService<IIngestionPipeline>();
-                var outcome = await pipeline.ProcessAsync(raw, ct);
+                var outcome = (await pipeline.ProcessAsync(raw, ct)).Outcome;
                 switch (outcome)
                 {
                     case IngestOutcome.Inserted: inserted++; break;

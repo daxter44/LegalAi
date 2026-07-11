@@ -53,13 +53,13 @@ public class IngestionIdempotencyTests
 
         var embedder = new FakeEmbeddingProvider();
         await using (var db = NewDb())
-            Assert.Equal(IngestOutcome.Inserted, await Pipeline(db, embedder).ProcessAsync(raw, default));
+            Assert.Equal(IngestOutcome.Inserted, (await Pipeline(db, embedder).ProcessAsync(raw, default)).Outcome);
 
         var afterFirst = embedder.PassageEmbedCalls;
         Assert.True(afterFirst > 0, "pierwszy przebieg powinien embedować");
 
         await using (var db = NewDb())
-            Assert.Equal(IngestOutcome.Skipped, await Pipeline(db, embedder).ProcessAsync(raw, default));
+            Assert.Equal(IngestOutcome.Skipped, (await Pipeline(db, embedder).ProcessAsync(raw, default)).Outcome);
 
         Assert.Equal(afterFirst, embedder.PassageEmbedCalls); // ZERO dodatkowych wywołań
         await CleanAsync(src);
@@ -86,7 +86,7 @@ public class IngestionIdempotencyTests
         // zmiana treści → inny hash
         var changed = Raw(src, "j1", fixture, fixture.RawContent + "\n<p>DODATKOWY AKAPIT TESTOWY.</p>");
         await using (var db = NewDb())
-            Assert.Equal(IngestOutcome.Updated, await Pipeline(db, embedder).ProcessAsync(changed, default));
+            Assert.Equal(IngestOutcome.Updated, (await Pipeline(db, embedder).ProcessAsync(changed, default)).Outcome);
 
         await using (var verify = NewDb())
         {
@@ -138,7 +138,7 @@ public class IngestionIdempotencyTests
         var raw = new RawDocument { Source = src, ExternalId = "bad", DocType = "nieznany-typ", RawContent = "x" };
 
         await using (var db = NewDb())
-            Assert.Equal(IngestOutcome.Failed, await Pipeline(db, new FakeEmbeddingProvider()).ProcessAsync(raw, default));
+            Assert.Equal(IngestOutcome.Failed, (await Pipeline(db, new FakeEmbeddingProvider()).ProcessAsync(raw, default)).Outcome);
 
         await using (var verify = NewDb())
         {
@@ -162,7 +162,7 @@ public class IngestionIdempotencyTests
 
         var v2 = new FakeEmbeddingProvider(modelId: "fake@v2");
         await using (var db = NewDb())
-            Assert.Equal(IngestOutcome.ReEmbedded, await Pipeline(db, v2).ProcessAsync(raw, default));
+            Assert.Equal(IngestOutcome.ReEmbedded, (await Pipeline(db, v2).ProcessAsync(raw, default)).Outcome);
 
         Assert.True(v2.PassageEmbedCalls > 0);
         await using (var verify = NewDb())

@@ -43,7 +43,7 @@ public class ActIngestionTests
         await using (var db = NewDb())
         {
             var pipeline = new IngestionPipeline(db, [new ActNormalizer()], chunker, embedder, NullLogger<IngestionPipeline>.Instance);
-            Assert.Equal(IngestOutcome.Inserted, await pipeline.ProcessAsync(raw, default));
+            Assert.Equal(IngestOutcome.Inserted, (await pipeline.ProcessAsync(raw, default)).Outcome);
         }
 
         await using (var verify = NewDb())
