@@ -129,3 +129,6 @@ body {
 .about-lead { font-size: var(--fs-16); color: var(--c-text); }
 .about li { margin-bottom: var(--s-2); }
 .about-cta { display: inline-block; text-decoration: none; padding: var(--s-2) var(--s-4); margin-top: var(--s-4); }
+
+/* Diagnostyka: badge tokenów in/out (widoczny tylko z flagą Diagnostics:ShowTokenUsage) */
+.badge-tokens { background: var(--c-accent-weak); color: var(--c-text-muted); font-variant-numeric: tabular-nums; }

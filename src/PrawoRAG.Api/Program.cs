@@ -26,6 +26,7 @@ builder.Services.AddTeiReranker(builder.Configuration);  // IReranker tylko gdy 
 builder.Services.AddScoped<IRetriever, HybridRetriever>();
 builder.Services.AddScoped<ITemporalAugmenter, TemporalAugmenter>(); // AKT-2: dokłada świeże nowele
 builder.Services.Configure<RetrievalOptions>(builder.Configuration.GetSection("Retrieval"));
+builder.Services.Configure<DiagnosticsOptions>(builder.Configuration.GetSection("Diagnostics"));
 builder.Services.AddOpenApi();
 
 // Blazor Server (UI demo) w tym samym hoście — te same serwisy przez DI, bez skoku HTTP.
@@ -169,7 +170,7 @@ app.MapPost("/api/search", async (HttpContext http, SearchRequest req, IRetrieve
 }).RequireRateLimiting("api");
 
 // --- Chat z ugruntowaniem (SSE) ---
-app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> opt, CostGuard costGuard, CancellationToken ct) =>
+app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> opt, IOptions<DiagnosticsOptions> diag, CostGuard costGuard, CancellationToken ct) =>
 {
     // Bramka 3.7: tożsamość (cookie lub X-Invite-Code) PRZED otwarciem streamu — 401 zamiast SSE.
     if (ResolveApiUser(http) is not { } apiUser) return Results.Unauthorized();
@@ -232,6 +233,10 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         var (request, sources) = GroundedPrompt.Build(req.Question, chunks, history);
         await Send("sources", sources);
 
+        // Tokeny in/out (parytet z UI): zbierane zawsze, w evencie done tylko przy włączonej fladze.
+        LlmUsage? usage = null;
+        request = request with { OnUsage = u => usage = u };
+
         var full = new StringBuilder();
         await foreach (var delta in llm.StreamCompletionAsync(request, ct))
         {
@@ -242,7 +247,9 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         // ANTY-FABRYKACJA — czy cytaty istnieją w dostarczonym kontekście.
         var contextTexts = chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
         var check = CitationValidator.Validate(full.ToString(), contextTexts, sources.Count);
-        await Send("done", new { abstained = false, model = llm.ModelId, citationCheck = check });
+        await Send("done", diag.Value.ShowTokenUsage
+            ? new { abstained = false, model = llm.ModelId, citationCheck = check, usage }
+            : (object)new { abstained = false, model = llm.ModelId, citationCheck = check });
 
         costGuard.Record(apiUser, full.Length); // dolicz wyjście do dziennego budżetu znaków
         return Results.Empty;
@@ -291,4 +298,12 @@ public sealed class RetrievalOptions
     /// <summary>Margines sygnału przy follow-upach: surowe dopytanie musi pobić wariant kontekstowy
     /// o tyle, żeby wygrać (różnice rzędu 1e-6 to szum — patrz <see cref="FollowUpQuery"/>).</summary>
     public double FollowUpSignalMargin { get; set; } = FollowUpQuery.DefaultSignalMargin;
+}
+
+/// <summary>Przełączniki diagnostyczne (domyślnie wszystko wyłączone — zero śladu w UI/SSE).</summary>
+public sealed class DiagnosticsOptions
+{
+    /// <summary>Pokazuj tokeny in/out przy każdej odpowiedzi (badge w UI + pole `usage` w SSE done).
+    /// Włączenie: `dotnet run -- --Diagnostics:ShowTokenUsage=true` albo env Diagnostics__ShowTokenUsage.</summary>
+    public bool ShowTokenUsage { get; set; }
 }

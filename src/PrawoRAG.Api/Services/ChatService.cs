@@ -62,6 +62,11 @@ public sealed class ChatService(
         yield return new SourcesEvent(sources
             .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet, s.AmendmentEffectiveDate)).ToList());
 
+        // Tokeny in/out z providera (usage przychodzi na końcu strumienia) — zbierane zawsze,
+        // widoczność w UI steruje flaga Diagnostics:ShowTokenUsage.
+        LlmUsage? usage = null;
+        request = request with { OnUsage = u => usage = u };
+
         var full = new StringBuilder();
         await foreach (var delta in llm.StreamCompletionAsync(request, ct))
         {
@@ -73,6 +78,6 @@ public sealed class ChatService(
         var contextTexts = chunks
             .Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
         var check = CitationValidator.Validate(full.ToString(), contextTexts, sources.Count);
-        yield return new DoneEvent(Abstained: false, Model: llm.ModelId, Check: check);
+        yield return new DoneEvent(Abstained: false, Model: llm.ModelId, Check: check, Usage: usage);
     }
 }

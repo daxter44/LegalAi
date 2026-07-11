@@ -52,6 +52,7 @@ public sealed class ClaudeLlmProvider(HttpClient http, IOptions<ClaudeOptions> o
         await using var stream = await resp.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
 
+        int? inputTokens = null, outputTokens = null;
         string? line;
         while ((line = await reader.ReadLineAsync(ct)) is not null)
         {
@@ -68,11 +69,29 @@ public sealed class ClaudeLlmProvider(HttpClient http, IOptions<ClaudeOptions> o
                 var s = text.GetString();
                 if (!string.IsNullOrEmpty(s)) yield return s;
             }
+            else if (type == "message_start")
+            {
+                // usage.input_tokens przychodzi w metadanych startu wiadomości.
+                if (doc.RootElement.TryGetProperty("message", out var msg) &&
+                    msg.TryGetProperty("usage", out var u) &&
+                    u.TryGetProperty("input_tokens", out var it) && it.ValueKind == JsonValueKind.Number)
+                    inputTokens = it.GetInt32();
+            }
+            else if (type == "message_delta")
+            {
+                // usage.output_tokens przychodzi na końcu, w message_delta.
+                if (doc.RootElement.TryGetProperty("usage", out var u) &&
+                    u.TryGetProperty("output_tokens", out var ot) && ot.ValueKind == JsonValueKind.Number)
+                    outputTokens = ot.GetInt32();
+            }
             else if (type == "message_stop")
             {
-                yield break;
+                break;
             }
         }
+
+        if (inputTokens is not null || outputTokens is not null)
+            request.OnUsage?.Invoke(new LlmUsage(inputTokens, outputTokens, Estimated: false));
     }
 
     private sealed class ApiRequest

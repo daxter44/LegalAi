@@ -57,6 +57,63 @@ public sealed class OpenAiCompatibleLlmProviderTests
     }
 
     [Fact]
+    public async Task Reports_real_usage_from_final_chunk()
+    {
+        // Finalny chunk stream_options.include_usage: puste choices + usage — nie może psuć tekstu.
+        var sse = string.Join("\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Odpowiedź.\"},\"finish_reason\":null}]}",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5214,\"completion_tokens\":487}}",
+            "data: [DONE]");
+        var provider = Provider(sse, out var handler);
+        LlmUsage? usage = null;
+        var req = new LlmRequest
+        {
+            Messages = [new ChatMessage(ChatRole.User, "pytanie")],
+            OnUsage = u => usage = u,
+        };
+
+        var sb = new StringBuilder();
+        await foreach (var d in provider.StreamCompletionAsync(req, default)) sb.Append(d);
+
+        Assert.Equal("Odpowiedź.", sb.ToString());
+        Assert.Equal(new LlmUsage(5214, 487, Estimated: false), usage);
+        Assert.Contains("\"include_usage\":true", handler.Body); // żądanie prosi o usage
+    }
+
+    [Fact]
+    public async Task Falls_back_to_estimate_when_server_reports_no_usage()
+    {
+        // Serwer bez wsparcia stream_options (stary llama.cpp) → szacunek ze znaków, JAWNIE oznaczony.
+        var sse = string.Join("\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"12345678\"},\"finish_reason\":null}]}", // 8 znaków wyjścia
+            "data: [DONE]");
+        var provider = Provider(sse, out _);
+        LlmUsage? usage = null;
+        var req = new LlmRequest
+        {
+            Messages = [new ChatMessage(ChatRole.User, new string('x', 40))], // 40 znaków wejścia
+            OnUsage = u => usage = u,
+        };
+
+        await foreach (var _ in provider.StreamCompletionAsync(req, default)) { }
+
+        Assert.NotNull(usage);
+        Assert.True(usage!.Estimated);
+        Assert.Equal(10, usage.InputTokens);  // 40/4
+        Assert.Equal(2, usage.OutputTokens);  // 8/4
+    }
+
+    [Fact]
+    public async Task No_callback_means_no_usage_work()
+    {
+        // Eval/testy nie ustawiają OnUsage — strumień działa jak dotąd, zero wyjątków.
+        var provider = Provider("data: [DONE]", out _);
+        var req = new LlmRequest { Messages = [new ChatMessage(ChatRole.User, "q")] };
+
+        await foreach (var _ in provider.StreamCompletionAsync(req, default)) { }
+    }
+
+    [Fact]
     public async Task Sends_request_with_roles_model_and_stream()
     {
         var provider = Provider("data: [DONE]", out var handler);

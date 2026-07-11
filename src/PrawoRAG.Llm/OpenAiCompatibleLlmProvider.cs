@@ -34,6 +34,9 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
             Temperature = request.Temperature,
             Messages = messages,
             Stream = true,
+            // Finalny chunk z usage (prompt_tokens/completion_tokens) — Ollama i llama.cpp wspierają;
+            // serwer, który nie zna pola, po prostu je ignoruje (wtedy fallback = szacunek).
+            StreamOptions = new ApiStreamOptions(IncludeUsage: true),
         };
 
         using var httpReq = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
@@ -53,13 +56,15 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
         await using var stream = await resp.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
 
+        LlmUsage? usage = null;
+        var outputChars = 0;
         string? line;
         while ((line = await reader.ReadLineAsync(ct)) is not null)
         {
             if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
             var json = line["data:".Length..].Trim();
             if (json.Length == 0) continue;
-            if (json == "[DONE]") yield break;
+            if (json == "[DONE]") break;
 
             string? delta = null;
             using (var doc = JsonDocument.Parse(json))
@@ -76,9 +81,24 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
                         delta = content.GetString();
                     }
                 }
+
+                // Finalny chunk usage (stream_options.include_usage) ma PUSTE choices — nie koliduje z tekstem.
+                if (doc.RootElement.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
+                {
+                    usage = new LlmUsage(
+                        InputTokens: u.TryGetProperty("prompt_tokens", out var p) && p.ValueKind == JsonValueKind.Number ? p.GetInt32() : null,
+                        OutputTokens: u.TryGetProperty("completion_tokens", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : null,
+                        Estimated: false);
+                }
             }
-            if (!string.IsNullOrEmpty(delta)) yield return delta;
+            if (!string.IsNullOrEmpty(delta)) { outputChars += delta.Length; yield return delta; }
         }
+
+        // Serwer bez wsparcia stream_options → jawny szacunek ze znaków (~4 znaki/token), nigdy udawany pomiar.
+        request.OnUsage?.Invoke(usage ?? new LlmUsage(
+            InputTokens: request.Messages.Sum(m => m.Content.Length) / 4,
+            OutputTokens: outputChars / 4,
+            Estimated: true));
     }
 
     private sealed class ApiRequest
@@ -88,7 +108,10 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
         [JsonPropertyName("temperature")] public double Temperature { get; init; }
         [JsonPropertyName("messages")] public required IReadOnlyList<ApiMessage> Messages { get; init; }
         [JsonPropertyName("stream")] public bool Stream { get; init; }
+        [JsonPropertyName("stream_options")] public ApiStreamOptions? StreamOptions { get; init; }
     }
+
+    private sealed record ApiStreamOptions([property: JsonPropertyName("include_usage")] bool IncludeUsage);
 
     private sealed record ApiMessage([property: JsonPropertyName("role")] string Role, [property: JsonPropertyName("content")] string Content);
 }

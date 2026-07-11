@@ -59,6 +59,7 @@ public class ChatServiceFollowUpTests
         {
             LastRequest = request;
             yield return "Odpowiedź [1].";
+            request.OnUsage?.Invoke(new LlmUsage(100, 20, Estimated: false)); // jak provider po strumieniu
             await Task.CompletedTask;
         }
     }
@@ -84,6 +85,10 @@ public class ChatServiceFollowUpTests
         Assert.Equal(["pytanie"], retriever.Queries); // dokładnie 1 retrieval, surowe pytanie
         Assert.Contains(events, e => e is SourcesEvent);
         Assert.Equal(2, llm.LastRequest!.Messages.Count); // System + User (bez historii)
+
+        // Usage z providera przechodzi do DoneEvent (widoczność w UI steruje osobna flaga).
+        var done = Assert.IsType<DoneEvent>(events[^1]);
+        Assert.Equal(new LlmUsage(100, 20, false), done.Usage);
     }
 
     [Fact]

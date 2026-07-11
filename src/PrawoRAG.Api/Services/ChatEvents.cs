@@ -1,3 +1,4 @@
+using PrawoRAG.Domain.Llm;
 using PrawoRAG.Llm.Grounding;
 
 namespace PrawoRAG.Api.Services;
@@ -21,8 +22,9 @@ public sealed record TokenEvent(string Text) : ChatEvent;
 /// <summary>Bramka abstynencji: brak pokrycia w źródłach — nie generujemy odpowiedzi.</summary>
 public sealed record AbstainEvent(string Message, double MaxSimilarity) : ChatEvent;
 
-/// <summary>Koniec: wynik kontroli anty-fabrykacji (cytaty) + model.</summary>
-public sealed record DoneEvent(bool Abstained, string? Model, CitationCheck? Check) : ChatEvent;
+/// <summary>Koniec: wynik kontroli anty-fabrykacji (cytaty) + model. <see cref="Usage"/> = tokeny
+/// in/out z providera (zbierane zawsze; widoczność w UI steruje flaga Diagnostics:ShowTokenUsage).</summary>
+public sealed record DoneEvent(bool Abstained, string? Model, CitationCheck? Check, LlmUsage? Usage = null) : ChatEvent;
 
 /// <summary>Błąd przetwarzania.</summary>
 public sealed record ChatErrorEvent(string Message) : ChatEvent;

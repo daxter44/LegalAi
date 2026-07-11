@@ -9,6 +9,7 @@
 @inject RateGuard RateGuard
 @inject CostGuard CostGuard
 @inject AuthenticationStateProvider AuthState
+@inject Microsoft.Extensions.Options.IOptions<DiagnosticsOptions> Diagnostics
 @implements IDisposable
 
 <h1 class="sr-only">Czat z asystentem prawnym</h1>
@@ -70,6 +71,12 @@
                             else if (ex.Check is not null)
                             {
                                 <span class="badge badge-ok" title="Cytaty zgodne z dostarczonymi źródłami">✓ cytaty zgodne</span>
+                            }
+                            @if (Diagnostics.Value.ShowTokenUsage && ex.Usage is { } u)
+                            {
+                                <span class="badge badge-tokens" title="Tokeny LLM: wejście (prompt ze źródłami i historią) / wyjście (odpowiedź)@(u.Estimated ? " — szacunek ze znaków, serwer nie raportuje usage" : "")">
+                                    @(u.Estimated ? "~" : "")↓ @(u.InputTokens?.ToString("N0") ?? "?") · ↑ @(u.OutputTokens?.ToString("N0") ?? "?") tok
+                                </span>
                             }
                         </div>
                     }
@@ -293,7 +300,7 @@
                     case SourcesEvent s: ex.Sources = s.Sources; break;
                     case TokenEvent t: ex.Answer += t.Text; break;
                     case AbstainEvent a: ex.Abstained = true; ex.AbstainMessage = a.Message; break;
-                    case DoneEvent d: ex.Done = true; ex.Check = d.Check; ex.Model = d.Model; break;
+                    case DoneEvent d: ex.Done = true; ex.Check = d.Check; ex.Model = d.Model; ex.Usage = d.Usage; break;
                     case ChatErrorEvent err: ex.Error = err.Message; break;
                 }
                 await InvokeAsync(StateHasChanged);
@@ -355,5 +362,6 @@
         public string? Error { get; set; }
         public Guid? MessageId { get; set; }
         public string? FeedbackGiven { get; set; }
+        public LlmUsage? Usage { get; set; }
     }
 }
