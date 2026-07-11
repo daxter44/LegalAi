@@ -24,6 +24,7 @@ public static class IngestionServiceCollectionExtensions
         services.Configure<SaosOptions>(config.GetSection(SaosOptions.SectionName));
         services.Configure<ChunkerOptions>(config.GetSection(ChunkerOptions.SectionName));
         services.Configure<RawStoreOptions>(config.GetSection(RawStoreOptions.SectionName));
+        services.Configure<ProcessOptions>(config.GetSection(ProcessOptions.SectionName));
 
         // Konektor SAOS jako typowany HttpClient z resilience; eksponowany jako ISourceConnector.
         // Timeoutami rządzi resilience handler (HttpClient.Timeout = nieskończony, by się nie nakładały).
