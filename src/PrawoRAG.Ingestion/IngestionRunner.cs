@@ -36,7 +36,7 @@ public sealed class IngestionRunner(IServiceScopeFactory scopeFactory, ILogger<I
             await foreach (var raw in connector.FetchAsync(request, ct))
             {
                 using var docScope = scopeFactory.CreateScope();
-                var pipeline = docScope.ServiceProvider.GetRequiredService<IngestionPipeline>();
+                var pipeline = docScope.ServiceProvider.GetRequiredService<IIngestionPipeline>();
                 var outcome = await pipeline.ProcessAsync(raw, ct);
                 switch (outcome)
                 {

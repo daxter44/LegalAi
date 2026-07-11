@@ -67,6 +67,7 @@ public static class IngestionServiceCollectionExtensions
         services.AddSingleton<IDocumentNormalizer, ActNormalizer>();
         services.AddTransient<IChunker, TokenAwareChunker>();
         services.AddScoped<IngestionPipeline>();
+        services.AddScoped<IIngestionPipeline>(sp => sp.GetRequiredService<IngestionPipeline>());
         services.AddSingleton<IngestionRunner>();
 
         // Magazyn surowych + dwie fazy (fetch / process).

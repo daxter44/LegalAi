@@ -25,7 +25,7 @@ public sealed class IngestionPipeline(
     IEnumerable<IDocumentNormalizer> normalizers,
     IChunker chunker,
     IEmbeddingProvider embedder,
-    ILogger<IngestionPipeline> log)
+    ILogger<IngestionPipeline> log) : IIngestionPipeline
 {
     private readonly Dictionary<string, IDocumentNormalizer> _normalizers =
         normalizers.ToDictionary(n => n.DocType, StringComparer.OrdinalIgnoreCase);
