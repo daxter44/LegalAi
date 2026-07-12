@@ -146,24 +146,44 @@ ip addr show | grep "inet 192\|inet 10\."
 # Windows (w PowerShell):
 ipconfig | findstr IPv4
 ```
-Zanotuj adres (np. `192.168.1.50`) — to on trafi do konfiguracji na MacBooku.
+Zanotuj adres — u nas to **`192.168.100.11`**.
 
 ## 6. Z MacBooka: nakładka schematu na nowego Postgresa
 
 Baza jest pusta — trzeba wgrać migracje EF Core zanim `process` będzie miał gdzie zapisywać:
 ```bash
-ConnectionStrings__Db="Host=192.168.1.50;Port=5432;Database=praworag;Username=praworag;Password=praworag" \
+ConnectionStrings__Db="Host=192.168.100.11;Port=5432;Database=praworag;Username=praworag;Password=praworag" \
   dotnet ef database update --project src/PrawoRAG.Storage
 ```
-(Podmień IP na to z kroku 5.)
 
-## 7. Z MacBooka: test na próbce PRZED pełnym przebiegiem
+## 7. Zdejmij ciężkie indeksy PRZED masowym ładowaniem
+
+Tabela `chunks` ma dwa indeksy, które przy insercie pojedynczo (a robimy ich ~16 mln) potrafią
+drastycznie spowolnić `process`: **HNSW** na wektorach (buduje graf przy każdym wierszu) i **GIN**
+na pełnotekstowym wyszukiwaniu. Reszta indeksów (btree, w tym unikalne ograniczenia pilnujące
+idempotencji) zostaje bez zmian — są tanie i część z nich chroni przed duplikatami w trakcie ładowania.
+
+```bash
+docker exec -it $(docker compose ps -q db) psql -U praworag -d praworag -c '
+DROP INDEX IF EXISTS "IX_chunks_Embedding";
+DROP INDEX IF EXISTS "IX_chunks_SearchVector";
+'
+```
+
+To bezpieczne i odwracalne — usuwa tylko strukturę przyspieszającą wyszukiwanie, dane (wektory, tekst)
+zostają nietknięte. EF Core pamięta zastosowane migracje po nazwie, nie porównuje żywego schematu,
+więc ten ręczny drop nie pomyli przyszłego `dotnet ef database update`.
+
+**Dopóki nie odbudujesz (krok 9) — wyszukiwanie semantyczne/pełnotekstowe jest praktycznie nieużywalne**
+(sequential scan po milionach wierszy). Nie testuj czatu/retrievalu w tym oknie.
+
+## 8. Z MacBooka: test na próbce, potem pełny przebieg
 
 Zgodnie z zasadą z `RUNBOOK-EMBEDDING-ZDALNY.md` — zawsze najpierw mała próbka:
 ```bash
-Embeddings__BaseUrl=http://192.168.1.50:8080 \
+Embeddings__BaseUrl=http://192.168.100.11:8080 \
 Embeddings__MaxBatch=256 \
-ConnectionStrings__Db="Host=192.168.1.50;Port=5432;Database=praworag;Username=praworag;Password=praworag" \
+ConnectionStrings__Db="Host=192.168.100.11;Port=5432;Database=praworag;Username=praworag;Password=praworag" \
 Ingestion__Mode=process \
 Ingestion__MaxItems=500 \
 dotnet run --project src/PrawoRAG.Ingestion
@@ -173,7 +193,20 @@ Zmierz czas → ekstrapoluj na cały korpus (~16 mln chunków, patrz szacunek w 
 z logowaniem do pliku (`2>&1 | tee logs/process-$(date +%Y%m%d-%H%M).log`) — pełny przebieg to godziny,
 terminal SSH/zdalny pulpit nie może się rozłączyć w trakcie.
 
-## 8. Awaria i wznowienie
+## 9. Po zakończeniu pełnego przebiegu: odbuduj indeksy
+
+```bash
+docker exec -it $(docker compose ps -q db) psql -U praworag -d praworag -c '
+SET maintenance_work_mem = '"'"'4GB'"'"';
+CREATE INDEX "IX_chunks_Embedding" ON chunks USING hnsw ("Embedding" vector_cosine_ops);
+CREATE INDEX "IX_chunks_SearchVector" ON chunks USING gin ("SearchVector");
+'
+```
+`maintenance_work_mem` przyspiesza budowę HNSW — podnieś, jeśli maszyna ma więcej wolnego RAM-u.
+**Odbudowa HNSW przy 16 mln wektorów zajmie realnie godziny, nie minuty** — to osobny, długi krok,
+zaplanuj go świadomie (noc, `tmux`), zanim uznasz proces za zakończony i przejdziesz do E5 (krok 12).
+
+## 10. Awaria i wznowienie
 
 Mechanizmy `docs/PLAN-ODPORNOSC-INGESTU.md` działają identycznie zdalnie: przerwany `process` wznawia
 się **tym samym poleceniem** (fast-skip pomija już gotowe dokumenty w minuty, nie godziny). Pełna
@@ -181,18 +214,18 @@ diagnostyka porażek — patrz sekcja „Awaria i wznowienie" w `docs/RUNBOOK-EM
 1:1 tego wariantu (ten sam kod `RawProcessRunner`/`IngestionPipeline`, tylko `Embeddings__BaseUrl`
 i `ConnectionStrings__Db` wskazują na maszynę z 3060 zamiast `localhost`).
 
-## 9. Higiena wielogodzinnego przebiegu
+## 11. Higiena wielogodzinnego przebiegu
 
 - Maszyna z 3060: zasilanie sieciowe, uśpienie wyłączone (Windows: Ustawienia → System → Zasilanie →
   „Nigdy" dla uśpienia; Linux: `systemctl mask sleep.target suspend.target`).
 - MacBook (skąd leci `process`): `caffeinate -i` na czas przebiegu, żeby nie usnął w trakcie.
 - Oba na tym samym LAN (Wi-Fi wystarczy, ale kabel pewniejszy przy wielogodzinnym transferze).
 
-## 10. Po zakończeniu — walidacja i porządki
+## 12. Po zakończeniu — walidacja i porządki
 
-1. **E5 na pełnym korpusie** (z MacBooka, wskazując na zdalną bazę):
+1. **E5 na pełnym korpusie** (z MacBooka, wskazując na zdalną bazę, PO odbudowie indeksów z kroku 9):
    ```bash
-   ConnectionStrings__Db="Host=192.168.1.50;..." dotnet run --project src/PrawoRAG.Eval
+   ConnectionStrings__Db="Host=192.168.100.11;..." dotnet run --project src/PrawoRAG.Eval
    ```
 2. Gdy wynik OK — możesz zgasić `tei` na 3060 (Postgres tam zostaje jako docelowa baza, albo zrób
    `pg_dump` i przenieś dalej, wg `RUNBOOK-EMBEDDING-ZDALNY.md` §K4).
