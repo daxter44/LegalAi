@@ -217,9 +217,42 @@ zwalnia Cię z odpowiedzialności [2].
 ```
 Dowód, że to NIE słabość modelu, tylko skład źródeł.
 
-### E. Log Ollamy — brak obcięcia (obala hipotezę o num_ctx)
+### E. Badanie „czy kontekst się mieści" — obala hipotezę o num_ctx
+
+Hipoteza wyjściowa: Bielik w Ollamie serwowany z małym oknem, prompt czatu (8 źródeł) przepełnia je,
+`--context-shift` kaleczy instrukcje → streszczanie. Sprawdzone czterema niezależnymi obserwacjami — WSZYSTKIE
+przeczą przepełnieniu:
+
+**E.1 — Modelfile: okno faktycznie małe, ale model natywnie duży.**
+```
+TEMPLATE "<|im_start|>system
+{{ .System }}<|im_end|>
+<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+"
+PARAMETER num_ctx 4096      <- serwowane okno
+PARAMETER num_predict 512
+```
+Bielik natywnie obsługuje `context_length = 32768` (z `/api/tags`) — okno 4096 to konfiguracja Ollamy, nie
+limit modelu. Gdyby przepełnienie było przyczyną, byłaby to dźwignia do podniesienia.
+
+**E.2 — Aplikacja i tak NIE wysyła num_ctx.** [OpenAiCompatibleLlmProvider.cs](../src/PrawoRAG.Llm/OpenAiCompatibleLlmProvider.cs)
+buduje `ApiRequest` bez pola `options`/`num_ctx` — jest zdana wyłącznie na `PARAMETER num_ctx` z Modelfile.
+Nie ma per-request override, więc każda dyskusja o num_ctx sprowadza się do Modelfile/env, nie do kodu.
+
+**E.3 — Realny prompt się MIEŚCIŁ, powtarzalnie.** Log Ollamy dla zapytania o drzewo (kilka powtórzeń,
+task 0 / 1376 / 1780 / 1978 — użytkownik odpalał je wielokrotnie):
 ```
 slot ... | new prompt, n_ctx_slot = 4096, n_keep = 4, task.n_tokens = 2050
 slot ... | stop processing: n_tokens = 2449, truncated = 0
 ```
-Prompt 2050 tok < 4096, `truncated = 0`. Kontekst nie przepełniony — podnoszenie num_ctx nic by nie dało.
+2050 tok < 4096, `truncated = 0` za każdym razem. Nic nie zostało obcięte.
+
+**E.4 — Prompt „mieszczący się" i tak daje dobrą odpowiedź.** Test A (2 krótkie art. KC, ~500 tok, głęboko
+w oknie) → poprawna, scytowana odpowiedź. Test izolujący (~1878 tok, ten sam rozmiar co realna awaria, sam
+statut) → poprawna odpowiedź (załącznik D). Czyli rozmiar mieszczący się w oknie NIE jest przyczyną — o wyniku
+decyduje TREŚĆ źródeł (statut vs stos narracji orzeczeń), nie ich długość.
+
+**Wniosek E:** podnoszenie num_ctx nic by nie dało — problem nie jest po stronie kontekstu, tylko składu
+retrievalu (sekcja 4).
