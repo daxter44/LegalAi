@@ -27,6 +27,14 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
                 m.Content))
             .ToList();
 
+        // Diagnostyka: zrzut DOKŁADNEGO promptu do pliku, gdy ustawiono PRAWORAG_DUMP_PROMPT. Opt-in,
+        // nieaktywne w normalnym biegu — służy do zobaczenia realnego wejścia modelu przy debugowaniu jakości.
+        if (Environment.GetEnvironmentVariable("PRAWORAG_DUMP_PROMPT") is { Length: > 0 } dumpPath)
+        {
+            var dump = string.Join("\n\n", messages.Select(m => $"===== {m.Role.ToUpperInvariant()} =====\n{m.Content}"));
+            try { await File.AppendAllTextAsync(dumpPath, $"\n\n########## {DateTime.Now:HH:mm:ss} ##########\n{dump}\n", ct); } catch { /* diagnostyka nie może wywalić żądania */ }
+        }
+
         var body = new ApiRequest
         {
             Model = _opt.Model,
