@@ -29,18 +29,14 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         var qvec = new Vector(await embedder.EmbedQueryAsync(query.Text, ct));
         var k = query.CandidatesPerPath;
 
-        var filtered = ApplyFilters(db.Chunks.Where(c => c.Embedding != null), query);
-
         // ef_search musi obowiązywać na TYM samym połączeniu co zapytanie dense — transakcja to gwarantuje.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlRawAsync($"SET LOCAL hnsw.ef_search = {HnswEfSearch}", ct);
 
-        // Tor gęsty: najmniejszy dystans cosine.
-        var dense = await filtered
-            .Select(c => new { c.Id, Dist = c.Embedding!.CosineDistance(qvec) })
-            .OrderBy(x => x.Dist)
-            .Take(k)
-            .ToListAsync(ct);
+        // Tor gęsty: najmniejszy dystans cosine. Surowe SQL z rzutem na halfvec(1024) — IX_chunks_Embedding
+        // jest teraz indeksem wyrażeniowym (fp16, oszczędność pamięci przy budowie); LINQ CosineDistance
+        // porównuje fp32 do fp32 i nie trafiłby w ten indeks (pełny sequential scan po 7M+ wierszy).
+        var dense = await DenseAsync(query, qvec, k, ct);
 
         // Tor rzadki: BM25 po tsvector (konfiguracja zgodna z kolumną generowaną).
         var sparse = await ApplyFilters(db.Chunks, query)
@@ -126,6 +122,37 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
 
         return new RetrievalResult(final, signal);
     }
+
+    /// <summary>Tor gęsty przez surowe SQL: kolumna <c>Embedding</c> zostaje fp32 (przechowywanie), ale
+    /// dystans liczony jest po rzucie obu stron na <c>halfvec(1024)</c>, żeby zapytanie trafiało w
+    /// wyrażeniowy indeks HNSW <c>IX_chunks_Embedding</c> (zbudowany na <c>Embedding::halfvec(1024)</c>).</summary>
+    private async Task<List<DenseHit>> DenseAsync(RetrievalQuery query, Vector qvec, int k, CancellationToken ct)
+    {
+        var parameters = new List<object>();
+        string P(object value) { parameters.Add(value); return $"{{{parameters.Count - 1}}}"; }
+
+        var qvecPlaceholder = P(qvec);
+        var conditions = new List<string> { "c.\"Embedding\" IS NOT NULL" };
+        if (query.CourtType is { } courtType) conditions.Add($"d.\"CourtType\" = {P(courtType)}");
+        if (query.DateFrom is { } from) conditions.Add($"d.\"JudgmentDate\" >= {P(from)}");
+        if (query.DateTo is { } to) conditions.Add($"d.\"JudgmentDate\" <= {P(to)}");
+        if (query.OnlyInForce) conditions.Add("(d.\"DocType\" <> 'act' OR d.\"InForce\" = true)");
+        if (query.MinChunkTokens > 0) conditions.Add($"c.\"TokenCount\" >= {P(query.MinChunkTokens)}");
+        var limitPlaceholder = P(k);
+
+        var sql = $"""
+            SELECT c."Id" AS "Id", (c."Embedding"::halfvec(1024) <=> {qvecPlaceholder}::halfvec(1024)) AS "Dist"
+            FROM chunks c
+            JOIN documents d ON d."Id" = c."DocumentId"
+            WHERE {string.Join(" AND ", conditions)}
+            ORDER BY "Dist"
+            LIMIT {limitPlaceholder}
+            """;
+
+        return await db.Database.SqlQueryRaw<DenseHit>(sql, parameters.ToArray()).ToListAsync(ct);
+    }
+
+    private sealed record DenseHit(Guid Id, double Dist);
 
     /// <summary>Dokładne trafienia po lokalizatorze dla cytatów wykrytych w pytaniu (QU-3). Omija
     /// <c>MinChunkTokens</c> (P5 — krótki § nie może wypaść) i pobiera CAŁY artykuł (P3).</summary>
