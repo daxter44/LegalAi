@@ -34,7 +34,7 @@ public sealed class TeiEmbeddingProvider(HttpClient http, IOptions<TeiOptions> o
         foreach (var batch in Batch(inputs))
         {
             var req = new EmbedRequest { Inputs = batch, Normalize = _opt.Normalize, Truncate = true };
-            using var resp = await http.PostAsJsonAsync("/embed", req, ct);
+            using var resp = await WithRetryAsync(() => http.PostAsJsonAsync("/embed", req, ct), ct);
             await EnsureOkAsync(resp, ct);
             var vectors = await resp.Content.ReadFromJsonAsync<float[][]>(cancellationToken: ct)
                           ?? throw new InvalidOperationException("TEI /embed zwróciło pustą odpowiedź.");
@@ -56,7 +56,7 @@ public sealed class TeiEmbeddingProvider(HttpClient http, IOptions<TeiOptions> o
         foreach (var batch in Batch(texts))
         {
             var req = new TokenizeRequest { Inputs = batch, AddSpecialTokens = true };
-            using var resp = await http.PostAsJsonAsync("/tokenize", req, ct);
+            using var resp = await WithRetryAsync(() => http.PostAsJsonAsync("/tokenize", req, ct), ct);
             await EnsureOkAsync(resp, ct);
             // /tokenize zwraca listę-per-input: [[{id,text,...}], ...]
             var perInput = await resp.Content.ReadFromJsonAsync<TokenInfo[][]>(cancellationToken: ct)
@@ -71,6 +71,29 @@ public sealed class TeiEmbeddingProvider(HttpClient http, IOptions<TeiOptions> o
     {
         for (var i = 0; i < items.Count; i += _opt.MaxBatch)
             yield return items.Skip(i).Take(_opt.MaxBatch).ToList();
+    }
+
+    /// <summary>Ponawia POST do 6× — LAN do maszyny z korpusem to osobny host, przejściowe błędy transportu
+    /// (zerwane połączenie, chwilowy brak trasy) nie powinny wywalać całego, wielogodzinnego przebiegu evala
+    /// z powodu jednego pakietu. Łapie tylko HttpRequestException; anulowanie przez <paramref name="ct"/>
+    /// propaguje się bez ponawiania. Sumaryczne okno backoffu: ~42s zanim się podda.</summary>
+    private static async Task<HttpResponseMessage> WithRetryAsync(Func<Task<HttpResponseMessage>> send, CancellationToken ct)
+    {
+        const int maxAttempts = 6;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                var resp = await send();
+                if (resp.IsSuccessStatusCode || attempt > maxAttempts) return resp;
+                resp.Dispose();
+            }
+            catch (HttpRequestException) when (attempt <= maxAttempts)
+            {
+                // przejściowy błąd transportu — ponawiamy z backoffem poniżej
+            }
+            await Task.Delay(TimeSpan.FromSeconds(attempt * 2), ct);
+        }
     }
 
     private static async Task EnsureOkAsync(HttpResponseMessage resp, CancellationToken ct)
