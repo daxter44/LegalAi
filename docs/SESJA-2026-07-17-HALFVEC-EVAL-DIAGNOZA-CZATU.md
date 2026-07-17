@@ -149,3 +149,77 @@ na maszynie 3060 (środowisko agenta nie sięga sieci lokalnej — biegi odpala 
 - Wcześniej flagowane: paralelizacja pipeline'u ingestii; twardsza obsługa `HttpClient.Timeout`
   w ingescie (retry z sekcji 3 częściowo to adresuje, ale nie zweryfikowano oryginalnego scenariusza).
 - Diagnostyczny hook `PRAWORAG_DUMP_PROMPT` — opt-in, zostaje jako narzędzie do debugowania jakości.
+
+---
+
+## 8. Załączniki — surowe dowody
+
+### A. Śmieciowa odpowiedź czatu (objaw)
+Pytanie: *„Sąsiad twierdzi, że drzewo z mojej działki spadło na jego ogrodzenie i żąda odszkodowania.
+Drzewo było zdrowe, przewróciła je wichura. Czy odpowiadam za taką szkodę?"*
+
+Zamiast odpowiedzi model wyprodukował streszczenie JEDNEGO orzeczenia w formacie zadania na czytanie
+ze zrozumieniem (fragment):
+
+```
+Zadanie:
+1. Przedstawienie sprawy sądowej dotyczącej uszkodzenia samochodu przez gałęzie drzewa.
+2. Opis zdarzenia i jego skutków.
+...
+Odpowiedź:
+1. Sprawa dotyczyła uszkodzenia samochodu przez gałęzie drzewa, które spadły na pojazd podczas
+   silnego wiatru.
+2. Zdarzenie miało miejsce w Łodzi, gdzie w dniu zdarzenia padał deszcz i wiał silny wiatr...
+3. Właścicielem nieruchomości (...) była Gmina Miasta Ł. (...)
+...
+Podsumowanie: (...) Sąd Okręgowy w Łodzi uznał, że Gmina Miasta Ł. (...) nie ponosi odpowiedzialności
+za szkodę. Powództwo zostało oddalone (...)
+```
+Model streścił łódzką sprawę o topolę i samochód — nie odpowiedział na pytanie o ogrodzenie i wichurę.
+
+### B. Realny prompt — co dostał model (zrzut `PRAWORAG_DUMP_PROMPT`)
+System prompt był poprawny (zakazuje streszczania, każe odpowiadać wprost). Sekcja ŹRÓDŁA zawierała
+**8 orzeczeń SAOS, zero statutu**:
+
+| # | Źródło | Uwaga |
+|---|---|---|
+| 1 | Sąd Okręgowy w Elblągu, I Ca 262/13 | narracja: lipa, altanka, silny wiatr |
+| 2 | Sąd Rejonowy w Dzierżoniowie, I C 56/15 | narracja: drzewo na samochód, opis uszkodzeń, polisa |
+| 3 | Sąd Okręgowy w Łodzi, III Ca 2106/18 | narracja: brzoza na ogrodzenie i wiatę |
+| 4 | Sąd Rejonowy w Gdyni, I1 C 250/21 | **przeciwny wynik** — zły stan drzewa → JEST odpowiedzialność |
+| 5 | Sąd Rejonowy dla Łodzi-Śródmieścia, I C 144/18 | **przeciwny** — wypróchniały pień, brak siły wyższej |
+| 6 | Sąd Rejonowy w Golubiu-Dobrzyniu, I C 305/15 | narracja: sosna, trąba powietrzna |
+| 7 | Sąd Okręgowy w Łodzi, III Ca 1615/20 | **to streścił model** — topola, siła wyższa, brak winy |
+| 8 | Sąd Rejonowy w Sokółce, I C 86/15 | narracja: spór o dąb nad granicą |
+
+Materiał: surowe ustalenia faktyczne, część bez tez, wyniki **sprzeczne** — i żadnej normy prawnej.
+
+### C. Rankingi `/api/search` (TopK=50) — statut nieretrievalny
+**Pytanie naturalne** (`maxSim=0.8151`):
+```
+#1-14  [orzeczenia]  sim 0.80-0.815
+#15    [AKT] Kodeks cywilny, art. 149   <- ZŁY przepis (gałęzie nad granicą, nie odpowiedzialność)
+--> AKTów w top-46: 1 (i to niewłaściwy). art. 415 KC: nieobecny.
+```
+**Zapytanie normatywne** („odpowiedzialność za szkodę z winy… siła wyższa", `maxSim=0.8745`):
+```
+#1-49  [same orzeczenia]
+--> AKTów w top-49: 0. art. 415 KC: nieobecny nawet przy zapytaniu językiem przepisu.
+```
+
+### D. Test izolujący — Bielik ze statutem odpowiada BEZBŁĘDNIE
+To samo pytanie, ale w źródłach art. 415 + 361 KC (~1878 tok, rozmiar jak realna awaria), Bielik lokalny:
+```
+Nie jesteś odpowiedzialny za szkodę spowodowaną przez drzewo, które przewróciła wichura. Zgodnie z
+art. 415 Kodeksu cywilnego [1], aby ponosić odpowiedzialność odszkodowawczą, musi wystąpić wina
+sprawcy szkody. W tym przypadku (...) nie można mówić o Twojej winie. (...) wichura jako siła wyższa
+zwalnia Cię z odpowiedzialności [2].
+```
+Dowód, że to NIE słabość modelu, tylko skład źródeł.
+
+### E. Log Ollamy — brak obcięcia (obala hipotezę o num_ctx)
+```
+slot ... | new prompt, n_ctx_slot = 4096, n_keep = 4, task.n_tokens = 2050
+slot ... | stop processing: n_tokens = 2449, truncated = 0
+```
+Prompt 2050 tok < 4096, `truncated = 0`. Kontekst nie przepełniony — podnoszenie num_ctx nic by nie dało.
