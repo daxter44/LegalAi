@@ -295,6 +295,52 @@ dopasowania semantycznego przy współwystępowaniu śmieciowych chunków.
 
 ---
 
+## Case 6 — Odrzucenie spadku bez zachowania kolejności (pytanie złożone, 4 podpytania)
+
+**Nie z bazy produkcyjnej** — test interaktywny, 2026-07-19, zwykła rozmowa BEZ załącznika.
+
+**Pytanie** (parafraza, oryginał dłuższy i bardziej opisowy): *„Odrzuciłem u notariusza spadek nie
+zachowując kolejności odrzucania (notariusz mnie o tym nie poinformował). Dwójka moich dzieci odrzuciła
+spadek w terminie, ale syn nie złożył oświadczenia i twierdzi, że moje odrzucenie się nie liczy, bo
+kolejność nie została zachowana. Czy moje odrzucenie się liczy? Czy pozostałe dzieci muszą jeszcze raz
+odrzucać? Jeśli anuluję odrzucenie, czy będę automatycznie obciążony długami? Co powinien zrobić syn,
+jeśli anulowanie jest niemożliwe?"* → **ODMOWA**, mimo dobrego retrievalu.
+
+### Źródła (8, zrzut promptu)
+```
+PRZEPISY (5) — WSZYSTKIE realnie na temat, bez zanieczyszczeń:
+  KC art. 1019 § 1-3 — uchylenie się od skutków oświadczenia (błąd/groźba), wymaga zatwierdzenia sądu
+  KC art. 1015 § 1-2 — termin 6 mies.; brak oświadczenia = przyjęcie z dobrodziejstwem inwentarza
+ORZECZNICTWO (3) — opisy podobnych spraw (sekwencyjne odrzucanie przez pokolenia), bez wyraźnej tezy
+  rozstrzygającej akurat kwestię „kolejności"
+```
+
+### Diagnoza — inny mechanizm niż Case 1-5
+
+**Retrieval zadziałał dobrze** — 5 przepisów KC, właściwa gałąź prawa (spadkowe), bez zanieczyszczeń
+klasy „wadium"/„związek metropolitalny"/placeholderów. To odróżnia ten przypadek od wszystkich
+poprzednich.
+
+**Ale premisa syna („trzeba zachować kolejność odrzucania") nie ma pokrycia w źródłach — ani
+potwierdzenia, ani zaprzeczenia.** W dostarczonych przepisach nie ma takiego wymogu — cisza, nie
+sprzeczność. Orzecznictwo [6]-[8] to tylko narracyjne opisy podobnych spraw, bez klarownej tezy.
+
+**Prawdziwa przyczyna: pytanie ma 4 odrębne podpytania, a reguła 3 systemowego promptu jest binarna.**
+Przynajmniej 2-3 z 4 podpytań dałoby się częściowo zaadresować z dostarczonych źródeł (mechanizm
+uchylenia się przez sąd z art. 1019, termin i skutek milczenia z art. 1015) — ale `GroundedPrompt.cs`
+nie ma trybu „częściowej odpowiedzi z zastrzeżeniem". Reguła 3: *„Jeśli dostarczone źródła NIE
+zawierają odpowiedzi, napisz dokładnie: 'Nie mam wystarczających źródeł'"* — bez pośredniego wariantu
+„na X mogę odpowiedzieć, na Y nie". Sprawdzone w kodzie ([GroundedPrompt.cs:41-42](src/PrawoRAG.Llm/Grounding/GroundedPrompt.cs)):
+ta reguła jest DZIŚ, w bieżącym stanie repo, bajt w bajt identyczna jak przed wszystkimi dzisiejszymi
+commitami — żaden z nich (`afab2ad`, `255db11`, `fc887d6`, `356d8fc`, `58e164e`) jej nie dotyka.
+
+**To piąty, odrębny mechanizm zdiagnozowany w tej sesji** — nie problem precyzji retrievalu (Case 1/3),
+nie recall (Case 2/5), nie generalizacji akronimu (Case 4), tylko **architektura promptu nieobsługująca
+pytań wieloczęściowych**, gdzie poprawna odpowiedź wymagałaby rozbicia na osobne tezy z różnym
+poziomem pewności, a obecna reguła wymusza całość-albo-nic.
+
+---
+
 ## Podsumowanie — trzy odrębne, nowe wnioski (żaden nie pokrywa się z diagnozą z 2026-07-17)
 
 1. **Bramka progu ≠ jakość odpowiedzi — ale mechanizm różni się między przypadkami.** We wszystkich
@@ -385,3 +431,8 @@ otwarte jak niżej.
   `(pominięty)` — ile takich chunków jest w korpusie, i czy kwalifikują się do tego samego typu filtra
   co `REGULATION`/`(pominięty)` (chunk zdominowany powtórzonym tokenem anonimizacji = brak wartości
   informacyjnej, bezwarunkowo wykluczyć z retrievalu).
+- **[Case 6]** Czy `GroundedPrompt.SystemPrompt` powinien dostać tryb odpowiedzi częściowej („na X
+  odpowiadam z [n], na Y źródła milczą") zamiast dzisiejszej binarnej reguły 3 — decyzja produktowa
+  (zmiana zachowania na WSZYSTKICH pytaniach, nie tylko złożonych), wymaga świadomego wyboru, nie tylko
+  fixu technicznego; ryzyko: częściowe odpowiedzi mogą obniżyć postrzeganą wiarygodność jeśli model źle
+  oceni co jest „pokryte".
