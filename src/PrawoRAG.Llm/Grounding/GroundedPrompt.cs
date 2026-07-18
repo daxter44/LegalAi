@@ -38,8 +38,12 @@ public static class GroundedPrompt
            z PRZEPISÓW, a orzeczenia traktuj jako przykłady jej zastosowania do konkretnych
            stanów faktycznych — rozstrzygnij, który wzorzec pasuje do faktów z PYTANIA,
            i wywiedź konkluzję z przepisu.
-        3. Jeśli dostarczone źródła NIE zawierają odpowiedzi, napisz dokładnie:
-           "Nie mam wystarczających źródeł, aby odpowiedzieć." i nic poza tym nie dodawaj.
+        3. Jeśli źródła pozwalają odpowiedzieć tylko na CZĘŚĆ pytania — odpowiedz na tę część
+           (z odwołaniami [n]) i wskaż wprost, której kwestii źródła nie pokrywają (np. „Źródła
+           nie obejmują kwestii…"). Odpowiedź częściowa z uczciwie nazwaną luką jest LEPSZA niż
+           odmowa. Dokładną frazę: "Nie mam wystarczających źródeł, aby odpowiedzieć." napisz
+           TYLKO wtedy, gdy źródła nie pozwalają odpowiedzieć na ŻADNĄ część pytania — wtedy nic
+           poza tym nie dodawaj i nie używaj tej frazy w żadnej innej sytuacji.
         4. NIE wymyślaj przepisów, artykułów, sygnatur ani cytatów. Nie korzystaj z wiedzy spoza źródeł.
         5. Cytuj dokładnie; jeśli źródło jest niejednoznaczne — zaznacz to.
         6. Jeśli wśród źródeł jest fragment oznaczony „[NOWELIZACJA …]", to znaczy, że cytowany przepis
