@@ -224,6 +224,67 @@ Kod: `HybridRetriever.CitationBridgeAsync` + wspólny `FetchArticleAsync` (refak
    narracji — test izolujący D miał SAM statut; jeśli model dalej streszcza, następny ruch to prompt
    (jawny podział ŹRÓDEŁ na PRZEPISY/ORZECZNICTWO), nie retrieval.
 
+### 5d. Naprawa testów T-MOST (2026-07-18) — 2/4 padały, bug w testach nie w moście
+
+Po pullu implementacji `dotnet test` dał 2/4 T-MOST czerwone. Diagnoza: **trzy warstwy kontaminacji**
+z realnym korpusem w lokalnej `praworag-db-1` (nie bug w `CitationBridgeAsync` — logika progu ≥2
+sprawdzona czytaniem kodu i potwierdzona poprawna):
+
+1. Zapytania testowe używały prawdziwych słów („Mostako2 **drzewo szkoda**") → BM25 ściągał realne
+   orzeczenia o drzewach cytujące art. 415 → fałszywe głosy z produkcyjnych danych. **Fix:** match
+   tylko po unikalnym tokenie (`"Mostako2"`, bez dosłownych słów kluczowych).
+2. Testy cytowały **realny** art. 415 k.c. → nawet po (1) realne orzeczenia trafione torem gęstym
+   nadal dorzucały głosy na 415. **Fix:** fikcyjny art. 9997, którego korpus nigdy nie cytuje.
+3. Najbardziej pouczające: `FakeEmbeddingProvider` hashuje cały tekst i zwraca wektor all-dodatni →
+   cosine similarity do fake-query ~0,75 dla KAŻDEGO seedowanego chunka, kontra ~0,06 dla realnych
+   chunków z prawdziwym embeddingiem TEI. Efekt: **seedowany akt ZAWSZE wchodzi torem gęstym**,
+   niezależnie od mostu — obecność w wynikach nic nie mówi o tym, czy most zadziałał. **Fix:** asercje
+   sprawdzają sygnał mostu wprost (`Score == double.MaxValue`, ustawiane w `FetchArticleAsync` jako
+   „trafienie dokładne — zawsze na górę"), nie samą obecność chunka.
+
+Po naprawie: **4/4 T-MOST zielone, pełny zestaw 221/221** (commit `79127b3`).
+
+### 5e. Walidacja end-to-end na żywym korpusie (2026-07-18) — retrieval naprawiony, generacja częściowo
+
+Po przebudowie API z nowym kodem, to samo pytanie o drzewo z sekcji 4/8:
+
+**`/api/search` (TopK=8) — most zadziałał, dokładnie jak przewidziała sonda:**
+```
+score=1.80e+308  Kodeks cywilny, art. 415, Dz.U. 1964 nr 16 poz. 93   ← norma rządząca (3 głosy w sondzie)
+score=1.80e+308  Kodeks cywilny, art. 144, Dz.U. 1964 nr 16 poz. 93   ← immisje sąsiedzkie (2 głosy)
+score=1.64e-02   Sąd Okręgowy w Elblągu, I Ca 262/13
+score=1.61e-02   Sąd Rejonowy w Dzierżoniowie, I C 56/15
+(...)
+```
+Czoło listy: `Kodeks cywilny, Art. 415\nKto z winy swej wyrządził drugiemu szkodę, obowiązany jest do
+jej naprawienia.` — realny tekst normy, nie placeholder. `maxSimilarity=0,8151`, `wouldAbstain=False` —
+identyczne jak przed mostem (punkt bezpieczeństwa 5c.4 potwierdzony: zero wpływu na bramkę).
+
+**Czat (UI, ten sam Bielik) — POPRAWA, ale NIE pełna naprawa:**
+```
+W oparciu o podane fragmenty tekstów sądowych można stwierdzić, że w przypadku uszkodzeń spowodowanych
+przez drzewa, które się przewróciły, sądy biorą pod uwagę kilka kluczowych czynników:
+1. Stan zdrowotny drzewa: (...)
+2. Warunki atmosferyczne: (...)
+3. Nadzór nad drzewostanem: (...)
+4. Siła wyższa: (...)
+5. Wysokość odszkodowania: (...)
+Podsumowując, sądy analizują szczegółowo okoliczności zdarzenia (...)
+```
+**Postęp:** format „Zadanie:/Odpowiedź:" (streszczenie jednego orzeczenia) zniknął — to już nie czysta
+kompresja dokumentu.
+**Wciąż złamane zasady systemowego promptu:** brak odpowiedzi WPROST na początku (tak/nie + dlaczego —
+zasada 1), **zero cytowań `[n]`** w całej odpowiedzi mimo że art. 415 był w źródłach na pozycji [1]
+(zasada 2) — model zignorował dostarczoną normę i zsyntetyzował "meta-analizę czynników sądowych" z
+orzeczeń zamiast jej użyć. To dokładnie ryzyko przewidziane w checkliście 5c.5.
+
+**Wniosek:** retrieval jest naprawiony i zwalidowany (norma rządząca trafia do kontekstu, bramka
+nietknięta). Pozostały problem jest teraz PO STRONIE GENERACJI/PROMPTU, nie retrievalu: mimo obecności
+normy na czele listy źródeł, Bielik wciąż preferuje syntezę narracji orzeczeń nad cytowaniem [1]. Zgodnie
+z 5c.5 następny krok to zmiana promptu — jawny podział ŹRÓDŁA na sekcje PRZEPISY / ORZECZNICTWO (żeby
+norma nie ginęła wizualnie wśród 6 podobnie sformatowanych orzeczeń) i/lub twardsze wymuszenie cytowania
+w `GroundedPrompt.SystemPrompt` — NIE dalsza praca nad retrievalem.
+
 ---
 
 ## 6. Zmierzone liczby (pod przyszłe decyzje / sizing)
@@ -239,10 +300,17 @@ Kod: `HybridRetriever.CitationBridgeAsync` + wspólny `FetchArticleAsync` (refak
 
 ## 7. Otwarte wątki
 
-- **Most cytowań w `HybridRetriever`** (sekcja 5b) — NASTĘPNY KROK. Sonda rozstrzygnęła: act-only lane
-  odrzucony (art. 415 nieobecny nawet w act-only top-20, pułapka 149 wygrywa), most cytowań ma pokrycie
-  (art. 415 cytowany w 3 orzeczeniach top-30). Klocki gotowe: `JudgmentCitationParser` (17 testów) +
-  retrieval strukturalny do dociągnięcia tekstu artykułu. Do implementacji i testu na 3060.
+- **Most cytowań — ZAIMPLEMENTOWANY i zwalidowany end-to-end** (sekcje 5c-5e). `/api/search` z pytaniem
+  o drzewo: art. 415 KC na czele wyników (przedtem: nieobecny w top-46), bramka abstynencji nietknięta.
+  Testy 221/221 zielone (naprawa T-MOST w 5d).
+- **NASTĘPNY KROK (nowy, po walidacji 5e): jakość generacji, nie retrieval.** Mimo art. 415 na pozycji
+  [1], Bielik w czacie wciąż nie odpowiada wprost i nie cytuje `[n]` — syntetyzuje „czynniki, które biorą
+  pod uwagę sądy" zamiast użyć dostarczonej normy. Kandydaci: (a) jawny podział sekcji ŹRÓDŁA w
+  `GroundedPrompt.Build` na PRZEPISY / ORZECZNICTWO, żeby norma nie ginęła wizualnie wśród narracji;
+  (b) twardsze wymuszenie cytowania w `SystemPrompt` (może z przykładem formatu); (c) sprawdzić, czy to
+  swoiste dla Bielika 11B, czy uniwersalne — **Gemma 4 (`gemma4:26b-mlx`, 17 GB, natywny MLX pod Apple
+  Silicon) pobrana na M4 (32 GB RAM, komfortowy margines) do testu porównawczego z tym samym promptem
+  po moście cytowań.**
 - Migracja EF odzwierciedlająca realny indeks halfvec (sekcja 1).
 - Rozjazd lokalny `main` vs `origin/main` (nasz `16adaf2` nie na origin; origin `3fa20b5` scalony do
   gałęzi) — do uporządkowania.
