@@ -45,6 +45,14 @@ if (args.Contains("--exam") || (cfg.GetValue<bool?>("Eval:Exam") ?? false))
     return;
 }
 
+// Sonda act-lane (diagnoza „statut nieretrievalny", sesja 2026-07-17): --probe-akty [własne pytanie].
+// Tylko odczyt bazy + TEI; bez LLM. Wynik decyduje o projekcie naprawy retrievalu aktów.
+if (args.Contains("--probe-akty"))
+{
+    await ActLaneProbe.RunAsync(host.Services, args, default);
+    return;
+}
+
 var topK = cfg.GetValue<int?>("Retrieval:TopK") ?? 8;
 var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
 var minChunkTokens = cfg.GetValue<int?>("Retrieval:MinChunkTokens") ?? 20;

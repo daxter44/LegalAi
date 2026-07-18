@@ -127,6 +127,31 @@ i której wynik dokładamy do ugruntowania obok orzeczeń.
 Ryzyko do przetestowania: czy w act-only lane art. 415 wygra z art. 149 dla tego pytania. Wymaga iteracji
 na maszynie 3060 (środowisko agenta nie sięga sieci lokalnej — biegi odpala operator).
 
+### 5a. Sonda diagnostyczna `--probe-akty` (2026-07-18) — pomiar PRZED implementacją
+
+Analiza na chłodno podważa prosty act-only lane: art. 415 KC („kto z winy swej…") nie dzieli z pytaniem
+o drzewo ANI JEDNEGO słowa, a art. 149 KC dosłownie zawiera „gałęzie/drzewa/grunt sąsiedni" — w puli samych
+aktów pułapka leksykalna prawdopodobnie wygrywa. Alternatywa rozwiązująca problem u źródła: **most cytowań**
+— trafione orzeczenia (retrieval orzeczeń działa dobrze!) same cytują w treści przepisy, na których się
+opierają („na podstawie art. 415 k.c."); ekstrakcja tych cytowań + dociągnięcie artykułów istniejącym
+mechanizmem strukturalnym daje normę bez ML i bez dodatkowego wywołania LLM.
+
+Zamiast wybierać na wiarę — sonda `PrawoRAG.Eval --probe-akty` mierzy na żywej bazie (tylko odczyt):
+**A** sanity korpusu (czy art. 415/361/435/149 KC w ogóle są i mają embedding), **B** pełny dense top-50
+(niezależna weryfikacja dowodów z tej sesji), **C** act-only dense top-20 (kto wygrywa: 415 czy 149),
+**D** dry-run mostu cytowań (co cytują chunki top-orzeczeń; głosowanie per NIEZALEŻNY dokument, żeby jedno
+orzeczenie z litanią przepisów procesowych nie zdominowało wyniku). Parser cytowań stylu orzeczniczego
+(`JudgmentCitationParser` — skrót aktu musi PRZYLEGAĆ do numeru; precyzja ponad recall) pokryty testami.
+
+Uruchomienie (M4, baza+TEI na 3060):
+```bash
+ConnectionStrings__Db="Host=192.168.100.11;Port=5432;Database=praworag;Username=praworag;Password=praworag" \
+Embeddings__BaseUrl=http://192.168.100.11:8080 \
+dotnet run --project src/PrawoRAG.Eval -- --probe-akty
+```
+Bez argumentów: oba pytania z tej diagnozy (naturalne + normatywne). Własne pytanie: dopisać po fladze.
+Decyzja projektowa (act-only lane vs most cytowań vs hybryda) zapada PO odczycie wyniku sondy.
+
 ---
 
 ## 6. Zmierzone liczby (pod przyszłe decyzje / sizing)
