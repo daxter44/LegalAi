@@ -152,6 +152,45 @@ dotnet run --project src/PrawoRAG.Eval -- --probe-akty
 Bez argumentów: oba pytania z tej diagnozy (naturalne + normatywne). Własne pytanie: dopisać po fladze.
 Decyzja projektowa (act-only lane vs most cytowań vs hybryda) zapada PO odczycie wyniku sondy.
 
+### 5b. Wynik sondy (2026-07-18) — DECYZJA: most cytowań, act-only lane odrzucony
+
+Sonda odpalona na żywym korpusie (3060). Rozstrzygnęła jednoznacznie i **obaliła act-only lane zanim
+powstał kod**.
+
+**A — sanity:** art. 415, 361, 435 (właściwe) i 149 (pułapka) — wszystkie SĄ w korpusie i mają embedding.
+Czyli to nie luka korpusu, tylko ranking.
+
+**Pytanie o drzewo (naturalne, realny typ zapytania):**
+
+- **C — act-only dense top-20 (test act-only lane):**
+  ```
+  #1 art. 149  ◄ pułapka (sim 0,7949)
+  #2 art. 148
+  #3 art. 154
+  → art. 415: NIEOBECNY w top-20 aktów. Pułapka 149 na #1.
+  ```
+  **Act-only lane NIE działa** — nawet w puli samych aktów właściwa norma nie wychodzi, wygrywa
+  leksykalna pułapka art. 149 („drzew gałęzi", „grunt sąsiedni"). Intuicyjny fix odrzucony przez pomiar.
+
+- **D — most cytowań (dry-run, głosowanie per niezależny dokument):**
+  ```
+  Chunków orzeczeń: 30; cytowań z aktem: 10
+  KC art. 415 — 3 dok. / 3 wyst. — w korpusie: JEST  ◄◄◄ norma właściwa, wygrywa głosowanie
+  (dalej: art. 144, 354, 822, 222, 433, 361 — po 1 dok.)
+  ```
+  **Most cytowań DZIAŁA** — trafione orzeczenia same cytują art. 415 k.c. (3 niezależne dokumenty,
+  najczęstszy), a retrieval orzeczeń działa dobrze. Wyłuskanie cytatów + dociągnięcie tekstu art. 415
+  (jest w korpusie, sekcja A) daje normę deterministycznie, bez ML i bez dodatkowego LLM.
+
+**Pytanie normatywne (abstrakcyjne):** B — 0 aktów w top-50 (potwierdza diagnozę). D — 0 cytowań w top-30
+orzeczeń. Czyli most cytowań zależy od tego, że trafione orzeczenia cytują przepisy w parsowalny sposób —
+działa dla **konkretnych pytań faktowych** (realny ruch), słabiej dla abstrakcyjnych fraz. Akceptowalne.
+
+**DECYZJA:** implementować **most cytowań** w `HybridRetriever`: po pobraniu orzeczeń przepuścić ich tekst
+przez `JudgmentCitationParser`, policzyć najczęściej cytowane artykuły (głosowanie per dokument), dociągnąć
+ich tekst istniejącym mechanizmem strukturalnym i dołożyć do źródeł przed budową promptu. Act-only lane i
+prosta „podłoga statutowa" — odrzucone (brak pokrycia w danych). Do przetestowania na 3060 po implementacji.
+
 ---
 
 ## 6. Zmierzone liczby (pod przyszłe decyzje / sizing)
@@ -167,7 +206,10 @@ Decyzja projektowa (act-only lane vs most cytowań vs hybryda) zapada PO odczyci
 
 ## 7. Otwarte wątki
 
-- **Act-only retrieval lane** (sekcja 5) — główny następny krok jakościowy.
+- **Most cytowań w `HybridRetriever`** (sekcja 5b) — NASTĘPNY KROK. Sonda rozstrzygnęła: act-only lane
+  odrzucony (art. 415 nieobecny nawet w act-only top-20, pułapka 149 wygrywa), most cytowań ma pokrycie
+  (art. 415 cytowany w 3 orzeczeniach top-30). Klocki gotowe: `JudgmentCitationParser` (17 testów) +
+  retrieval strukturalny do dociągnięcia tekstu artykułu. Do implementacji i testu na 3060.
 - Migracja EF odzwierciedlająca realny indeks halfvec (sekcja 1).
 - Rozjazd lokalny `main` vs `origin/main` (nasz `16adaf2` nie na origin; origin `3fa20b5` scalony do
   gałęzi) — do uporządkowania.
