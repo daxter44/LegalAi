@@ -97,6 +97,37 @@ próbki z JAK-0) → JAK-4 → JAK-5b → JAK-5a → JAK-2 → JAK-6a (fail-open
 `--refusals` (retrieval-only wystarczy między krokami; pełny z LLM na koniec fazy).
 Commit per task; weryfikacja każdego kroku na pełnym korpusie (M4/3060).
 
+## Runbook operatora (wszystko z M4; baza+TEI na 3060 — wspólny prefiks)
+
+```bash
+export ConnectionStrings__Db="Host=192.168.100.11;Port=5432;Database=praworag;Username=praworag;Password=praworag"
+export Embeddings__BaseUrl=http://192.168.100.11:8080
+```
+
+**JAK-0 (pomiar + próbka, nic nie zmienia):**
+```bash
+dotnet run --project src/PrawoRAG.Eval -- --sanitize-chunks
+```
+Wypisze liczby per kategoria + próbkę 50 do oceny okiem + plik logs/sanitize-*.jsonl (pełna lista).
+
+**JAK-1 (po akceptacji próbki — zeruje embeddingi zakwalifikowanych):**
+```bash
+dotnet run --project src/PrawoRAG.Eval -- --sanitize-chunks --apply
+```
+
+**JAK-3 (sonda Case 5 — przypadek referencyjny art. 4 ustawy o cenach):**
+```bash
+Eval__ProbeTextLike="najniższej cenie tego towaru lub tej usługi, która obowiązywała w okresie 30 dni" \
+dotnet run --project src/PrawoRAG.Eval -- --probe-chunk "Jak prawidłowo oznaczyć najniższą cenę z ostatnich 30 dni? Kto jest zobowiązany do oznaczania?"
+```
+(Alternatywnie wskazanie po akcie: `Eval__ProbeEli=DU/... Eval__ProbeArticle=4`.) Sekcje A-E z
+gotową interpretacją na końcu wydruku. Skany dokładne = minuty (seq-scan po 7,4M) — to sonda.
+
+**Pomiar między krokami (szybki, bez LLM):**
+```bash
+Eval__RefusalsGenerate=false dotnet run --project src/PrawoRAG.Eval -- --refusals
+```
+
 ## Kryterium wyjścia z fazy
 `--refusals` z generacją na pełnym zestawie realnych pytań: odsetek odmów ≤ 25% (cel planu
 pilotażu: 10-25%), zero pustych odpowiedzi, cytaty czyste w ≥ 90% odpowiedzi.

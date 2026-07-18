@@ -61,6 +61,21 @@ if (args.Contains("--refusals"))
     return;
 }
 
+// JAK-0/1: pomiar + neutralizacja chunków zdegenerowanych (placeholdery, szum anonimizacyjny).
+// Dry-run domyślnie; --apply zeruje embeddingi zakwalifikowanych.
+if (args.Contains("--sanitize-chunks"))
+{
+    await SanitizeChunksRunner.RunAsync(host.Services, cfg, args, default);
+    return;
+}
+
+// JAK-3: „gdzie ginie mój chunk" — exact fp32/fp16 vs HNSW vs BM25 vs fuzja (Case 5).
+if (args.Contains("--probe-chunk"))
+{
+    await ChunkProbe.RunAsync(host.Services, cfg, args, default);
+    return;
+}
+
 var topK = cfg.GetValue<int?>("Retrieval:TopK") ?? 8;
 var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
 var minChunkTokens = cfg.GetValue<int?>("Retrieval:MinChunkTokens") ?? 20;
