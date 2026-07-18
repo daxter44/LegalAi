@@ -235,6 +235,66 @@ uchylone/pominięte numery artykułów. Kandydat na filtr analogiczny do wcześn
 
 ---
 
+## Case 5 — Najniższa cena z 30 dni (dyrektywa Omnibus) — NAJPOWAŻNIEJSZE znalezisko sesji
+
+**Nie z bazy produkcyjnej** — test interaktywny, 2026-07-19, realna rozmowa w UI (nie tylko `/api/search`).
+
+**Pytanie:** *„Jak prawidłowo oznaczyć najniższą cenę z ostatnich 30 dni? Kto jest zobowiązany do
+oznaczania?"* → **ODMOWA**, 8 źródeł.
+
+### Źródła (8, z realnej rozmowy)
+```
+[1] Ustawa o informowaniu o cenach towarów i usług, art. 9-21 — PUSTY placeholder „(pominięte)"
+[2] Rozporządzenie MRiT 19.12.2022 ws. uwidaczniania cen, § 1 pkt 1 — wyliczenie, nie norma materialna
+[3] Rozporządzenie MRiT 19.12.2022 ws. uwidaczniania cen, § 3 pkt 2 — wyliczenie („w cenniku;")
+[4] Sąd Rejonowy w Nowym Dworze Mazowieckim, II K 13/15 — ŚMIECI: „(...) roku, (...) z dnia (...)" ×10
+[5] Sąd Apelacyjny we Wrocławiu, II AKa 156/14 — zakup narkotyków, zero związku
+[6] Sąd Apelacyjny w Poznaniu, II AKa 91/19 — ŚMIECI: „kontrola operacyjna (...) pod kryptonimem (...)"
+[7] Sąd Apelacyjny w Krakowie, I AGa 328/21 — terminy realizacji zadań budowlanych, zero związku
+[8] Sąd Apelacyjny w Poznaniu, II AKa 91/19 — DUPLIKAT [6]
+```
+
+### Diagnoza — zweryfikowana bezpośrednio w bazie (nie tylko wnioskowanie ze źródeł)
+
+**Poprawna, kompletna odpowiedź ISTNIEJE w korpusie jako jeden, prawidłowo zaembedowany chunk** —
+art. 4 ustawy o informowaniu o cenach towarów i usług (aktualny tekst, „w brzmieniu ustalonym przez
+art. 6 pkt 2" noweli — czyli to WŁAŚCIWA, zaktualizowana wersja implementująca dyrektywę Omnibus):
+ust. 1 kto jest zobowiązany (sprzedaż detaliczna/usługi), ust. 2 dosłownie reguła 30 dni, ust. 3
+wariant dla ofert <30 dni, ust. 4-6 wyjątki i delegacja. Zweryfikowano bezpośrednio w bazie: chunk ma
+`EmbeddedWith='sdadas/mmlw-retrieval-roberta-large-v2'` (właściwy, aktualny model), `Embedding` NIE
+jest pusty, 402 tokeny.
+
+**A mimo to ten chunk nie pojawia się WCALE wśród źródeł** — ani w realnej rozmowie, ani w bezpośrednim
+teście `/api/search` z zapytaniem niemal dosłownie cytującym ust. 2 („najniższa cena w okresie 30 dni
+przed wprowadzeniem obniżki" — realny tekst: „najniższej cenie... która obowiązywała w okresie 30 dni
+przed wprowadzeniem obniżki"). Prawie-dosłowny cytat przepisu i tak przegrywa z niezwiązanymi wynikami.
+
+**Dwa kompletnie odrębne mechanizmy zanieczyszczenia, oba w jednym zestawie źródeł:**
+1. **`(pominięty)` placeholder** (art. 9-21) — ten sam wzorzec co w Case 4, tu na dodatek konkretnie
+   sąsiaduje numerycznie z właściwym art. 4 (ten sam akt), więc mógł „przyciągnąć" trafienie kosztem
+   właściwego artykułu w tej samej ustawie.
+2. **NOWY wzorzec — placeholdery anonimizacji SAOS.** `[4]`, `[6]`, `[8]` to nie merytoryczny szum,
+   tylko powtórzone frazy anonimizacyjne („(...) roku, (...) z dnia (...)" ×10, „kontrola operacyjna
+   (...) pod kryptonimem: (...)" ×3) z zupełnie niezwiązanych spraw karnych. Krótkie, silnie
+   powtarzalne teksty zdominowane wzorcem dat/okresów — dokładnie ten sam mechanizm co przy filtrze
+   `REGULATION` z wcześniejszej diagnozy (krótkie, prawie identyczne teksty tworzą sztucznie „lepki"
+   klaster w przestrzeni embeddingów), tylko inne źródło śmieci: nie typ dokumentu, tylko artefakt
+   anonimizacji danych osobowych w tekstach orzeczeń.
+
+**Robocza hipoteza dlaczego art. 4 przegrywa (niepotwierdzona, wymaga pomiaru similarity):**
+chunk art. 4 bundluje 6 różnych podtematów (ogólna zasada, reguła 30 dni, wariant <30 dni, wyjątek dla
+towarów psujących się, reklama, delegacja ministerialna) w JEDNYM 402-tokenowym wektorze — być może
+zbyt „rozmytym", by wygrać z krótkimi, wąskimi (choć merytorycznie fałszywymi) konkurentami. Wymaga
+pomiaru: rzeczywisty similarity/ranking art. 4 vs próg TopK dla tego zapytania.
+
+**Dlaczego to najpoważniejsze znalezisko sesji:** to pierwszy w całej dzisiejszej diagnostyce przypadek,
+gdzie odpowiedź jest 100% obecna, kompletna i prawidłowo zaindeksowana — a mimo to retrieval jej NIE
+ZNAJDUJE nawet dla zapytania niemal cytującego przepis. Poprzednie przypadki (Case 1-4) miały choć
+częściowe wytłumaczenie (dylucja, brak recall, akronim, złożone pytanie) — tu zawodzi rdzeń mechanizmu
+dopasowania semantycznego przy współwystępowaniu śmieciowych chunków.
+
+---
+
 ## Podsumowanie — trzy odrębne, nowe wnioski (żaden nie pokrywa się z diagnozą z 2026-07-17)
 
 1. **Bramka progu ≠ jakość odpowiedzi — ale mechanizm różni się między przypadkami.** We wszystkich
@@ -316,3 +376,12 @@ otwarte jak niżej.
 - Czy warto rozróżniać w UI/logice „odmowa progu" (Abstained=true) od „odmowa treściowa modelu"
   (RefusalMarker w Content, Abstained=false) w samej bazie/telemetrii — dziś nieodróżnialne bez
   parsowania treści, co utrudniało tę analizę.
+- **[Case 5, priorytet wysoki]** Zmierzyć rzeczywisty similarity/ranking chunka art. 4 ustawy o
+  informowaniu o cenach vs zapytanie o „najniższą cenę z 30 dni" — czy to kwestia progu TopK (chunk
+  jest w puli kandydatów, ale nisko), czy faktycznie niska similarity mimo prawidłowego embeddingu
+  (co wskazywałoby na problem z granulacją/długością chunka, nie z samym embeddingiem).
+- **[Case 5]** Zmierzyć skalę „placeholderów anonimizacji SAOS" (`(...) roku, (...) z dnia (...)`,
+  `kontrola operacyjna (...) pod kryptonimem (...)` i podobne wzorce) analogicznie do pomiaru
+  `(pominięty)` — ile takich chunków jest w korpusie, i czy kwalifikują się do tego samego typu filtra
+  co `REGULATION`/`(pominięty)` (chunk zdominowany powtórzonym tokenem anonimizacji = brak wartości
+  informacyjnej, bezwarunkowo wykluczyć z retrievalu).
