@@ -53,6 +53,14 @@ if (args.Contains("--probe-akty"))
     return;
 }
 
+// Eval odmów (metryka nadrzędna fazy pełnego korpusu): --refusals — realne pytania z tabeli messages
+// przez aktualny pipeline; raport BYŁO→JEST + skład źródeł. Eval:RefusalsGenerate=false = bez LLM.
+if (args.Contains("--refusals"))
+{
+    await RefusalEvalRunner.RunAsync(host.Services, cfg, default);
+    return;
+}
+
 var topK = cfg.GetValue<int?>("Retrieval:TopK") ?? 8;
 var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
 var minChunkTokens = cfg.GetValue<int?>("Retrieval:MinChunkTokens") ?? 20;
