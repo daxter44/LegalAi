@@ -45,6 +45,15 @@ body {
 .answer pre { background: var(--c-bg); padding: var(--s-2); border-radius: var(--radius-sm); overflow-x: auto; }
 .typing { color: var(--c-text-muted); }
 
+/* Klikalne cytowania [n] → karta źródła (cite.js otwiera panel, scrolluje i podświetla) */
+.answer a.cite {
+    color: var(--c-accent); font-weight: 700; text-decoration: none;
+    padding: 0 2px; border-radius: var(--radius-sm);
+}
+.answer a.cite:hover, .answer a.cite:focus-visible { background: var(--c-accent); color: #fff; }
+@keyframes cite-flash { from { outline-color: var(--c-accent); background: var(--c-warn-weak); } to { outline-color: transparent; } }
+.source-card.cite-flash { outline: 2px solid transparent; animation: cite-flash 1.6s ease-out; }
+
 /* Baner „do weryfikacji" + badge cytatów */
 .verify-banner {
     margin-top: var(--s-3); padding: var(--s-2) var(--s-3); border-radius: var(--radius-sm);

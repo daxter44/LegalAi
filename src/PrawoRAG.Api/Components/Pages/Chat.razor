@@ -52,7 +52,7 @@
                     <div class="answer" aria-live="polite">
                         @if (ex.Answer.Length > 0)
                         {
-                            @((MarkupString)MarkdownRenderer.ToSafeHtml(ex.Answer))
+                            @((MarkupString)MarkdownRenderer.ToSafeHtml(ex.Answer, ex.Sources.Count, ex.AnchorId))
                         }
                         else if (ex.Streaming)
                         {
@@ -87,7 +87,7 @@
                             <summary>Źródła (@ex.Sources.Count)</summary>
                             @foreach (var s in ex.Sources)
                             {
-                                <div class="source-card">
+                                <div class="source-card" id="src-@(ex.AnchorId)-@s.Index">
                                     <div class="source-head">
                                         <span class="source-n">[@s.Index]</span>
                                         <span class="source-label">@s.Label</span>
@@ -350,6 +350,10 @@
 
     private sealed class Exchange
     {
+        /// <summary>Unikalny prefiks kotwic cytowań tej wymiany — [n] w odpowiedzi linkuje do
+        /// #src-{AnchorId}-{n}; bez prefiksu kotwice różnych wymian w jednym logu by się zderzały.</summary>
+        public string AnchorId { get; } = Guid.NewGuid().ToString("N")[..8];
+
         public required string Question { get; init; }
         public string Answer { get; set; } = "";
         public IReadOnlyList<ChatSource> Sources { get; set; } = [];
