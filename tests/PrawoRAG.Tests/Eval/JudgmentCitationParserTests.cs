@@ -1,4 +1,4 @@
-using PrawoRAG.Eval;
+using PrawoRAG.Domain.Retrieval;
 
 namespace PrawoRAG.Tests.Eval;
 

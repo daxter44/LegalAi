@@ -191,6 +191,39 @@ przez `JudgmentCitationParser`, policzyć najczęściej cytowane artykuły (gło
 ich tekst istniejącym mechanizmem strukturalnym i dołożyć do źródeł przed budową promptu. Act-only lane i
 prosta „podłoga statutowa" — odrzucone (brak pokrycia w danych). Do przetestowania na 3060 po implementacji.
 
+### 5c. Implementacja mostu cytowań (2026-07-18) — z bezpiecznikami na cienki sygnał
+
+Zastrzeżenie do odczytu 5b: sygnał mostu jest CIENKI (10 cytowań w 30 chunkach; zwycięzca 3 głosy,
+cała reszta po 1) — działa, ale na granicy, stąd bezpieczniki zamiast hurraoptymizmu:
+
+1. **Próg ≥2 niezależne dokumenty** (`BridgeMinDocVotes`): kandydaci z 1 głosem to często śmieci
+   (art. 822 KC o ubezpieczeniach dla pytania o delikt), a koszt wstrzyknięcia ZŁEGO przepisu — model
+   ugruntuje się na nim — przewyższa koszt braku (asymetria jak przy follow-upach). Na danych sondy
+   próg przepuszcza wyłącznie art. 415.
+2. **Cap 2 artykuły** (`RetrievalQuery.CitationBridgeArticles`, 0 = wyłączony) + **≤6 chunków na artykuł**
+   (budżet promptu).
+3. **Parsujemy TYLKO chunki-kandydatów** (już w pamięci, zero dodatkowego retrievalu) — świadomie NIE całe
+   dokumenty: każde uzasadnienie cytuje art. 98/108 KPC (koszty procesu), które wygrałyby każde głosowanie
+   per dokument; chunki trafione semantycznie cytują przepisy kontekstowo trafne (dlatego w sondzie nie ma
+   powodzi art. 98).
+4. **Zero wpływu na sygnał abstynencji** — most tylko dokłada źródła; nie może zamienić odmowy w odpowiedź.
+5. **Kolejność slotów:** tor strukturalny QU (jawny cytat użytkownika) → most (norma jako kotwica na
+   początku listy [1]-[2]) → semantyczne. Dedup po ChunkId, wcześniejsze tory wygrywają.
+
+Kod: `HybridRetriever.CitationBridgeAsync` + wspólny `FetchArticleAsync` (refaktor ze StructuralAsync);
+`JudgmentCitationParser` przeniesiony do `PrawoRAG.Domain.Retrieval`. Testy: `CitationBridgeTests`
+(LiveDb, 4 scenariusze: dołożenie przy ≥2 głosach, próg, wyłącznik, nietknięty sygnał abstynencji).
+
+**Weryfikacja na M4/3060 (checklist operatora):**
+1. `dotnet test` — pełna regresja z żywym PG (w tym nowe T-MOST).
+2. `/api/search` z pytaniem o drzewo → art. 415 KC w wynikach na czele listy (przedtem: nieobecny w top-46).
+3. Czat z pytaniem o drzewo → odpowiedź wprost z cytowaniem normy (przedtem: streszczenie orzeczenia
+   „Zadanie:/Odpowiedź:"); najlepiej z `PRAWORAG_DUMP_PROMPT=1`, żeby zobaczyć skład źródeł.
+4. Golden-set `--chat` — brak regresji (odmowy, czyste cytowania).
+5. Otwarte ryzyko do obejrzenia w (3): art. 415 wchodzi jako [1]-[2], ale obok nadal 5-6 sprzecznych
+   narracji — test izolujący D miał SAM statut; jeśli model dalej streszcza, następny ruch to prompt
+   (jawny podział ŹRÓDEŁ na PRZEPISY/ORZECZNICTWO), nie retrieval.
+
 ---
 
 ## 6. Zmierzone liczby (pod przyszłe decyzje / sizing)

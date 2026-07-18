@@ -24,6 +24,14 @@ public sealed record RetrievalQuery
     /// pojedyncze linie formularzy) mają wysokie cosine do KAŻDEGO zapytania i zaśmiecają top-K.
     /// </summary>
     public int MinChunkTokens { get; init; }
+
+    /// <summary>
+    /// Most cytowań: maksymalna liczba artykułów dociąganych z cytowań w trafionych orzeczeniach
+    /// (0 = wyłączony). Diagnoza 2026-07-17: przepis rządzący (art. 415 KC) jest nieretrievalny dla
+    /// pytań opisowych — ale trafione orzeczenia same go cytują; sonda --probe-akty potwierdziła
+    /// (415: 3 niezależne dokumenty w top-30; act-only lane obalony — wygrywała pułapka art. 149).
+    /// </summary>
+    public int CitationBridgeArticles { get; init; } = 2;
 }
 
 /// <summary>Pojedynczy trafiony chunk z lokalizatorem cytatu i wynikiem.</summary>

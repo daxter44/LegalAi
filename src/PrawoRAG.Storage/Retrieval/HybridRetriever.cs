@@ -115,12 +115,68 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // artykuł po metadanych i wstaw na górę (gwarantowane sloty). DOKŁADA, nigdy nie usuwa semantycznych;
         // brak rozpoznania aktu → zachowanie jak dziś (zero regresji).
         var structural = await StructuralAsync(query, ct);
-        var final = structural.Concat(ranked)
-            .GroupBy(c => c.ChunkId).Select(g => g.First()) // dedup; strukturalne (pierwsze) wygrywają slot
+
+        // Most cytowań: przepis rządzący dociągnięty z cytowań w trafionych orzeczeniach.
+        // Sloty PO strukturalnych (jawny cytat użytkownika wygrywa), PRZED semantycznymi (norma jako
+        // kotwica na początku listy źródeł). Sygnał abstynencji liczony wyżej — most go NIE dotyka
+        // (tylko dokłada źródła; nie może zamienić odmowy w odpowiedź).
+        var bridge = await CitationBridgeAsync(query, deduped, ct);
+        var final = structural.Concat(bridge).Concat(ranked)
+            .GroupBy(c => c.ChunkId).Select(g => g.First()) // dedup; wcześniejsze tory wygrywają slot
             .Take(query.TopK)
             .ToList();
 
         return new RetrievalResult(final, signal);
+    }
+
+    /// <summary>Minimalna liczba NIEZALEŻNYCH orzeczeń cytujących artykuł, żeby wszedł mostem cytowań.
+    /// Sygnał jest cienki (sonda: 10 cytowań w 30 chunkach) — kandydaci z 1 głosem to często śmieci
+    /// (art. 822 KC o ubezpieczeniach dla pytania o delikt), a koszt wstrzyknięcia ZŁEGO przepisu
+    /// (model ugruntuje się na nim) przewyższa koszt braku. Próg 2 na danych sondy przepuszcza
+    /// wyłącznie normę właściwą (art. 415: 3 dokumenty; cała reszta po 1).</summary>
+    private const int BridgeMinDocVotes = 2;
+
+    /// <summary>Ile chunków jednego artykułu most może dołożyć (przepisy to zwykle 1–3 chunki;
+    /// limit chroni budżet promptu przed artykułami-tasiemcami).</summary>
+    private const int BridgeChunksPerArticle = 6;
+
+    /// <summary>
+    /// Most cytowań (diagnoza 2026-07-17 + sonda --probe-akty): dla pytań opisowych przepis rządzący
+    /// jest nieretrievalny (przegrywa podobieństwo z narracjami orzeczeń; w puli samych aktów wygrywa
+    /// pułapka leksykalna — act-only lane obalony pomiarem). Ale trafione orzeczenia SAME cytują normę,
+    /// na której się opierają („na podstawie art. 415 k.c.") — sąd zrobił mapowanie stan faktyczny→przepis
+    /// lepiej niż jakikolwiek embedding. Parsujemy więc teksty kandydatów-orzeczeń (już w pamięci — zero
+    /// dodatkowego retrievalu), głosowanie per NIEZALEŻNY dokument, próg+cap, dociągnięcie tekstu artykułu
+    /// po metadanych. Świadomie NIE parsujemy pełnych dokumentów (sąsiednie chunki): każde uzasadnienie
+    /// cytuje art. 98/108 KPC (koszty procesu) — wygrałyby każde głosowanie; chunki trafione semantycznie
+    /// cytują przepisy kontekstowo trafne.
+    /// </summary>
+    private async Task<List<RetrievedChunk>> CitationBridgeAsync(
+        RetrievalQuery query, IReadOnlyList<RetrievedChunk> candidates, CancellationToken ct)
+    {
+        if (query.CitationBridgeArticles <= 0) return [];
+
+        var winners = candidates
+            .Where(c => c.DocType != "act") // akty cytujące inne akty to nie jest głos orzecznictwa
+            .SelectMany(c => JudgmentCitationParser.Parse(c.Text)
+                .Where(cite => cite.Alias is not null)
+                .Select(cite => (cite.Alias, cite.Article, c.DocumentId)))
+            .GroupBy(x => (x.Alias, x.Article))
+            .Select(g => (g.Key.Alias, g.Key.Article, Docs: g.Select(x => x.DocumentId).Distinct().Count(), Total: g.Count()))
+            .Where(x => x.Docs >= BridgeMinDocVotes)
+            .OrderByDescending(x => x.Docs).ThenByDescending(x => x.Total)
+            .Take(query.CitationBridgeArticles)
+            .ToList();
+
+        var result = new List<RetrievedChunk>();
+        var seen = new HashSet<Guid>();
+        foreach (var w in winners)
+        {
+            var actExtId = await ResolveActAsync(w.Alias, ct);
+            if (actExtId is null) continue;
+            await FetchArticleAsync(w.Article, actExtId, BridgeChunksPerArticle, seen, result, ct);
+        }
+        return result;
     }
 
     /// <summary>Tor gęsty przez surowe SQL: kolumna <c>Embedding</c> zostaje fp32 (przechowywanie), ale
@@ -167,26 +223,33 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         {
             var actExtId = await ResolveActAsync(c.ActHint, ct);
             if (actExtId is null) continue; // bez rozpoznanego aktu nie floodujemy art. N ze wszystkich kodeksów (P6)
-
-            var hits = await db.Chunks.Include(x => x.Document)
-                .Where(x => x.ArticleNo == c.Article && x.Document!.ExternalId == actExtId)
-                .OrderBy(x => x.ChunkIndex)
-                .Take(20)
-                .ToListAsync(ct);
-
-            foreach (var h in hits)
-            {
-                if (!seen.Add(h.Id)) continue;
-                result.Add(new RetrievedChunk
-                {
-                    ChunkId = h.Id, DocumentId = h.DocumentId, Text = h.Text, Section = h.Section,
-                    Source = h.Document!.Source, DocType = h.Document.DocType, Title = h.Document.Title,
-                    SourceUrl = h.Document.SourceUrl, Locator = Deserialize(h.Locator),
-                    Score = double.MaxValue, Similarity = null, // trafienie dokładne — zawsze na górę
-                });
-            }
+            await FetchArticleAsync(c.Article, actExtId, 20, seen, result, ct);
         }
         return result;
+    }
+
+    /// <summary>Pobiera chunki DOKŁADNIE tego artykułu po metadanych (wspólne dla toru strukturalnego
+    /// i mostu cytowań). Omija <c>MinChunkTokens</c> (P5 — krótki § nie może wypaść).</summary>
+    private async Task FetchArticleAsync(
+        string article, string actExtId, int maxChunks, HashSet<Guid> seen, List<RetrievedChunk> result, CancellationToken ct)
+    {
+        var hits = await db.Chunks.Include(x => x.Document)
+            .Where(x => x.ArticleNo == article && x.Document!.ExternalId == actExtId)
+            .OrderBy(x => x.ChunkIndex)
+            .Take(maxChunks)
+            .ToListAsync(ct);
+
+        foreach (var h in hits)
+        {
+            if (!seen.Add(h.Id)) continue;
+            result.Add(new RetrievedChunk
+            {
+                ChunkId = h.Id, DocumentId = h.DocumentId, Text = h.Text, Section = h.Section,
+                Source = h.Document!.Source, DocType = h.Document.DocType, Title = h.Document.Title,
+                SourceUrl = h.Document.SourceUrl, Locator = Deserialize(h.Locator),
+                Score = double.MaxValue, Similarity = null, // trafienie dokładne — zawsze na górę
+            });
+        }
     }
 
     /// <summary>Rozpoznaje akt z wskazówki: skrót (mapa aliasów → najkrótszy pasujący tytuł, np. KK≠KKW),

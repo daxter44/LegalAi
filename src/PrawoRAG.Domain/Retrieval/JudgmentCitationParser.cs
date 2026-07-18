@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace PrawoRAG.Eval;
+namespace PrawoRAG.Domain.Retrieval;
 
 /// <summary>Cytat przepisu wyłuskany z TEKSTU ORZECZENIA: numer artykułu + skrót kodeksu
 /// PRZYLEGAJĄCY do numeru („art. 415 k.c."). <see cref="Alias"/> null = artykuł bez
