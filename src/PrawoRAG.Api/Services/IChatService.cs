@@ -10,5 +10,11 @@ namespace PrawoRAG.Api.Services;
 /// </summary>
 public interface IChatService
 {
-    IAsyncEnumerable<ChatEvent> AskAsync(string question, IReadOnlyList<ChatTurn> history, CancellationToken ct);
+    IAsyncEnumerable<ChatEvent> AskAsync(string question, IReadOnlyList<ChatTurn> history, CancellationToken ct)
+        => AskAsync(question, history, document: null, ct);
+
+    /// <summary>Wariant z załącznikiem (DOC-4): <paramref name="document"/> = przetworzony PDF
+    /// użytkownika (fakty, przestrzeń [Dk]); null = zachowanie jak dotąd.</summary>
+    IAsyncEnumerable<ChatEvent> AskAsync(
+        string question, IReadOnlyList<ChatTurn> history, DocumentContext? document, CancellationToken ct);
 }

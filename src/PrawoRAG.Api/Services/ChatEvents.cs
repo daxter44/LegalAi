@@ -16,6 +16,12 @@ public abstract record ChatEvent;
 /// <summary>Retrieval zwrócił źródła — pokazujemy je PRZED generacją (transparentność).</summary>
 public sealed record SourcesEvent(IReadOnlyList<ChatSource> Sources) : ChatEvent;
 
+/// <summary>Fragment załącznika wybrany do promptu (przestrzeń [Dk], DOC-4) — do panelu „Twój dokument".</summary>
+public sealed record DocSource(int Index, string Snippet);
+
+/// <summary>Fragmenty załącznika użyte w tej turze — emitowane PRZED generacją, obok SourcesEvent.</summary>
+public sealed record DocSourcesEvent(string FileName, IReadOnlyList<DocSource> Fragments) : ChatEvent;
+
 /// <summary>Kolejny fragment odpowiedzi LLM (streaming token po tokenie).</summary>
 public sealed record TokenEvent(string Text) : ChatEvent;
 

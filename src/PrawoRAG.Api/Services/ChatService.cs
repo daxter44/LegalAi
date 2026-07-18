@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.Options;
+using PrawoRAG.Domain.Embeddings;
 using PrawoRAG.Domain.Llm;
 using PrawoRAG.Domain.Retrieval;
 using PrawoRAG.Llm.Grounding;
@@ -12,10 +13,12 @@ namespace PrawoRAG.Api.Services;
 /// <see cref="ChatEvent"/> dla Blazora. Rdzeń wartości (abstynencja + anty-fabrykacja) zostaje tu, nie w UI.
 /// </summary>
 public sealed class ChatService(
-    IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> options) : IChatService
+    IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> options,
+    IEmbeddingProvider embedder) : IChatService
 {
     public async IAsyncEnumerable<ChatEvent> AskAsync(
-        string question, IReadOnlyList<ChatTurn> history, [EnumeratorCancellation] CancellationToken ct)
+        string question, IReadOnlyList<ChatTurn> history, DocumentContext? document,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         var o = options.Value;
         RetrievalQuery Query(string text) => new()
@@ -61,8 +64,21 @@ public sealed class ChatService(
         // panel źródeł i kontekst walidatora (jedna numeracja [n]).
         chunks = GroundedPrompt.OrderForGrounding(chunks);
 
+        // DOC-4: fragmenty załącznika wybrane pod ORYGINALNE pytanie (in-memory cosine). Świadomie
+        // PO bramce abstynencji — dokument to fakty, nie prawo; nie może zamienić odmowy w odpowiedź
+        // (decyzja #5 planu DOC).
+        IReadOnlyList<DocFragment> docFragments = [];
+        if (document is not null)
+        {
+            var qvec = await embedder.EmbedQueryAsync(question, ct);
+            docFragments = document.SelectFragments(qvec);
+            yield return new DocSourcesEvent(document.FileName,
+                docFragments.Select(f => new DocSource(f.Index, Snippet(f.Text))).ToList());
+        }
+
         // Do promptu idzie ORYGINALNE pytanie + historia (nie sklejony tekst retrievalu).
-        var (request, sources) = GroundedPrompt.Build(question, chunks, history);
+        var (request, sources) = GroundedPrompt.Build(question, chunks, history,
+            docFragments.Select(f => f.Text).ToList());
         yield return new SourcesEvent(sources
             .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet, s.AmendmentEffectiveDate)).ToList());
 
@@ -78,10 +94,14 @@ public sealed class ChatService(
             yield return new TokenEvent(delta);
         }
 
-        // ANTY-FABRYKACJA — czy cytaty [n]/artykuły/sygnatury istnieją w dostarczonym kontekście.
+        // ANTY-FABRYKACJA — czy cytaty [n]/[Dk]/artykuły/sygnatury istnieją w dostarczonym kontekście.
         var contextTexts = chunks
             .Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
-        var check = CitationValidator.Validate(full.ToString(), contextTexts, sources.Count);
+        var check = CitationValidator.Validate(full.ToString(), contextTexts, sources.Count,
+            docFragments.Select(f => f.Text).ToList(), docFragments.Count);
         yield return new DoneEvent(Abstained: false, Model: llm.ModelId, Check: check, Usage: usage);
     }
+
+    private static string Snippet(string text, int max = 300) =>
+        text.Length <= max ? text : text[..max] + "…";
 }

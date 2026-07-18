@@ -65,7 +65,8 @@ public class ChatServiceFollowUpTests
     }
 
     private static ChatService Service(FakeRetriever retriever, NoOpAugmenter augmenter, FakeLlm llm) =>
-        new(retriever, augmenter, llm, Options.Create(new RetrievalOptions { AbstentionThreshold = Threshold }));
+        new(retriever, augmenter, llm, Options.Create(new RetrievalOptions { AbstentionThreshold = Threshold }),
+            new Fakes.FakeEmbeddingProvider());
 
     private static async Task<List<ChatEvent>> Drain(IAsyncEnumerable<ChatEvent> events)
     {
@@ -80,7 +81,7 @@ public class ChatServiceFollowUpTests
         var retriever = new FakeRetriever(_ => 0.9);
         var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
 
-        var events = await Drain(Service(retriever, augmenter, llm).AskAsync("pytanie", [], default));
+        var events = await Drain(Service(retriever, augmenter, llm).AskAsync("pytanie", [], null, default));
 
         Assert.Equal(["pytanie"], retriever.Queries); // dokładnie 1 retrieval, surowe pytanie
         Assert.Contains(events, e => e is SourcesEvent);
@@ -99,7 +100,7 @@ public class ChatServiceFollowUpTests
         var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
         var history = new[] { new ChatTurn("co mówi art. 367 KPC?", "Art. 367 stanowi…") };
 
-        var events = await Drain(Service(retriever, augmenter, llm).AskAsync("a co z § 2?", history, default));
+        var events = await Drain(Service(retriever, augmenter, llm).AskAsync("a co z § 2?", history, null, default));
 
         Assert.Equal(2, retriever.Queries.Count);
         Assert.Equal("co mówi art. 367 KPC? a co z § 2?", retriever.Queries[1]); // sklejony wariant
@@ -118,7 +119,7 @@ public class ChatServiceFollowUpTests
         var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
         var history = new[] { new ChatTurn("co mówi art. 367 KPC?", "Art. 367 stanowi…") };
 
-        await Drain(Service(retriever, augmenter, llm).AskAsync("jaka kara grozi za zabójstwo?", history, default));
+        await Drain(Service(retriever, augmenter, llm).AskAsync("jaka kara grozi za zabójstwo?", history, null, default));
 
         Assert.Equal(2, retriever.Queries.Count);
         Assert.Equal("jaka kara grozi za zabójstwo?", augmenter.LastQueryText); // wygrało surowe
@@ -134,7 +135,7 @@ public class ChatServiceFollowUpTests
         var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
         var history = new[] { new ChatTurn("co mówi art. 367 KPC?", "Art. 367 stanowi…") };
 
-        await Drain(Service(retriever, augmenter, llm).AskAsync("a co z § 2?", history, default));
+        await Drain(Service(retriever, augmenter, llm).AskAsync("a co z § 2?", history, null, default));
 
         Assert.Equal("co mówi art. 367 KPC? a co z § 2?", augmenter.LastQueryText); // kontekstowe mimo niższego sygnału
     }
@@ -146,7 +147,7 @@ public class ChatServiceFollowUpTests
         var history = new[] { new ChatTurn("pytanie", "odpowiedź") };
 
         var events = await Drain(Service(retriever, new NoOpAugmenter(), new FakeLlm())
-            .AskAsync("dopytanie", history, default));
+            .AskAsync("dopytanie", history, null, default));
 
         Assert.Contains(events, e => e is AbstainEvent);
         Assert.Contains(events, e => e is DoneEvent { Abstained: true });
