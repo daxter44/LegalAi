@@ -34,6 +34,16 @@ public class CitationBridgeTests
         await db.Documents.Where(d => sources.Contains(d.Source)).ExecuteDeleteAsync();
     }
 
+    /// <summary>Czyści WSZYSTKIE źródła T-MOST — teksty testów są niemal identyczne, więc niesemantyczny
+    /// <see cref="FakeEmbeddingProvider"/> daje im bliskie wektory i tor gęsty wciąga rodzeństwo (a gdy
+    /// asercja padnie, końcowy cleanup danego testu się nie wykona). Wołane na starcie KAŻDEGO testu —
+    /// izolacja niezależna od kolejności i porażek innych testów.</summary>
+    private static async Task CleanAllAsync()
+    {
+        await using var db = NewDb();
+        await db.Documents.Where(d => EF.Functions.Like(d.Source, "TEST-MOST-%")).ExecuteDeleteAsync();
+    }
+
     /// <summary>Seed z kontrolowanym tytułem dokumentu (resolver aktów szuka po tytule ILIKE)
     /// i opcjonalnym <c>ArticleNo</c> chunka (dociąganie artykułu idzie po metadanych).</summary>
     private static async Task SeedAsync(
@@ -66,23 +76,24 @@ public class CitationBridgeTests
     // Fikcyjny artykuł 415 w akcie o tytule zawierającym „Kodeks cywilny" (wymóg resolvera aliasów).
     // Unikalne tokeny per test, żeby BM25 nie mieszał scenariuszy między testami.
 
-    [Fact] // M1: ≥2 NIEZALEŻNE orzeczenia cytują art. 415 k.c. → chunk KC dołożony na czoło wyników
+    [Fact] // M1: ≥2 NIEZALEŻNE orzeczenia cytują art. 9997 k.c. → chunk KC dołożony na czoło wyników
     public async Task Two_judgments_citing_statute_pull_it_into_results()
     {
         const string src = "TEST-MOST-1";
-        await CleanAsync(src);
+        await CleanAllAsync();
         await SeedAsync(src, "kc", DocTypes.Act, "Kodeks cywilny (testowy Mostako1)",
             "Kto z winy swej wyrządził drugiemu szkodę, obowiązany jest do jej naprawienia. Mostakoprzepis.",
-            articleNo: "415");
+            articleNo: "9997");
         await SeedAsync(src, "j1", DocTypes.Judgment, "SO w Testowie I C 1/24",
-            "Mostako1 wichura przewróciła drzewo na ogrodzenie; podstawą odpowiedzialności jest art. 415 k.c. i wina właściciela.");
+            "Mostako1 wichura przewróciła drzewo na ogrodzenie; podstawą odpowiedzialności jest art. 9997 k.c. i wina właściciela.");
         await SeedAsync(src, "j2", DocTypes.Judgment, "SR w Testowie I C 2/24",
-            "Mostako1 topola runęła na altankę; sąd rozważał przesłanki z art. 415 k.c. oraz siłę wyższą jako okoliczność zwalniającą.");
+            "Mostako1 topola runęła na altankę; sąd rozważał przesłanki z art. 9997 k.c. oraz siłę wyższą jako okoliczność zwalniającą.");
 
-        var res = await RetrieveAsync(new RetrievalQuery { Text = "Mostako1 drzewo szkoda", MinChunkTokens = 0 });
+        var res = await RetrieveAsync(new RetrievalQuery { Text = "Mostako1", MinChunkTokens = 0 });
 
-        Assert.Contains(res.Chunks, c => c.DocType == DocTypes.Act && c.Text.Contains("Mostakoprzepis"));
-        // Norma jako kotwica: przed orzeczeniami (brak toru strukturalnego — pytanie bez jawnego cytatu).
+        // Most WYPROMOWAŁ akt (Score=MaxValue) — nie tylko obecny torem gęstym.
+        Assert.Contains(res.Chunks, c => c.Text.Contains("Mostakoprzepis") && c.Score == double.MaxValue);
+        // Norma jako kotwica: na czele listy (brak toru strukturalnego — pytanie bez jawnego cytatu).
         Assert.Equal(DocTypes.Act, res.Chunks[0].DocType);
         await CleanAsync(src);
     }
@@ -91,17 +102,21 @@ public class CitationBridgeTests
     public async Task Single_citing_judgment_is_below_vote_threshold()
     {
         const string src = "TEST-MOST-2";
-        await CleanAsync(src);
+        await CleanAllAsync();
         await SeedAsync(src, "kc", DocTypes.Act, "Kodeks cywilny (testowy Mostako2)",
-            "Treść przepisu testowego mostu. Mostakodwaprzepis.", articleNo: "415");
+            "Treść przepisu testowego mostu. Mostakodwaprzepis.", articleNo: "9997");
         await SeedAsync(src, "j1", DocTypes.Judgment, "SO w Testowie I C 3/24",
-            "Mostako2 drzewo spadło na samochód; podstawą jest art. 415 k.c. i domniemanie winy.");
+            "Mostako2 drzewo spadło na samochód; podstawą jest art. 9997 k.c. i domniemanie winy.");
         await SeedAsync(src, "j2", DocTypes.Judgment, "SR w Testowie I C 4/24",
             "Mostako2 drzewo spadło na płot; powództwo oddalono bez wskazania podstawy prawnej.");
 
-        var res = await RetrieveAsync(new RetrievalQuery { Text = "Mostako2 drzewo szkoda", MinChunkTokens = 0 });
+        var res = await RetrieveAsync(new RetrievalQuery { Text = "Mostako2", MinChunkTokens = 0 });
 
-        Assert.DoesNotContain(res.Chunks, c => c.Text.Contains("Mostakodwaprzepis"));
+        // FakeEmbeddingProvider daje seedowanym chunkom wektor all-dodatni (cosine ~0,75 do fake-query),
+        // więc seedowany akt ZAWSZE wchodzi torem gęstym — obecność go nie różnicuje. Sygnałem, że MOST
+        // go dołożył, jest Score=double.MaxValue (FetchArticleAsync „zawsze na górę"); 1 głos < próg 2 →
+        // most NIE promuje, akt zostaje z normalnym score RRF.
+        Assert.DoesNotContain(res.Chunks, c => c.Text.Contains("Mostakodwaprzepis") && c.Score == double.MaxValue);
         await CleanAsync(src);
     }
 
@@ -109,20 +124,22 @@ public class CitationBridgeTests
     public async Task Bridge_disabled_restores_previous_behaviour()
     {
         const string src = "TEST-MOST-3";
-        await CleanAsync(src);
+        await CleanAllAsync();
         await SeedAsync(src, "kc", DocTypes.Act, "Kodeks cywilny (testowy Mostako3)",
-            "Treść przepisu testowego mostu. Mostakotrzyprzepis.", articleNo: "415");
+            "Treść przepisu testowego mostu. Mostakotrzyprzepis.", articleNo: "9997");
         await SeedAsync(src, "j1", DocTypes.Judgment, "SO w Testowie I C 5/24",
-            "Mostako3 lipa runęła na garaż; odpowiedzialność z art. 415 k.c. wymaga winy.");
+            "Mostako3 lipa runęła na garaż; odpowiedzialność z art. 9997 k.c. wymaga winy.");
         await SeedAsync(src, "j2", DocTypes.Judgment, "SR w Testowie I C 6/24",
-            "Mostako3 sosna złamała się w wichurze; sąd przywołał art. 415 k.c. i brak zawinienia.");
+            "Mostako3 sosna złamała się w wichurze; sąd przywołał art. 9997 k.c. i brak zawinienia.");
 
         var res = await RetrieveAsync(new RetrievalQuery
         {
-            Text = "Mostako3 drzewo szkoda", MinChunkTokens = 0, CitationBridgeArticles = 0,
+            Text = "Mostako3", MinChunkTokens = 0, CitationBridgeArticles = 0,
         });
 
-        Assert.DoesNotContain(res.Chunks, c => c.Text.Contains("Mostakotrzyprzepis"));
+        // Most wyłączony → akt może być obecny torem gęstym (fake embedding), ale NIE wypromowany
+        // (brak Score=MaxValue). Rozróżnienie po sygnale mostu, nie po obecności.
+        Assert.DoesNotContain(res.Chunks, c => c.Text.Contains("Mostakotrzyprzepis") && c.Score == double.MaxValue);
         await CleanAsync(src);
     }
 
@@ -130,21 +147,21 @@ public class CitationBridgeTests
     public async Task Bridge_does_not_change_abstention_signal()
     {
         const string src = "TEST-MOST-4";
-        await CleanAsync(src);
+        await CleanAllAsync();
         await SeedAsync(src, "kc", DocTypes.Act, "Kodeks cywilny (testowy Mostako4)",
-            "Treść przepisu testowego mostu. Mostakoczteryprzepis.", articleNo: "415");
+            "Treść przepisu testowego mostu. Mostakoczteryprzepis.", articleNo: "9997");
         await SeedAsync(src, "j1", DocTypes.Judgment, "SO w Testowie I C 7/24",
-            "Mostako4 dąb przewrócił się na ogrodzenie; podstawa to art. 415 k.c. i należyta staranność.");
+            "Mostako4 dąb przewrócił się na ogrodzenie; podstawa to art. 9997 k.c. i należyta staranność.");
         await SeedAsync(src, "j2", DocTypes.Judgment, "SR w Testowie I C 8/24",
-            "Mostako4 brzoza uszkodziła wiatę; sąd zastosował art. 415 k.c. wobec zaniedbań pielęgnacji.");
+            "Mostako4 brzoza uszkodziła wiatę; sąd zastosował art. 9997 k.c. wobec zaniedbań pielęgnacji.");
 
-        var with = await RetrieveAsync(new RetrievalQuery { Text = "Mostako4 drzewo szkoda", MinChunkTokens = 0 });
+        var with = await RetrieveAsync(new RetrievalQuery { Text = "Mostako4", MinChunkTokens = 0 });
         var without = await RetrieveAsync(new RetrievalQuery
         {
-            Text = "Mostako4 drzewo szkoda", MinChunkTokens = 0, CitationBridgeArticles = 0,
+            Text = "Mostako4", MinChunkTokens = 0, CitationBridgeArticles = 0,
         });
 
-        Assert.Contains(with.Chunks, c => c.Text.Contains("Mostakoczteryprzepis")); // most zadziałał…
+        Assert.Contains(with.Chunks, c => c.Text.Contains("Mostakoczteryprzepis") && c.Score == double.MaxValue); // most wypromował…
         Assert.Equal(without.MaxSimilarity, with.MaxSimilarity, 10);                // …a bramka bez zmian
         await CleanAsync(src);
     }
