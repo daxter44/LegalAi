@@ -45,6 +45,12 @@ Model: Claude (Anthropic — amerykańskie API). Freemium: 10 zapytań bez karty
    i „100% polski stos" dochodzi kontrast wprost: „Twoje akta nie wyjeżdżają do amerykańskiej
    chmury — nawet zanonimizowane" oraz świeżość prawa (nowelizacje, których jeszcze nie ma
    w tekstach jednolitych) jako kontrapunkt dla ich „stanu prawnego na datę".
-4. Cennik lexedit = przyszła kotwica cenowa druga obok Lex/Legalis (sprawdzić /research/pricing
-   przy pracy nad ceną, §M3).
+4. **Kotwica cenowa (potwierdzona przez właściciela):** pakiet podstawowy lexedit ≈ 250 zł/mies. —
+   twardy dowód skłonności prawników do płacenia 250+ (druga kotwica obok Lex/Legalis). Ekonomia
+   po naszej stronie: serwer własny ~865 zł/mies. → próg rentowności 9 abonentów po 100 zł;
+   Sherlock API → koszt typowego pytania ~0,7 gr, ciężki użytkownik ~11 zł/mies. Wnioski do badania
+   ceny (§M3): NIE wyceniać po kosztach (prawnik rozlicza 200-600 zł/h; 100 zł przy konkurencie za
+   250 może sygnalizować gorszy produkt); porównywać ZAKRESY (ich 250 zawiera pisma+sprawy) —
+   struktura: tier wejściowy research 99-149 zł jako klin, tier z KAZ/pismami celujący w 250+
+   z suwerennością jako premium, nie rabatem. Widełki rozważań: 100 (dół) — 250+ (góra).
 5. Nie gonić peryferiów przed walidacją: mobile, kalkulatory, wzory, linie orzecznicze.
