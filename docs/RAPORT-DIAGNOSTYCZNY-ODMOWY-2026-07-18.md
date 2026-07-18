@@ -183,6 +183,58 @@ KIO 2544/12 (2012)
 
 ---
 
+## Case 4 — KSeF (akronim vs pełna nazwa w korpusie)
+
+**Nie z bazy produkcyjnej** — test interaktywny, 2026-07-19, ten sam pipeline (bez rerankera, TEI na
+3060 nieodpowiadał w chwili testu, patrz otwarte pytanie o Case 3).
+
+**Pytanie:** *„Kogo obejmuje obowiązkowy KSEF w 2026 i co oznacza okres przejściowy?"* → **ODMOWA**,
+8 źródeł.
+
+### Źródła (8)
+```
+PRZEPISY (3) — WSZYSTKIE puste placeholdery „(pominięty)"/„(pominięte)":
+  Ustawa o zakładowym funduszu świadczeń socjalnych, art. 16
+  Ustawa o pracownikach samorządowych, art. 58
+  Ustawa o emeryturach kapitałowych, art. 34-36
+ORZECZNICTWO (5) — wszystkie o OBOWIĄZKOWYCH UBEZPIECZENIACH SPOŁECZNYCH (ZUS), zero związku z VAT/KSeF
+```
+
+### Diagnoza — zweryfikowana bezpośrednio przez `/api/search` (nie tylko wnioskowanie ze źródeł)
+
+1. **Materiał o KSeF ISTNIEJE w korpusie i jest dobrze zaembedowany.** Zapytanie dosłowne *„Krajowy
+   System e-Faktur"* trafia bezbłędnie: art. 106nd ustawy o VAT (definicja KSeF, similarity 0,85) i
+   art. 4 nowelizacji z 2021 r. („Tworzy się Krajowy System e-Faktur", similarity 0,86). Korpus ma też
+   dedykowane rozporządzenie *„w sprawie korzystania z Krajowego Systemu e-Faktur"* (wersje z grudnia
+   2025 i lutego 2026) oraz dziesiątki nowelizacji ustawy o VAT z 2025-2026.
+2. **Ale korpus prawie nigdzie nie używa SKRÓTU „KSeF"/„KSEF"** — tylko **21 chunków w całym korpusie**
+   (zapytanie `SELECT count(*) FROM chunks WHERE "Text" ILIKE '%Krajowy System e-Faktur%' OR "Text"
+   ILIKE '%KSeF%'`) zawiera którąkolwiek z tych fraz; ustawy konsekwentnie piszą pełną nazwą.
+3. **Parafraza z akronimem też zawodzi**: zapytanie *„obowiązkowe fakturowanie ustrukturyzowane KSeF"*
+   (wciąż zawiera „KSeF") zwraca same przypadkowe wzmianki „faktura VAT" z list dowodowych w sprawach
+   karnych — embedding CAŁEGO zapytania ucieka od tych 21 chunków, gdy dominują je frazy generyczne
+   („obowiązkowe", „kogo obejmuje", „okres przejściowy").
+4. **Wniosek:** to CZWARTY odrębny mechanizm odmowy w tej diagnostyce (obok: dylucji precyzją Case 1/3,
+   deficytu recall dla pytań oceniających Case 2, i binarnej reguły odmowy przy pytaniach złożonych —
+   patrz przypadek ze spadkiem, do dopisania osobno) — i najbardziej wprost naprawialny: **model
+   embeddingu nie generalizuje akronimu prawnego na jego pełną nazwę**, więc zapytanie żargonem
+   branżowym (typowe dla użytkownika, który zna skrót, ale nie zna dokładnego brzmienia ustawy) przegrywa
+   z generyczną otoczką prawną innych, niezwiązanych przepisów. Możliwe kierunki naprawy (niewdrożone,
+   do dyskusji): rozszerzanie znanych akronimów prawnych (KSeF, RODO, KPA, KRS...) na pełną nazwę przed
+   embeddingiem zapytania; silniejsza waga BM25/dokładnego dopasowania tekstu, gdy zapytanie zawiera
+   ciąg caps-lock przypominający skrót.
+
+### Skala problemu „(pominięty)" — zmierzona
+Ten sam wzorzec pustych placeholderów co w teście załącznika (`docs/TEST-ZALACZNIK-UMOWA-NAJMU.md`,
+zapytanie o kaucję) pojawił się tu jako WSZYSTKIE 3 wyniki PRZEPISY. Zmierzone bezpośrednio w bazie:
+**1056 z 544 805 chunków aktów (≈0,19%)** ma tekst pasujący do `(pominięty)`/`(pominięte)`. Niewielki
+odsetek globalnie, ale systemowo podatny na trafienie właśnie przy zapytaniach o „przepisy przejściowe"/
+„co się zmienia" — bo rozdziały „Przepisy przejściowe i końcowe" nieproporcjonalnie często zawierają
+uchylone/pominięte numery artykułów. Kandydat na filtr analogiczny do wcześniejszego `REGULATION`
+(wykluczyć chunki, których cała treść to placeholder uchylenia, zamiast serwować pustkę jako źródło).
+
+---
+
 ## Podsumowanie — trzy odrębne, nowe wnioski (żaden nie pokrywa się z diagnozą z 2026-07-17)
 
 1. **Bramka progu ≠ jakość odpowiedzi — ale mechanizm różni się między przypadkami.** We wszystkich
