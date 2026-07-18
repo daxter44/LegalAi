@@ -4,6 +4,7 @@
 @using PrawoRAG.Domain.Llm
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IChatService ChatService
+@inject PrawoRAG.Domain.Embeddings.IEmbeddingProvider Embedder
 @inject IConversationStore Store
 @inject ICurrentUser CurrentUser
 @inject RateGuard RateGuard
@@ -52,7 +53,7 @@
                     <div class="answer" aria-live="polite">
                         @if (ex.Answer.Length > 0)
                         {
-                            @((MarkupString)MarkdownRenderer.ToSafeHtml(ex.Answer, ex.Sources.Count, ex.AnchorId))
+                            @((MarkupString)MarkdownRenderer.ToSafeHtml(ex.Answer, ex.Sources.Count, ex.AnchorId, ex.DocFragments.Count))
                         }
                         else if (ex.Streaming)
                         {
@@ -79,6 +80,20 @@
                                 </span>
                             }
                         </div>
+                    }
+
+                    @if (ex.DocFragments.Count > 0 && !IsRefusal(ex))
+                    {
+                        <details class="sources" open>
+                            <summary>📄 Twój dokument: @ex.DocFileName (@ex.DocFragments.Count użyte fragmenty)</summary>
+                            @foreach (var f in ex.DocFragments)
+                            {
+                                <div class="source-card" id="docsrc-@(ex.AnchorId)-@f.Index">
+                                    <div class="source-head"><span class="source-n">[D@(f.Index)]</span></div>
+                                    <blockquote class="source-snippet">@f.Snippet</blockquote>
+                                </div>
+                            }
+                        </details>
                     }
 
                     @if (ex.Sources.Count > 0 && !IsRefusal(ex))
@@ -135,6 +150,26 @@
     {
         <div class="banner banner-warn" role="status">@_notice</div>
     }
+    <div class="chat-attach">
+        <label class="attach-btn" title="Dołącz PDF (umowa, pismo, wyrok) — treść nie jest zapisywana">
+            📎 <InputFile OnChange="OnFileSelected" accept=".pdf" disabled="@(_busy || _docLoading)" />
+        </label>
+        @if (_docLoading)
+        {
+            <span class="attach-chip">⏳ przetwarzam załącznik…</span>
+        }
+        else if (_document is not null)
+        {
+            <span class="attach-chip" title="Załącznik żyje do końca sesji — treść nie jest zapisywana">
+                📄 @_document.FileName (@_document.PageCount str.@(_document.Truncated ? $", obcięto do {PdfAttachmentExtractor.MaxPages}" : ""))
+                <button class="attach-remove" @onclick="RemoveDocument" disabled="@_busy" title="Usuń załącznik">✕</button>
+            </span>
+        }
+        @if (_docNotice is not null)
+        {
+            <span class="attach-notice">@_docNotice</span>
+        }
+    </div>
     <form class="chat-input" @onsubmit="Send" @onsubmit:preventDefault>
         <textarea @bind="_input" @bind:event="oninput" @onkeydown="OnKeyDown"
                   placeholder="Zadaj pytanie prawne… (Ctrl+Enter wysyła)" rows="2" disabled="@_busy"
@@ -156,6 +191,12 @@
     private Guid? _conversationId;
     private CancellationTokenSource? _cts;
     private string _userId = "demo@local";
+
+    // Załącznik (DOC-5): żyje wyłącznie w pamięci obwodu — F5/rekonekt = trzeba dołączyć ponownie
+    // (decyzja #1 planu DOC: treść pism klientów nie jest persystowana).
+    private DocumentContext? _document;
+    private bool _docLoading;
+    private string? _docNotice;
 
     protected override async Task OnInitializedAsync()
     {
@@ -245,6 +286,54 @@
         if (e.Key == "Enter" && e.CtrlKey) await Send();
     }
 
+    private void RemoveDocument()
+    {
+        _document = null;
+        _docNotice = null;
+    }
+
+    /// <summary>Upload PDF → ekstrakcja (PdfPig) → bramka skanów → chunki+embeddingi w pamięci.
+    /// Każdy błąd = czytelny komunikat, nigdy 500 (uszkodzony/zaszyfrowany plik to normalny przypadek).</summary>
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _docNotice = null;
+        _document = null;
+        var file = e.File;
+        if (!file.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            _docNotice = "Obsługujemy wyłącznie pliki PDF.";
+            return;
+        }
+        if (file.Size > PdfAttachmentExtractor.MaxBytes)
+        {
+            _docNotice = $"Plik jest za duży (limit {PdfAttachmentExtractor.MaxBytes / (1024 * 1024)} MB).";
+            return;
+        }
+
+        _docLoading = true;
+        try
+        {
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(PdfAttachmentExtractor.MaxBytes).CopyToAsync(ms);
+            var pdf = PdfAttachmentExtractor.Extract(ms.ToArray());
+            if (pdf.IsScanLike)
+            {
+                _docNotice = "Ten PDF wygląda na skan — obsługujemy dokumenty z warstwą tekstową (bez OCR).";
+                return;
+            }
+            _document = await DocumentContext.CreateAsync(file.Name, pdf, Embedder, CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            _docNotice = "Nie udało się odczytać tego PDF (plik uszkodzony lub zabezpieczony).";
+        }
+        finally
+        {
+            _docLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
     private async Task Send()
     {
         var question = _input.Trim();
@@ -293,11 +382,12 @@
 
         try
         {
-            await foreach (var evt in ChatService.AskAsync(question, history, ct))
+            await foreach (var evt in ChatService.AskAsync(question, history, _document, ct))
             {
                 switch (evt)
                 {
                     case SourcesEvent s: ex.Sources = s.Sources; break;
+                    case DocSourcesEvent d: ex.DocFileName = d.FileName; ex.DocFragments = d.Fragments; break;
                     case TokenEvent t: ex.Answer += t.Text; break;
                     case AbstainEvent a: ex.Abstained = true; ex.AbstainMessage = a.Message; break;
                     case DoneEvent d: ex.Done = true; ex.Check = d.Check; ex.Model = d.Model; ex.Usage = d.Usage; break;
@@ -357,6 +447,11 @@
         public required string Question { get; init; }
         public string Answer { get; set; } = "";
         public IReadOnlyList<ChatSource> Sources { get; set; } = [];
+
+        /// <summary>Fragmenty załącznika użyte w tej turze (przestrzeń [Dk]); tylko in-memory —
+        /// rozmowa wczytana z historii ich nie ma ([Dk] renderują się wtedy jako zwykły tekst).</summary>
+        public IReadOnlyList<DocSource> DocFragments { get; set; } = [];
+        public string? DocFileName { get; set; }
         public bool Abstained { get; set; }
         public string? AbstainMessage { get; set; }
         public CitationCheck? Check { get; set; }

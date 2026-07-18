@@ -55,4 +55,20 @@ public class MarkdownRendererCiteTests
         Assert.Contains("#src-x-10", html);
         Assert.DoesNotContain("#src-x-123", html);
     }
+
+    [Fact] // przestrzeń dokumentu: [D1] → kotwica do karty fragmentu, obok [n] do źródła
+    public void Doc_marker_links_to_document_card()
+    {
+        var html = MarkdownRenderer.ToSafeHtml("Fakt z umowy [D1], podstawa [1].", 1, "x", docCount: 2);
+        Assert.Contains("#docsrc-x-1", html);
+        Assert.Contains(">[D1]</a>", html);
+        Assert.Contains("#src-x-1", html);
+    }
+
+    [Fact] // [D5] poza zakresem fragmentów → zwykły tekst; bez docCount [D1] też zostaje tekstem
+    public void Doc_marker_out_of_range_or_without_doc_stays_plain()
+    {
+        Assert.DoesNotContain("docsrc", MarkdownRenderer.ToSafeHtml("Teza [D5].", 3, "x", docCount: 2));
+        Assert.DoesNotContain("docsrc", MarkdownRenderer.ToSafeHtml("Teza [D1].", 3, "x"));
+    }
 }
