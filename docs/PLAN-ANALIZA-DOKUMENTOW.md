@@ -70,12 +70,23 @@ streaming → CitationValidator (obie przestrzenie) → UI: karty [D] „Twój d
   z FakeEmbeddingProvider). K_doc domyślnie 4 (budżet promptu obok 8 źródeł korpusu — do pomiaru).
 - Testy: selekcja po podobieństwie, stabilna kolejność, pusty dokument → pusto.
 
-### DOC-2: `GroundedPrompt` — sekcja DOKUMENT + przestrzeń [D]
+### DOC-2: `GroundedPrompt` — sekcja DOKUMENT + przestrzeń [D] + WARUNKOWY system prompt
 - `Build(question, chunks, history, docFragments)` (overload; brak fragmentów = dzisiejsze zachowanie,
   zero regresji): sekcja `DOKUMENT (fragmenty załącznika użytkownika):` z [D1..] NAD źródłami.
-- SystemPrompt: nowa zasada — „fakty ze stanu faktycznego czerp z sekcji DOKUMENT i cytuj [Dk];
-  DOKUMENT nie jest źródłem prawa — podstawę prawną cytuj wyłącznie z [n]”.
-- Testy: numeracja obu przestrzeni, sekcja tylko gdy załącznik obecny, zasada w SystemPrompt.
+- **System prompt modyfikowany TYLKO gdy załącznik obecny** — bez dokumentu `SystemPrompt` zostaje
+  bajt w bajt dzisiejszy (twarda asercja w testach; prompty strojone pod Bielika — zbędne zasady
+  o nieistniejącej sekcji to ryzyko regresji, patrz 5e). Z dokumentem: `SystemPrompt` + doklejony
+  blok `DocumentRules`:
+  1. fakty stanu faktycznego czerp z sekcji DOKUMENT i cytuj [Dk];
+  2. DOKUMENT NIE jest źródłem prawa — podstawę prawną cytuj wyłącznie z [n]; gdy treść dokumentu
+     jest sprzeczna z przepisem, wskaż rozbieżność wprost;
+  3. dostajesz FRAGMENTY dokumentu (nie całość) — jeśli pytanie dotyczy treści nieobecnej we
+     fragmentach, napisz to wprost („dołączone fragmenty nie zawierają…”), nie zgaduj zawartości
+     reszty pliku;
+  4. fraza odmowy („Nie mam wystarczających źródeł…”) bez zmian — dotyczy braku PRAWA w źródłach,
+     nie braków dokumentu.
+- Testy: numeracja obu przestrzeni; sekcja i DocumentRules obecne TYLKO z załącznikiem; bez
+  załącznika system prompt identyczny z dzisiejszym (Assert.Equal na stałej).
 
 ### DOC-3: `CitationValidator` — walidacja przestrzeni [Dk]
 - Markery `[D\d+]` walidowane przeciw liczbie/treści fragmentów dokumentu (out-of-range jak dla [n]);
