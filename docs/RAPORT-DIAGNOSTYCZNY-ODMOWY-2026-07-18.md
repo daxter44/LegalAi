@@ -73,7 +73,12 @@ innego ustępu niż ten, który trafił do kontekstu jako chunk).
 
 ---
 
-## Case 2 — Umowa o dzieło (załącznik PDF)
+## Case 2 — Umowa o świadczenie usług B2B (załącznik PDF)
+
+**Korekta etykiety:** dokument NIE jest „umową o dzieło" (mylnie nazwana tak we wcześniejszym opisie
+rozmowy) — to „Umowa o świadczenie usług" między dwoma przedsiębiorcami (Zleceniodawca/Kontraktor),
+bliższa konstrukcyjnie umowie zlecenia (KC art. 734 i nast.) niż umowie o dzieło. Ustalone dopiero przy
+reprodukcji — patrz niżej.
 
 **Pytanie** (zadane 3×, w tym powtórka „jeszcze raz" tego samego dnia i ponownie 2h później —
 deterministyczne, `Temperature=0`, za każdym razem identyczny wynik): *„Z perspektywy kontraktora czy ta
@@ -94,22 +99,37 @@ Sąd Okręgowy w Lublinie, I C 22/13 (2014)
 ```
 Same tytuły nie mówią wprost, czy to sprawy o umowę o dzieło — wymaga sprawdzenia treści.
 
-### Obserwacja
-Kod (`ChatService.cs:57-71`) potwierdza: fragmenty załącznika są wybierane PO bramce abstynencji,
-niezależnie od jej wyniku (bramka sprawdza tylko korpus) — więc skoro `Abstained=false`, fragmenty umowy
-BYŁY dobrane i przekazane do promptu razem z 8 źródłami korpusowymi. Model mimo to odmówił.
+### Reprodukcja z `PRAWORAG_DUMP_PROMPT` (2026-07-18, ten sam PDF, to samo pytanie, reranker OFF —
+niedostępny w chwili testu, nie wpływa na dobór fragmentów dokumentu, patrz niżej)
 
-**Dwie hipotezy, nierozstrzygnięte bez reprodukcji z `PRAWORAG_DUMP_PROMPT=1`:**
-1. Dobór fragmentów dokumentu (in-memory cosine, `DocumentContext.SelectFragments`) nie trafił w
-   klauzule istotne dla pytania — pytanie jest **oceniające/analityczne** („czy chroni interes"), nie
-   faktograficzne, więc może słabo embedować się względem konkretnych klauzul umowy (kar umownych,
-   odpowiedzialności, odbioru dzieła) tak jak faktograficzne pytanie trafia w faktografię.
-2. Struktura promptu (osobna sekcja dla ŹRÓDEŁ korpusowych vs ZAŁĄCZNIKA) myli model co do tego, że
-   wolno mu odpowiadać na podstawie dokumentu — może stosować regułę 3 SystemPromptu do korpusu, ignorując
-   że ma też realny tekst umowy.
+Pełny prompt wysłany do modelu odtworzony. Kluczowe ustalenia — **zastępują obie hipotezy z draftu**:
 
-**Do zrobienia:** odtworzyć z `PRAWORAG_DUMP_PROMPT=1`, zobaczyć dokładnie jakie fragmenty umowy (jeśli
-jakiekolwiek) faktycznie trafiły do promptu.
+1. **Dobór fragmentów dokumentu jest POPRAWNY.** [D1]-[D3] pokrywają całą treść umowy sekwencyjnie
+   (§1 Przedmiot → §2-3 Wynagrodzenie → §3 Czas trwania → §4 Postanowienia końcowe), bez ucięć w środku
+   klauzuli. Hipoteza 1 (zły dobór fragmentów) — **obalona**.
+2. **Struktura promptu jest poprawna** — sekcje DOKUMENT i ŹRÓDŁA są jasno rozdzielone, reguły D1-D4
+   jednoznacznie każą czerpać fakty z DOKUMENTU a prawo z ŹRÓDEŁ. Hipoteza 2 (myląca struktura) — brak
+   podstaw w treści promptu, **nieprawdopodobna**.
+3. **Prawdziwe znalezisko: wśród 8 podanych ŹRÓDEŁ nie ma ANI JEDNEGO przepisu (PRZEPISY) — same
+   orzeczenia, i to słabo trafione:**
+   - [1] i [2] to **duplikat tego samego wyroku** (ten sam sygn. akt, ten sam fragment, rozdzielone
+     tylko znakiem „⚫").
+   - [8] (Sąd Okręgowy w Poznaniu, III K 93/17) to **sprawa KARNA** o wiarygodności donosiciela —
+     zero związku merytorycznego z prawem umów; trafiło najpewniej przez powierzchniowe podobieństwo
+     frazy o „przerzucaniu odpowiedzialności".
+   - [5] (Sąd Okręgowy w Krakowie, VII U 3928/19) to sprawa **ubezpieczeniowa/adaptacji do nowej
+     regulacji** — również luźno związana.
+   - Pozostałe ([3][4][6][7]) dotykają tematu (kara umowna, odstąpienie, nienależyte wykonanie), ale
+     każde to pojedyncze, wyrwane z kontekstu zdanie, nie fragment niosący samodzielną treść.
+   - **Nigdzie nie pojawia się KC art. 734 i nast. (zlecenie/świadczenie usług)** ani żaden inny przepis
+     rządzący tym typem umowy.
+4. **Wniosek zmienia ramę Case 2:** system prompt (reguła 3: odmów, gdy źródła nie zawierają
+   odpowiedzi; reguła 4: nie wymyślaj przepisów) **każe** odmówić, gdy model nie dostał ani jednego
+   przepisu. Odmowa modelu jest tu w dużej mierze **zgodna z instrukcją**, nie awarią samego modelu —
+   prawdziwy problem leży wyżej, w retrievalu korpusowym: dla pytania **oceniającego, bez słownictwa
+   prawniczego** („czy ta umowa wystarczająco chroni jego interes?" — cała faktografia jest w
+   załączniku, nie w pytaniu) nie udało się dowieźć ŻADNEGO trafnego przepisu, tylko przypadkowy zestaw
+   orzeczeń.
 
 ---
 
@@ -165,19 +185,22 @@ KIO 2544/12 (2012)
 
 ## Podsumowanie — trzy odrębne, nowe wnioski (żaden nie pokrywa się z diagnozą z 2026-07-17)
 
-1. **Bramka progu ≠ jakość odpowiedzi.** We wszystkich trzech przypadkach retrieval „zaliczył" próg
-   (`Abstained=false`), ale model i tak odmówił — sam próg podobieństwa nie gwarantuje, że dostarczone
-   źródła są UŻYTECZNE, tylko że są wystarczająco „podobne". To osobny wymiar jakości od tego, co
-   naprawialiśmy dotąd (recall vs precyzja/trafność merytoryczna dostarczonych źródeł).
+1. **Bramka progu ≠ jakość odpowiedzi — ale mechanizm różni się między przypadkami.** We wszystkich
+   trzech `Abstained=false`, ale model odmówił. W Case 1 i 3 trafna norma BYŁA w źródłach, tylko
+   rozcieńczona zanieczyszczeniem (rzeczywisty problem precyzji). W Case 2 — po reprodukcji — okazało
+   się, że wśród 8 źródeł nie było ŻADNEGO przepisu w ogóle, więc odmowa modelu tam jest zgodna z jego
+   własną instrukcją (reguła 3/4); to nie deficyt precyzji tylko zwykły deficyt recall (podobny do
+   diagnozy z 2026-07-17), tyle że dla pytania oceniającego bez słownictwa prawniczego.
 2. **Nowy, powtarzalny „atraktor"**: ustawa o związku metropolitalnym w woj. pomorskim (2026) pojawia
    się z wieloma różnymi numerami artykułów w DWÓCH niezwiązanych tematycznie pytaniach. Wymaga
    zbadania czy to wina mostu cytowań (dopasowanie po numerze bez potwierdzenia aktu — ryzyko
    architektoniczne dodanej dziś funkcji) czy jakości/charakteru wektorów tego konkretnego dokumentu.
 3. **Pułapka nazewnicza CUS/CUW** — instytucje o zbliżonych nazwach, różnej treści, myląco bliskie
    semantycznie/leksykalnie.
-4. **Fragmenty dokumentu-załącznika nie są persystowane** — luka w obserwowalności, utrudnia
-   retrospektywne debugowanie odpowiedzi z załącznikiem (Case 2 pozostaje częściowo nierozstrzygnięty
-   z tego powodu).
+4. **Fragmenty dokumentu-załącznika nie są persystowane** — luka w obserwowalności produkcyjnej;
+   Case 2 udało się mimo to rozstrzygnąć przez ręczną reprodukcję z `PRAWORAG_DUMP_PROMPT` (ten sam
+   PDF, to samo pytanie, `Temperature=0` → deterministyczne), ale to obejście, nie naprawa luki — każdy
+   kolejny przypadek z załącznikiem wymaga tej samej ręcznej reprodukcji.
 5. **Pusta odpowiedź / crash na żywym ruchu produkcyjnym** (Case 3, próba 1) — realny wyjątek podczas
    generacji, nie tylko w testach syntetycznych. Przyczyna NIEROZSTRZYGNIĘTA: dane przeczą prostej
    hipotezie „to ten sam bug rerankera co naprawiliśmy w `c30f57d`" (identyczne zapytanie 5 min później
@@ -231,7 +254,13 @@ otwarte jak niżej.
 - Co faktycznie spowodowało pustą odpowiedź w Case 3 próba 1 (17:26:03) — crash rerankera to jedna z
   kilku hipotez, osłabiona przez brak powtórki crasha przy identycznym zapytaniu 5 min później; wymaga
   logów serwera z tego okna czasowego i potwierdzenia, czy reranker był wtedy w ogóle włączony.
-- Reprodukcja Case 2 z `PRAWORAG_DUMP_PROMPT=1`, żeby zobaczyć realne fragmenty umowy w promptcie.
+- ~~Reprodukcja Case 2 z `PRAWORAG_DUMP_PROMPT`~~ — zrobione, patrz Case 2: dobór fragmentów OK,
+  problem w retrievalu (zero przepisów w źródłach). Otwarte pozostaje: DLACZEGO retrieval nie znalazł
+  KC art. 734+ dla tego pytania — wymaga sprawdzenia czy taki chunk w ogóle jest w indeksie/czy
+  embedding pytania „czy ta umowa chroni interes" jest zbyt odległy od embeddingu przepisu o zleceniu.
+- Reranker TEI na 3060 (port 8081) nie odpowiadał podczas reprodukcji (timeout 75s) — do sprawdzenia,
+  czy to trwały stan (kontener padł) czy przejściowe; ten sam kształt awarii (wyjątek w trakcie
+  generacji → pusta odpowiedź, pusty `Model`) pasuje też do niewyjaśnionej pustej odpowiedzi w Case 3.
 - Czy warto rozróżniać w UI/logice „odmowa progu" (Abstained=true) od „odmowa treściowa modelu"
   (RefusalMarker w Content, Abstained=false) w samej bazie/telemetrii — dziś nieodróżnialne bez
   parsowania treści, co utrudniało tę analizę.
