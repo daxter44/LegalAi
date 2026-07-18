@@ -84,4 +84,14 @@ public class GroundedPromptSectionsTests
         Assert.Contains("PRZEPISY i ORZECZNICTWO", GroundedPrompt.SystemPrompt);
         Assert.Contains("Odpowiedź bez odwołań [n] jest nieprawidłowa", GroundedPrompt.SystemPrompt);
     }
+
+    [Fact] // Reguła 3 zmiękczona (odpowiedzi częściowe), ale kontrakt frazy odmowy NIETKNIĘTY:
+           // UI (IsRefusal), eval odmów i golden set wykrywają odmowę przez Contains(RefusalMarker) —
+           // prompt musi zawierać frazę DOSŁOWNIE i wiązać ją wyłącznie z pełną odmową.
+    public void System_prompt_allows_partial_answers_but_keeps_refusal_marker_contract()
+    {
+        Assert.Contains("CZĘŚĆ pytania", GroundedPrompt.SystemPrompt);
+        Assert.Contains($"\"{GroundedPrompt.RefusalMarker}, aby odpowiedzieć.\"", GroundedPrompt.SystemPrompt);
+        Assert.Contains("ŻADNĄ część pytania", GroundedPrompt.SystemPrompt);
+    }
 }
