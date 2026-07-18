@@ -184,6 +184,45 @@ KIO 2544/12 (2012)
    nie crashuje ponownie) — patrz analiza w Case 3. Wymaga dalszego zbadania (logi z 17:26, czy reranker
    był wtedy włączony, czy to raczej timeout generacji Gemmy).
 
+## Uzupełnienie (analiza kodu, 2026-07-18 wieczór) — atraktor to najpewniej `TemporalAugmenter`
+
+Raport rozważał dwa mechanizmy (most cytowań vs rozproszone dopasowanie gęste) — analiza kodu wskazuje
+TRZECI, który pasuje do wszystkich obserwacji naraz: **augmentacja nowelizacyjna (AKT-2)**.
+`TemporalAugmenter` dla każdego aktu w wynikach bierze WSZYSTKIE chunki jego niewchłoniętych nowel
+i dokłada te, których tekst WZMIANKUJE pytany numer artykułu (`\bart\. N\b`) — bez capu, ze
+Score=MaxValue (czoło listy), POZA limitem TopK. Ustawa o związku metropolitalnym (2026) to świeża
+ustawa z pakietem przepisów zmieniających — jeśli figuruje w `unabsorbedAmendments` UGN/usg/KPA,
+jest skanowana przy każdym pytaniu trafiającym te akty.
+
+Dopasowanie do dowodów raportu:
+1. **11 i 17 źródeł przy TopK=8** — tylko augmenter dokłada poza TopK (most i QU są cięte w retrieverze);
+   nadwyżka = dokładnie fragmenty metropolitalne + „ustawy zmieniającej usg".
+2. **Case 1: metropolitalne art. 43/48 = numery trafionych UGN art. 43/48** — augmenter szukał wzmianek
+   „art. 43"/„art. 48"; nagłówek „Art. 43." WŁASNEGO artykułu noweli też matchuje luźny regex.
+3. **Case 3: rozproszone numery własne (16c, 12, 15…)** — raport uznał to za dowód przeciw dopasowaniu
+   po numerze, ale w mechanice augmentera to oczekiwany wzorzec: numer WŁASNY chunka jest dowolny,
+   liczy się WZMIANKA pytanych 10c/8e/21 w treści („o którym mowa w art. 10c ustawy o samorządzie
+   gminnym…"). Osiem fragmentów = brak capu.
+
+**Naprawa (commit z tą zmianą):** kontrakt AKT-2 to „fragmenty nowel DOTYCZĄCE pytanych artykułów" —
+czyli ZMIENIAJĄCE przepis. `AmendmentDiffMatcher`: fragment kwalifikuje się tylko, gdy wzmianka numeru
+współwystępuje z językiem diffu ZTP („otrzymuje brzmienie", „dodaje się", „uchyla się", „skreśla się",
+„zastępuje się") — odsiewa odesłania i nagłówki własnych artykułów. Do tego capy: ≤2 chunki per nowela,
+≤4 łącznie. Testy T-AKT-DIFF (9, w tym dosłowne wzorce z Case 1/3).
+
+**Weryfikacja na M4/3060:**
+1. `SELECT "Title", "TypedMetadata"->'unabsorbedAmendments' FROM documents WHERE "DocType"='act' AND
+   "TypedMetadata"::text ILIKE '%metropolitaln%'` — potwierdzić, że ELI ustawy metropolitalnej figuruje
+   jako nowela wielu aktów (dowód rozstrzygający mechanizm).
+2. Powtórzyć pytania Case 1/3 — źródła bez fragmentów metropolitalnych (chyba że ta ustawa FAKTYCZNIE
+   zmienia pytany artykuł — wtedy ma prawo być, w limicie 2).
+3. Golden set kategoria Freshness (`fresh-kpc-nowela`) — realna nowela DU/2026/473 ma język diffu,
+   musi nadal wchodzić (strażnik, że zaostrzenie nie wycięło legalnych nowel).
+
+Zaostrzenie NIE adresuje: pułapki CUS/CUW (Case 3.1 — problem embeddingowy), doboru fragmentów
+załącznika przy pytaniach oceniających (Case 2) ani pustej odpowiedzi (Case 3 próba 1) — te zostają
+otwarte jak niżej.
+
 ## Otwarte pytania do dalszej analizy
 - Czy „atraktor" (związek metropolitalny) to bug w moście cytowań, czy zwykłe rozproszone dopasowanie
   gęste (szeroki akt, generyczne embeddingi) — wymaga sprawdzenia na 3060 (który dokładnie

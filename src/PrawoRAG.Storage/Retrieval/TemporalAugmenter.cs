@@ -53,8 +53,14 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
         var docs = await db.Documents.Where(d => actDocIds.Contains(d.Id)).ToListAsync(ct);
         var seen = new HashSet<Guid>(tagged.Select(c => c.ChunkId));
 
+        // Capy (raport odmów 2026-07-18): augmentacja działa NA finalnej liście TopK, więc bez limitu
+        // potrafiła dołożyć 8+ fragmentów jednej szerokiej ustawy zmieniającej (11 i 17 źródeł przy
+        // TopK=8), rozcieńczając trafną normę i prowadząc do odmowy treściowej modelu.
+        var totalAdded = 0;
+
         foreach (var d in docs)
         {
+            if (totalAdded >= MaxFragmentsTotal) break;
             var amendments = ParseUnabsorbed(d.TypedMetadata);
             if (amendments.Count == 0) continue;
 
@@ -64,18 +70,35 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
 
             foreach (var am in amendments)
             {
+                if (totalAdded >= MaxFragmentsTotal) break;
                 var amChunks = await db.Chunks.Include(c => c.Document)
-                    .Where(c => c.Document!.ExternalId == am.EliId).ToListAsync(ct);
+                    .Where(c => c.Document!.ExternalId == am.EliId)
+                    .OrderBy(c => c.ChunkIndex)
+                    .ToListAsync(ct);
+                var perAmendment = 0;
                 foreach (var ch in amChunks)
                 {
-                    if (!articles.Any(a => MentionsArticle(ch.Text, a))) continue;
+                    if (perAmendment >= MaxFragmentsPerAmendment || totalAdded >= MaxFragmentsTotal) break;
+                    // Zaostrzone dopasowanie: fragment musi ZMIENIAĆ artykuł (język diffu), nie tylko
+                    // go wzmiankować — patrz AmendmentDiffMatcher (mechanizm „atraktora" z raportu).
+                    if (!articles.Any(a => AmendmentDiffMatcher.MentionsArticleChange(ch.Text, a))) continue;
                     if (!seen.Add(ch.Id)) continue;
                     tagged.Add(ToAmendmentChunk(ch, am));
+                    perAmendment++;
+                    totalAdded++;
                 }
             }
         }
         return tagged;
     }
+
+    /// <summary>Ile fragmentów jednej noweli może dołożyć augmentacja (nowela zmieniająca jeden artykuł
+    /// to zwykle 1-2 chunki diffu).</summary>
+    private const int MaxFragmentsPerAmendment = 2;
+
+    /// <summary>Twardy sufit dołożeń łącznie — augmentacja dokłada POZA TopK, więc bez sufitu rozsadza
+    /// budżet promptu i grzebie trafną normę wśród fragmentów nowel.</summary>
+    private const int MaxFragmentsTotal = 4;
 
     private async Task<Dictionary<string, string?>> BuildUnabsorbedDatesAsync(CancellationToken ct)
     {
@@ -97,10 +120,6 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
         try { return arr.Deserialize<List<AmendmentRef>>() ?? []; }
         catch { return []; }
     }
-
-    private static bool MentionsArticle(string text, string article) =>
-        Regex.IsMatch(text, @"\bart\.?\s*" + Regex.Escape(article) + @"\b",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static RetrievedChunk ToAmendmentChunk(ChunkEntity ch, AmendmentRef am)
     {
