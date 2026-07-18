@@ -229,6 +229,9 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         var chunks = result.Chunks;
         try { chunks = await augmenter.AugmentAsync(q, result.Chunks, ct); } catch { /* best-effort */ }
 
+        // Norma przed narracjami (parytet z ChatService) — jeden porządek dla promptu/źródeł/walidatora.
+        chunks = GroundedPrompt.OrderForGrounding(chunks);
+
         // Do promptu idzie ORYGINALNE pytanie + historia (nie sklejony tekst retrievalu).
         var (request, sources) = GroundedPrompt.Build(req.Question, chunks, history);
         await Send("sources", sources);

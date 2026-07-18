@@ -57,6 +57,10 @@ public sealed class ChatService(
         var chunks = result.Chunks;
         try { chunks = await augmenter.AugmentAsync(query, result.Chunks, ct); } catch { /* best-effort */ }
 
+        // Norma przed narracjami (PRZEPISY → ORZECZNICTWO) — TEN SAM porządek musi zasilić prompt,
+        // panel źródeł i kontekst walidatora (jedna numeracja [n]).
+        chunks = GroundedPrompt.OrderForGrounding(chunks);
+
         // Do promptu idzie ORYGINALNE pytanie + historia (nie sklejony tekst retrievalu).
         var (request, sources) = GroundedPrompt.Build(question, chunks, history);
         yield return new SourcesEvent(sources

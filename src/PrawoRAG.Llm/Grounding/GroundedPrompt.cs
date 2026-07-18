@@ -1,4 +1,5 @@
 using System.Text;
+using PrawoRAG.Domain;
 using PrawoRAG.Domain.Documents;
 using PrawoRAG.Domain.Llm;
 using PrawoRAG.Domain.Retrieval;
@@ -25,10 +26,18 @@ public static class GroundedPrompt
         """
         Jesteś asystentem prawnym dla polskich prawników. Odpowiadasz WYŁĄCZNIE na podstawie
         dostarczonych źródeł, oznaczonych [1], [2], itd. Zasady bezwzględne:
-        1. Odpowiedz WPROST na pytanie, zaczynając od sedna — nie opisuj kolejno źródeł
-           ("Wyrok ten dotyczy...", "Źródło [2] mówi o..."). Połącz informacje ze wszystkich
-           źródeł w jedną spójną odpowiedź w naturalnym języku.
+        1. Zacznij od KONKLUZJI: pierwsze zdanie odpowiada wprost na pytanie w odniesieniu do
+           opisanego stanu faktycznego (np. „Nie ponosisz odpowiedzialności, ponieważ…"), dopiero
+           potem uzasadnienie. Nie opisuj kolejno źródeł ("Wyrok ten dotyczy...", "Źródło [2]
+           mówi o...") i nie wyliczaj abstrakcyjnych „czynników, które biorą pod uwagę sądy" —
+           zastosuj prawo do faktów z pytania. Połącz informacje ze wszystkich źródeł w jedną
+           spójną odpowiedź w naturalnym języku.
         2. Każdą tezę poprzyj odwołaniem do numeru źródła w nawiasie kwadratowym, np. [1].
+           Odpowiedź bez odwołań [n] jest nieprawidłowa.
+        2a. Gdy ŹRÓDŁA są podzielone na sekcje PRZEPISY i ORZECZNICTWO: regułę prawną czerp
+           z PRZEPISÓW, a orzeczenia traktuj jako przykłady jej zastosowania do konkretnych
+           stanów faktycznych — rozstrzygnij, który wzorzec pasuje do faktów z PYTANIA,
+           i wywiedź konkluzję z przepisu.
         3. Jeśli dostarczone źródła NIE zawierają odpowiedzi, napisz dokładnie:
            "Nie mam wystarczających źródeł, aby odpowiedzieć." i nic poza tym nie dodawaj.
         4. NIE wymyślaj przepisów, artykułów, sygnatur ani cytatów. Nie korzystaj z wiedzy spoza źródeł.
@@ -53,6 +62,18 @@ public static class GroundedPrompt
         => Build(question, chunks, []);
 
     /// <summary>
+    /// Porządek źródeł do ugruntowania: PRZEPISY przed ORZECZNICTWEM (stabilnie w obrębie grup).
+    /// Norma prawna jako kotwica na początku listy [1..] — diagnoza 2026-07-17: Bielik dostając
+    /// najpierw stos narracji orzeczeń streszczał je, ignorując normę. WOŁAĆ PRZED <see cref="Build"/>
+    /// i używać TEGO SAMEGO porządku do kontekstu walidacji anty-fabrykacji — numeracja [n] w prompcie,
+    /// panelu źródeł i walidatorze musi być jedna (dlatego porządkuje caller, nie Build).
+    /// </summary>
+    public static IReadOnlyList<RetrievedChunk> OrderForGrounding(IReadOnlyList<RetrievedChunk> chunks) =>
+        chunks.Count == 0 ? chunks : [.. chunks.Where(IsAct), .. chunks.Where(c => !IsAct(c))];
+
+    private static bool IsAct(RetrievedChunk c) => c.DocType == DocTypes.Act;
+
+    /// <summary>
     /// Wariant z historią rozmowy (follow-upy): wcześniejsze tury wchodzą jako naprzemienne wiadomości
     /// User/Assistant PRZED finalną wiadomością z pytaniem i źródłami. Odpowiedzi historyczne są
     /// sanityzowane — markery [n] ZDJĘTE (odnosiły się do źródeł TAMTEJ tury; skopiowane przez model
@@ -66,8 +87,25 @@ public static class GroundedPrompt
         var sb = new StringBuilder();
         sb.Append("PYTANIE:\n").Append(question).Append("\n\nŹRÓDŁA:\n");
 
+        // Podział na sekcje TYLKO gdy są oba typy (norma nie może ginąć wizualnie wśród narracji
+        // orzeczeń — diagnoza 2026-07-17/5e); jeden typ = format jak dotąd (zero regresji promptu).
+        // Zakłada porządek z OrderForGrounding (przepisy przed orzeczeniami) — przy przeplocie
+        // nagłówek pojawia się przy każdej zmianie typu, co nadal jest poprawne, tylko brzydsze.
+        var sectioned = chunks.Any(IsAct) && chunks.Any(c => !IsAct(c));
+        string? currentSection = null;
+
         for (var i = 0; i < chunks.Count; i++)
         {
+            if (sectioned)
+            {
+                var section = IsAct(chunks[i]) ? "PRZEPISY:" : "ORZECZNICTWO:";
+                if (section != currentSection)
+                {
+                    sb.Append('\n').Append(section).Append('\n');
+                    currentSection = section;
+                }
+            }
+
             var n = i + 1;
             var label = LocatorLabel(chunks[i]);
             sources.Add(new SourceRef(n, label, chunks[i].Title, chunks[i].SourceUrl, Snippet(chunks[i].Text), chunks[i].AmendmentEffectiveDate));

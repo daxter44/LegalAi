@@ -323,6 +323,28 @@ MIESZANYCH źródłach (norma + sprzeczne precedensy) jest bardziej uniwersalny 
 choć znacznie mniej niż Bielik. Wspiera kierunek z 5e (b): jawniejsze wymuszenie konkluzji w
 `SystemPrompt`, niezależnie od tego, który model ostatecznie idzie do produkcji.
 
+### 5g. Naprawa generacji (2026-07-18): sekcje PRZEPISY/ORZECZNICTWO + wymuszenie konkluzji
+
+Realizacja kandydatów (a)+(b) z 5e/5f, w `GroundedPrompt`:
+
+1. **`OrderForGrounding`** — przepisy przed orzeczeniami (stabilnie w obrębie grup); norma jako kotwica
+   na [1..]. Porządkuje CALLER (ChatService, `/api/chat`, Eval) i TEN SAM porządek zasila prompt, panel
+   źródeł i kontekst walidatora — numeracja [n] musi być jedna (dlatego nie wewnątrz `Build`).
+2. **Sekcje w prompcie** — gdy są oba typy źródeł, `Build` rozdziela je nagłówkami `PRZEPISY:` /
+   `ORZECZNICTWO:` (norma nie ginie wizualnie wśród narracji — dokładnie mechanizm porażki z 5e).
+   Jeden typ = format jak dotąd, zero regresji.
+3. **`SystemPrompt`**: zasada 1 przeformułowana — pierwsze zdanie MUSI być konkluzją dla stanu
+   faktycznego z pytania (zakaz „czynników, które biorą pod uwagę sądy" — dosłowny tryb porażki
+   Bielika z 5e); zasada 2 — „odpowiedź bez odwołań [n] jest nieprawidłowa"; nowa 2a — reguła prawna
+   z PRZEPISÓW, orzeczenia jako przykłady zastosowania, konkluzja wywiedziona z przepisu.
+4. **Fix przy okazji (Eval)**: kontekst walidatora anty-fabrykacji szedł z `res.Chunks` (surowych),
+   a prompt z augmentowanych — cytat źródła DOŁOŻONEGO przez augmenter wypadał poza zakres. Wyrównane
+   do parytetu z `/api/chat`.
+
+Testy: `GroundedPromptSectionsTests` (T-SEKCJE, 5 czystych) + komplet Grounding 14/14. UWAGA: prompty
+były strojone pod Bielika — zmiana wymaga na M4 (a) pytania o drzewo na czacie, (b) golden-set `--chat`
+(fraza odmowy, czyste cytowania) ZANIM uznamy za wdrożoną.
+
 ---
 
 ## 6. Zmierzone liczby (pod przyszłe decyzje / sizing)

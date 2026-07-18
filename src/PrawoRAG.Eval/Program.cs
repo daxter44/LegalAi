@@ -93,6 +93,7 @@ foreach (var item in items)
         else
         {
             var llm = scope.ServiceProvider.GetRequiredService<ILlmProvider>();
+            chunks = GroundedPrompt.OrderForGrounding(chunks); // parytet z /api/chat i ChatService
             var (req, sources) = GroundedPrompt.Build(item.Question, chunks);
             var sb = new StringBuilder();
             await foreach (var d in llm.StreamCompletionAsync(req, default)) sb.Append(d);
@@ -105,7 +106,10 @@ foreach (var item in items)
             }
             else
             {
-                var ctx = res.Chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
+                // Kontekst walidatora z TYCH SAMYCH chunków co prompt (augmentowane + uporządkowane) —
+                // wcześniej szedł z res.Chunks: cytat źródła DOŁOŻONEGO przez augmenter wypadał poza
+                // zakres, a numeracja [n] mogła wskazywać inny chunk niż w prompcie (parytet z /api/chat).
+                var ctx = chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
                 citationsClean = CitationValidator.Validate(answer, ctx, sources.Count).IsClean;
                 abstained = false;
             }
