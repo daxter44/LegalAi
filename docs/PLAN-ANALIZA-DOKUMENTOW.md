@@ -125,3 +125,11 @@ streaming → CitationValidator (obie przestrzenie) → UI: karty [D] „Twój d
 ## Kolejność
 DOC-0 → DOC-1 → DOC-2 → DOC-3 (fundament + prompt/walidacja, wszystko czysto testowalne) →
 DOC-4 → DOC-5 (konsument) → DOC-6 na M4. Commit per task.
+
+## Status (2026-07-18)
+DOC-0…5 **zaimplementowane** (commity `955636c`, `afab2ad`, `19d30b0`, `973df86`); wszystkie czyste
+testy zielone (236/236 na maszynie bez PG; T-DOC-0…4 + renderer [Dk]). Odstępstwo od planu, świadome:
+chunker załączników to własny, znakowy `DocChunker` zamiast reużycia `TokenAwareChunker` — Ingestion
+to projekt exe (konektory SAOS/ELI), a TEI ma `--auto-truncate`, więc konserwatywny limit znaków
+degraduje bezpiecznie bez zależności Api→Ingestion. **Pozostało: DOC-6 (weryfikacja E2E na M4,
+checklist wyżej) — dopiero po niej feature jest „wdrożony".**
