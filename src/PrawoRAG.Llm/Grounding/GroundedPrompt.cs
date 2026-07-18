@@ -52,6 +52,23 @@ public static class GroundedPrompt
         Odpowiadaj po polsku, rzeczowo i zwięźle.
         """;
 
+    /// <summary>
+    /// Zasady doklejane do systemu WYŁĄCZNIE gdy pytanie ma załącznik (DOC-2). Bez dokumentu
+    /// system prompt zostaje bajt w bajt dzisiejszy — prompty strojone pod Bielika, instrukcje
+    /// o nieistniejącej sekcji to szum i ryzyko regresji (patrz diagnoza 5e).
+    /// </summary>
+    public const string DocumentRules =
+        """
+        ZAŁĄCZNIK — zasady dodatkowe (pytanie zawiera sekcję DOKUMENT):
+        D1. Fakty stanu faktycznego czerp z sekcji DOKUMENT i oznaczaj cytowaniem [D1], [D2], itd.
+        D2. DOKUMENT NIE jest źródłem prawa — podstawę prawną cytuj wyłącznie ze ŹRÓDEŁ jako [n].
+            Gdy treść dokumentu jest sprzeczna z przepisem, wskaż tę rozbieżność wprost.
+        D3. Dostajesz FRAGMENTY dokumentu, nie całość — jeśli pytanie dotyczy treści nieobecnej
+            we fragmentach, napisz wprost, że dołączone fragmenty jej nie zawierają. Nie zgaduj
+            zawartości reszty pliku.
+        D4. Zasada 3 (fraza odmowy) bez zmian — dotyczy braku PRAWA w ŹRÓDŁACH, nie braków dokumentu.
+        """;
+
     /// <summary>Ile ostatnich zakończonych tur rozmowy wchodzi do promptu (kontekst follow-upów).</summary>
     public const int HistoryTurnsTaken = 4;
 
@@ -82,10 +99,33 @@ public static class GroundedPrompt
     /// </summary>
     public static (LlmRequest Request, IReadOnlyList<SourceRef> Sources) Build(
         string question, IReadOnlyList<RetrievedChunk> chunks, IReadOnlyList<ChatTurn> history)
+        => Build(question, chunks, history, []);
+
+    /// <summary>
+    /// Wariant z załącznikiem (DOC-2): <paramref name="docFragments"/> (fragmenty dokumentu
+    /// użytkownika, już wybrane i uporządkowane) wchodzą jako sekcja DOKUMENT [D1..] między
+    /// pytaniem a źródłami, a system dostaje doklejony blok <see cref="DocumentRules"/>.
+    /// Pusta lista = zachowanie identyczne jak dotąd (bajt w bajt — zero regresji golden-setu).
+    /// </summary>
+    public static (LlmRequest Request, IReadOnlyList<SourceRef> Sources) Build(
+        string question, IReadOnlyList<RetrievedChunk> chunks, IReadOnlyList<ChatTurn> history,
+        IReadOnlyList<string> docFragments)
     {
         var sources = new List<SourceRef>(chunks.Count);
         var sb = new StringBuilder();
-        sb.Append("PYTANIE:\n").Append(question).Append("\n\nŹRÓDŁA:\n");
+        sb.Append("PYTANIE:\n").Append(question);
+
+        if (docFragments.Count > 0)
+        {
+            sb.Append("\n\nDOKUMENT (fragmenty załącznika użytkownika — fakty, NIE źródło prawa):\n");
+            for (var k = 0; k < docFragments.Count; k++)
+                sb.Append("[D").Append(k + 1).Append("] ").Append(docFragments[k]).Append("\n\n");
+            sb.Append("ŹRÓDŁA:\n");
+        }
+        else
+        {
+            sb.Append("\n\nŹRÓDŁA:\n");
+        }
 
         // Podział na sekcje TYLKO gdy są oba typy (norma nie może ginąć wizualnie wśród narracji
         // orzeczeń — diagnoza 2026-07-17/5e); jeden typ = format jak dotąd (zero regresji promptu).
@@ -113,7 +153,9 @@ public static class GroundedPrompt
               .Append(chunks[i].Text).Append("\n\n");
         }
 
-        var messages = new List<ChatMessage> { new(ChatRole.System, SystemPrompt) };
+        // Warunkowy system prompt (DOC-2): zasady o dokumencie tylko gdy sekcja DOKUMENT istnieje.
+        var system = docFragments.Count > 0 ? SystemPrompt + "\n" + DocumentRules : SystemPrompt;
+        var messages = new List<ChatMessage> { new(ChatRole.System, system) };
         foreach (var turn in history.TakeLast(HistoryTurnsTaken))
         {
             if (string.IsNullOrWhiteSpace(turn.Question)) continue;
