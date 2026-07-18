@@ -285,6 +285,44 @@ z 5c.5 następny krok to zmiana promptu — jawny podział ŹRÓDŁA na sekcje P
 norma nie ginęła wizualnie wśród 6 podobnie sformatowanych orzeczeń) i/lub twardsze wymuszenie cytowania
 w `GroundedPrompt.SystemPrompt` — NIE dalsza praca nad retrievalem.
 
+### 5f. Test porównawczy: Gemma 4 (`gemma4:26b-mlx`, 17 GB, natywny MLX) na tych samych źródłach
+
+Cel: rozstrzygnąć, czy brak cytowań `[n]` w 5e jest swoisty dla Bielika 11B, czy uniwersalny problem
+promptu. Ten sam `SystemPrompt`, te same 5 źródeł (art. 415 [1], art. 144 [2], 3 orzeczenia [3]-[5] — w
+tym [4] z odpowiedzialnością i [5] bez, jak w realnym moście), to samo pytanie o drzewo, tylko model.
+
+**Odkrycie po drodze:** `gemma4:26b-mlx` to model z wbudowanym rozumowaniem (odpowiedź API ma osobne pole
+`reasoning` obok `content`) — przy `max_tokens≤500` cały budżet schodzi na `reasoning`, `content` wraca
+pusty (`finish_reason: length`). Wymaga `max_tokens≥4000`, żeby dojść do właściwej odpowiedzi (realne
+zużycie w teście: 453 tokeny łącznie). Do zapamiętania przy ewentualnej integracji: nie da się jej używać
+z małym `max_tokens` jak Bielika (`ExamPrompt` ustawia 16 dla samej litery — zderzy się z tym samym
+problemem, wymaga osobnej obsługi).
+
+**Wynik (81,9 s, wolniej niż Bielik — koszt rozumowania):**
+```
+Odpowiedzialność za szkodę zależy od tego, czy zdarzenie było wynikiem winy właściciela [1], czy
+wyłącznie siły wyższej. Jeśli drzewo posiadało dostateczny stan fitosanitarny, stabilność oraz
+odporność na złamanie, a ewentualne zabiegi pielęgnacyjne nie mogłyby zapobiec zdarzeniu, to
+odpowiedzialność może nie wystąpić [5]. Jeżeli jednak drzewo jest w takim stanie, że nadaje się do
+usunięcia, to jego przewrócenie nie może być uznane za wyłącznie następstwo siły wyższej (silnego
+wiatru), co skutkuje odpowiedzialnością właściciela za szkodę [4].
+```
+
+**Porównanie z Bielikiem (5e) — mieszany wynik:**
+- **Zasada 2 (cytowanie) — NAPRAWIONE.** Gemma cytuje `[1]` (art. 415 jako kotwica reguły winy), `[4]`
+  i `[5]` (konkretne, przeciwstawne precedensy). Zero streszczania w stylu „Zadanie:/Odpowiedź:".
+- **Zasada 1 (odpowiedź WPROST) — CZĘŚCIOWO.** Zamiast zastosować podane w pytaniu fakty (drzewo
+  zdrowe, wichura → pasuje do wzorca [5]) i skonkludować wprost „nie odpowiadasz", model podaje regułę
+  warunkową („jeśli... to...") bez domknięcia dla KONKRETNEGO stanu faktycznego z pytania. Lepiej niż
+  esej Bielika o „czynnikach branych pod uwagę przez sądy", ale wciąż nie w pełni to, co dał test
+  izolujący D (Bielik z SAMYM statutem, bez orzeczeń, odpowiedział wprost i jednoznacznie).
+
+**Wniosek:** problem cytowań (zasada 2) był w znacznej mierze swoisty dla Bielika — silniejszy/inny
+model z tym samym promptem i źródłami cytuje poprawnie. Problem z wprost-odpowiedzią (zasada 1) przy
+MIESZANYCH źródłach (norma + sprzeczne precedensy) jest bardziej uniwersalny — nawet Gemma się waha,
+choć znacznie mniej niż Bielik. Wspiera kierunek z 5e (b): jawniejsze wymuszenie konkluzji w
+`SystemPrompt`, niezależnie od tego, który model ostatecznie idzie do produkcji.
+
 ---
 
 ## 6. Zmierzone liczby (pod przyszłe decyzje / sizing)
