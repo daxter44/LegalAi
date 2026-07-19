@@ -291,10 +291,21 @@ D. BM25:          NIEOBECNY — tsquery nie matchuje (AND wszystkich słów, jak
 E. fuzja RRF:     dense@50 → #33, pula do dedupu = TopK×4 = 32 → ODPADA, jedno miejsce ZA odcięciem
 ```
 **Prawdziwy mechanizm: twardy próg kandydatów (32) o włos za wąski**, nie jakość embeddingu ani
-indeksu. Chunk semantycznie trafiony (#33-41 z milionów to dobry wynik), ale śmieciowe chunki
-(placeholdery, anonimizacja z Case 5 wyżej) zajmują górne pozycje w tym samym 32-elementowym oknie,
-wypychając go poza próg PRZED dedupem — nigdy nie dociera do promptu. To spina JAK-1 (odszumianie)
-z tym wynikiem: usunięcie śmieci z górnych 32 pozycji prawdopodobnie wystarczy bez zmiany samego okna.
+indeksu. Chunk semantycznie trafiony (#33-41 z milionów to dobry wynik), ale konkurenci zajmują górne
+pozycje w tym samym 32-elementowym oknie, wypychając go poza próg PRZED dedupem — nigdy nie dociera
+do promptu.
+
+**Weryfikacja po JAK-1 (`--sanitize-chunks --apply`, 5449 chunków wyzerowanych, 2026-07-19):**
+powtórka sondy — ranking POPRAWIŁ SIĘ tylko nieznacznie (fp32 #41→#40), a **HNSW zostało dokładnie na
+#33 — wciąż jedno miejsce za progiem 32**. Wniosek: hipoteza „usunięcie śmieci wystarczy" — **częściowo
+obalona** dla TEGO konkretnego przypadku. Chunki zajmujące górne ~33 pozycje dla tego zapytania to NIE
+są zdegenerowane placeholdery/anonimizacja (te już usunięte) — to inne, prawdziwe akty/rozporządzenia,
+tylko merytorycznie niewłaściwe (ten sam wzorzec „przepisy przejściowe"/leksykalna bliskość co gdzie
+indziej w raporcie). JAK-1 pomaga ogólnie w korpusie, ale nie zamyka akurat tej granicznej luki.
+**Najbardziej chirurgiczny, zmierzeniem uzasadniony następny krok: poszerzyć pulę przed dedupem**
+(dziś `TopK×4=32` w `HybridRetriever`) — art. 4 stabilnie ląduje w okolicy #33-41 we wszystkich trzech
+metodach pomiaru (fp32/fp16/HNSW), więc np. `TopK×6` czy `TopK×8` powinno go złapać bez większego
+narzutu obliczeniowego.
 
 **Dlaczego to najpoważniejsze znalezisko sesji:** to pierwszy w całej dzisiejszej diagnostyce przypadek,
 gdzie odpowiedź jest 100% obecna, kompletna i prawidłowo zaindeksowana — a mimo to retrieval jej NIE
