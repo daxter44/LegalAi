@@ -302,10 +302,13 @@ obalona** dla TEGO konkretnego przypadku. Chunki zajmujące górne ~33 pozycje d
 są zdegenerowane placeholdery/anonimizacja (te już usunięte) — to inne, prawdziwe akty/rozporządzenia,
 tylko merytorycznie niewłaściwe (ten sam wzorzec „przepisy przejściowe"/leksykalna bliskość co gdzie
 indziej w raporcie). JAK-1 pomaga ogólnie w korpusie, ale nie zamyka akurat tej granicznej luki.
-**Najbardziej chirurgiczny, zmierzeniem uzasadniony następny krok: poszerzyć pulę przed dedupem**
-(dziś `TopK×4=32` w `HybridRetriever`) — art. 4 stabilnie ląduje w okolicy #33-41 we wszystkich trzech
-metodach pomiaru (fp32/fp16/HNSW), więc np. `TopK×6` czy `TopK×8` powinno go złapać bez większego
-narzutu obliczeniowego.
+
+**Odrzucona propozycja: poszerzenie puli `TopK×4`.** Rozważane jako „chirurgiczny" fix — słusznie
+odrzucone (feedback właściciela): to nie naprawia mechanizmu, tylko przesuwa próg o stałą liczbę,
+którą kolejne zapytanie i tak przebije (za chwilę znajdzie się przypadek wymagający ×6, potem ×10 —
+gra w kreta, nie naprawa). Właściwy następny krok: zbadać TREŚĆ top-40 konkurentów dla tego zapytania
+— czy faktycznie są bliżej semantycznie niż art. 4, czy to kolejna, jeszcze nie złapana klasa
+zanieczyszczenia (patrz niżej).
 
 **Dlaczego to najpoważniejsze znalezisko sesji:** to pierwszy w całej dzisiejszej diagnostyce przypadek,
 gdzie odpowiedź jest 100% obecna, kompletna i prawidłowo zaindeksowana — a mimo to retrieval jej NIE
