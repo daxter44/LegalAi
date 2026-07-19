@@ -95,7 +95,46 @@ public static class ChunkProbe
 
         Console.WriteLine("Interpretacja: A wysoko + C nieobecny → indeks (ef_search/halfvec). A nisko → chunk/embedding");
         Console.WriteLine("(rozmycie — kierunek re-chunking per ustęp). A/C ok + E poza TopK → fuzja/dedup/konkurenci.");
+
+        if (cfg.GetValue<bool?>("Eval:ProbeDumpTop") ?? false)
+            await DumpTopDenseAsync(db, qvec, ct);
     }
+
+    /// <summary>Diagnostyka „co faktycznie jest w top-N": zamiast zgadywać czy konkurenci są trafni,
+    /// wypisuje ich rzeczywistą treść — czy to prawdziwe, tylko merytorycznie niewłaściwe akty
+    /// (naprawa: rerank/precyzja), czy kolejna, jeszcze niezłapana klasa zanieczyszczenia (naprawa:
+    /// JAK-0/1 rozszerzone). Poszerzanie okna kandydatów NIE jest odpowiedzią — kolejne zapytanie
+    /// i tak je przebije (feedback właściciela, raport Case 5).</summary>
+    private static async Task DumpTopDenseAsync(PrawoRagDbContext db, Vector qvec, CancellationToken ct)
+    {
+        const int dumpN = 40;
+        List<Guid> ids;
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            await db.Database.ExecuteSqlRawAsync("SET LOCAL hnsw.ef_search = 400", ct);
+            ids = await db.Database.SqlQueryRaw<Guid>($$"""
+                SELECT c."Id" AS "Value" FROM chunks c
+                WHERE c."Embedding" IS NOT NULL
+                ORDER BY (c."Embedding"::halfvec(1024) <=> {0}::halfvec(1024))
+                LIMIT {{dumpN}}
+                """, qvec).ToListAsync(ct);
+        }
+
+        var rows = await db.Chunks.AsNoTracking().Include(c => c.Document)
+            .Where(c => ids.Contains(c.Id))
+            .Select(c => new { c.Id, c.Document!.Title, c.Document.DocType, c.Section, c.Text })
+            .ToListAsync(ct);
+        var byId = rows.ToDictionary(r => r.Id);
+
+        Console.WriteLine($"\n=== TOP-{dumpN} DENSE (treść — oceń okiem, czy faktycznie bliżej niż cel) ===");
+        for (var i = 0; i < ids.Count; i++)
+        {
+            if (!byId.TryGetValue(ids[i], out var r)) continue;
+            Console.WriteLine($"  #{i + 1,-3} [{r.DocType,-8}] {Trim(r.Title, 55),-55} {r.Section ?? "",-14} {Preview(r.Text)}");
+        }
+    }
+
+    private static string Trim(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 
     private sealed record Target(Guid Id, string Title, string? ArticleNo, int TokenCount, string Text, bool HasEmbedding);
 
