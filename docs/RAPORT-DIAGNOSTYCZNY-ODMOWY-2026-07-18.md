@@ -310,6 +310,29 @@ gra w kreta, nie naprawa). Właściwy następny krok: zbadać TREŚĆ top-40 kon
 — czy faktycznie są bliżej semantycznie niż art. 4, czy to kolejna, jeszcze nie złapana klasa
 zanieczyszczenia (patrz niżej).
 
+**ROZSTRZYGNIĘTE (`Eval__ProbeDumpTop=true`, treść top-40 dense, 2026-07-19):** większość z 32
+konkurentów przed art. 4 to NIE śmieci w sensie JAK-0/1 — to prawdziwe, merytoryczne fragmenty
+realnych aktów z INNEJ dziedziny prawa. Trzy odrębne wzorce kolizji:
+1. **Czasownik „oznaczać"/„oznaczanie" — główny winowajca.** 6+ pozycji to Rozporządzenie MF ws.
+   oznaczania wyrobów akcyzowych znakami akcyzy (banderole alkohol/tytoń/paliwo) — zupełnie inna
+   dziedzina, ale współdzieli generyczny czasownik z pytaniem „jak prawidłowo **oznaczyć** cenę". Sam
+   art. 4 w ogóle NIE używa słowa „oznaczyć" — ustawa mówi „**uwidacznia się**". To niedopasowanie
+   słownictwa pytania względem przepisu, nie szum w danych.
+2. **Polisemia „cena"** — #11 „cena wywoławcza" (przetargi na nieruchomości, ten sam trop co „wadium"
+   z Case 4/5 wyżej), #37 „ceny transferowe" (podatek dochodowy między podmiotami powiązanymi,
+   zupełnie inny obszar prawa).
+3. **Sąsiedzi strukturalni tego samego aktu** — #1 (art. 9-21 tej samej ustawy, placeholder) i #3
+   (art. 27, „ustawa wchodzi w życie") — blisko semantycznie bo to ten sam dokument, ale bez treści.
+Reszta (orzeczenia w top-40) to generyczne frazy o terminach/dniach/kosztach z niezwiązanych spraw —
+jedyna część faktycznie bliska wzorcowi „śmieci", ale to inny mechanizm niż anonimizacja z JAK-0/1.
+
+**Wniosek: to nie problem do naprawienia poszerzeniem okna ani dalszym odszumianiem.** To dokładnie
+klasa problemu, do której służy reranker (cross-encoder) — widzi pytanie+fragment razem i powinien
+poprawnie rozróżnić „oznaczanie cen" od „oznaczania znakami akcyzy", czego czysty cosine similarity
+bi-encodera strukturalnie nie potrafi. **Reranker był wyłączony przez całą dzisiejszą sesję** (TEI na
+porcie 8081 na 3060 nie odpowiadał — patrz otwarte pytanie przy Case 3). Nie sprawdzono jeszcze, czy
+włączony reranker poprawnie demotuje te fałszywe trafienia poniżej art. 4.
+
 **Dlaczego to najpoważniejsze znalezisko sesji:** to pierwszy w całej dzisiejszej diagnostyce przypadek,
 gdzie odpowiedź jest 100% obecna, kompletna i prawidłowo zaindeksowana — a mimo to retrieval jej NIE
 ZNAJDUJE nawet dla zapytania niemal cytującego przepis. Poprzednie przypadki (Case 1-4) miały choć
