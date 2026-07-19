@@ -212,8 +212,17 @@ public static class RefusalEvalRunner
         : content.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase) ? "odmowa-treściowa"
         : "OK";
 
-    private static string Normalize(string s) =>
-        string.Join(' ', s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+    /// <summary>Normalizacja do dedupu: białe znaki + spacja przed interpunkcją traktowane jak jej brak
+    /// (bez tego „interes?" i „interes ?" to różne klucze — realny false-negative znaleziony 2026-07-19,
+    /// dwie kopie tego samego pytania B2B w evalu z różnym wynikiem).</summary>
+    private static string Normalize(string s)
+    {
+        var flat = string.Join(' ', s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return PunctuationSpaceRe.Replace(flat, "$1").ToLowerInvariant();
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex PunctuationSpaceRe =
+        new(@"\s+([?!.,;:])", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private static string Trim(string s, int max)
     {
