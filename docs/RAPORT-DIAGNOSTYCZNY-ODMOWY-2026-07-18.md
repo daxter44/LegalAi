@@ -281,11 +281,20 @@ przed wprowadzeniem obniżki"). Prawie-dosłowny cytat przepisu i tak przegrywa 
    klaster w przestrzeni embeddingów), tylko inne źródło śmieci: nie typ dokumentu, tylko artefakt
    anonimizacji danych osobowych w tekstach orzeczeń.
 
-**Robocza hipoteza dlaczego art. 4 przegrywa (niepotwierdzona, wymaga pomiaru similarity):**
-chunk art. 4 bundluje 6 różnych podtematów (ogólna zasada, reguła 30 dni, wariant <30 dni, wyjątek dla
-towarów psujących się, reklama, delegacja ministerialna) w JEDNYM 402-tokenowym wektorze — być może
-zbyt „rozmytym", by wygrać z krótkimi, wąskimi (choć merytorycznie fałszywymi) konkurentami. Wymaga
-pomiaru: rzeczywisty similarity/ranking art. 4 vs próg TopK dla tego zapytania.
+**ROZSTRZYGNIĘTE (JAK-3, sonda `--probe-chunk`, 2026-07-19):** hipoteza o rozmyciu chunka (6 podtematów
+w 402 tokenach) — **obalona**. Sonda na art. 4 vs to pytanie:
+```
+A. exact fp32:   pozycja #41     (sim=0,7913) — z ~7,4M chunków; sensowne, nie zdegenerowane
+B. exact fp16:   pozycja #41     (zgodne z fp32 — brak straty od kwantyzacji halfvec)
+C. HNSW (ef=400): pozycja #33    (zgodne z A/B — brak straty recall indeksu)
+D. BM25:          NIEOBECNY — tsquery nie matchuje (AND wszystkich słów, jak w Case 4)
+E. fuzja RRF:     dense@50 → #33, pula do dedupu = TopK×4 = 32 → ODPADA, jedno miejsce ZA odcięciem
+```
+**Prawdziwy mechanizm: twardy próg kandydatów (32) o włos za wąski**, nie jakość embeddingu ani
+indeksu. Chunk semantycznie trafiony (#33-41 z milionów to dobry wynik), ale śmieciowe chunki
+(placeholdery, anonimizacja z Case 5 wyżej) zajmują górne pozycje w tym samym 32-elementowym oknie,
+wypychając go poza próg PRZED dedupem — nigdy nie dociera do promptu. To spina JAK-1 (odszumianie)
+z tym wynikiem: usunięcie śmieci z górnych 32 pozycji prawdopodobnie wystarczy bez zmiany samego okna.
 
 **Dlaczego to najpoważniejsze znalezisko sesji:** to pierwszy w całej dzisiejszej diagnostyce przypadek,
 gdzie odpowiedź jest 100% obecna, kompletna i prawidłowo zaindeksowana — a mimo to retrieval jej NIE
@@ -422,10 +431,9 @@ otwarte jak niżej.
 - Czy warto rozróżniać w UI/logice „odmowa progu" (Abstained=true) od „odmowa treściowa modelu"
   (RefusalMarker w Content, Abstained=false) w samej bazie/telemetrii — dziś nieodróżnialne bez
   parsowania treści, co utrudniało tę analizę.
-- **[Case 5, priorytet wysoki]** Zmierzyć rzeczywisty similarity/ranking chunka art. 4 ustawy o
-  informowaniu o cenach vs zapytanie o „najniższą cenę z 30 dni" — czy to kwestia progu TopK (chunk
-  jest w puli kandydatów, ale nisko), czy faktycznie niska similarity mimo prawidłowego embeddingu
-  (co wskazywałoby na problem z granulacją/długością chunka, nie z samym embeddingiem).
+- ~~[Case 5] Zmierzyć ranking art. 4 vs próg TopK~~ — zrobione sondą `--probe-chunk` (JAK-3):
+  #33-41 z 7,4M (sensowne), pada na progu fuzji TopK×4=32 o jedno miejsce. Patrz rozstrzygnięcie w
+  Case 5 wyżej.
 - **[Case 5]** Zmierzyć skalę „placeholderów anonimizacji SAOS" (`(...) roku, (...) z dnia (...)`,
   `kontrola operacyjna (...) pod kryptonimem (...)` i podobne wzorce) analogicznie do pomiaru
   `(pominięty)` — ile takich chunków jest w korpusie, i czy kwalifikują się do tego samego typu filtra
