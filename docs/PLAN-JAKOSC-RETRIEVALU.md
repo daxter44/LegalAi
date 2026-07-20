@@ -105,8 +105,21 @@ Commit per task; weryfikacja każdego kroku na pełnym korpusie (M4/3060).
   rzymskie, caps-lock; bez kuratorowanej listy) + tor jednotokenowy w fuzji RRF `HybridRetriever`.
   Weryfikacja na M4: pytanie Case 4 o KSeF (chunki z „KSeF" powinny wejść do kandydatów, reranker
   je ustawi) + `--refusals` + test A1 w `dotnet test` (LiveDb).
-- Nowe znalezisko (raport): reranker podmienia sygnał bramki (`MaxSimilarity` = rerank score,
-  nie cosine) — dziś nieszkodliwe (próg 0.0), decyzja o rozdzieleniu sygnałów DO PODJĘCIA.
+- Sygnały bramki **ROZDZIELONE** (decyzja: kalibrujemy przed pilotażem): `MaxSimilarity` znów
+  ZAWSZE cosine (bramka + diagnostyka, stabilna skala), top-score rerankera osobno w
+  `RetrievalResult.RerankTopScore` (ranking źródeł). `--refusals` pokazuje obie kolumny
+  (sim/rr) + tabelę kalibracyjną rozkładów per wynik.
+
+### Kalibracja progu bramki (procedura przed deployem)
+1. `--refusals` (z generacją) → sekcja „KALIBRACJA" w podsumowaniu: min/śr/max obu sygnałów
+   dla OK vs odmowa/błąd.
+2. Wybór: sygnał, którego zakresy się nie nakładają (lub najmniej), na bramkę; próg między
+   max(odmowa) a min(OK) — Z MARGINESEM (sygnały zaszumione; koszt fałszywej odmowy przy
+   pytaniu w korpusie > koszt przepuszczenia — bramka ma łapać oczywiste pudła, resztę robi
+   odmowa treściowa LLM).
+3. Ustawić `Retrieval:AbstentionThreshold` w appsettings API (dziś 0.0 = wyłączona) i strażnik:
+   golden set (kategoria abstencji) + ponowny `--refusals` — zero regresji „OK→odmowa-progu"
+   na pytaniach pokrytych korpusem.
 - Otwarte z planu: JAK-4 (lane provenance), JAK-5a (słownik definicji z korpusu), JAK-2 (filtr
   w chunkerze), JAK-6a (fail-open rerankera — po znalezisku o sygnale wart pakietowania razem).
 

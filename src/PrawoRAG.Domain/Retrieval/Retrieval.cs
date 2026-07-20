@@ -61,8 +61,17 @@ public sealed record RetrievedChunk
     public string? AmendmentEffectiveDate { get; init; }
 }
 
-/// <summary>Wynik retrievalu + najwyższe podobieństwo (sygnał dla bramki abstynencji).</summary>
-public sealed record RetrievalResult(IReadOnlyList<RetrievedChunk> Chunks, double MaxSimilarity);
+/// <summary>
+/// Wynik retrievalu + DWA rozdzielone sygnały (kalibracja przed pilotażem, znalezisko z raportu
+/// odmów 2026-07-20): <see cref="MaxSimilarity"/> to ZAWSZE cosine z toru gęstego (stabilna skala,
+/// porównywalna między biegami — na niej stoi bramka abstynencji i diagnostyka), a
+/// <see cref="RerankTopScore"/> to top-1 cross-encodera (świetny do RANKINGU źródeł, ale odpowiada
+/// na inne pytanie: „które z PODANYCH najlepsze", nie „czy wystarcza" — klastruje ~0,99 nawet na
+/// śmieciowej puli). Wcześniej reranker po cichu NADPISYWAŁ MaxSimilarity swoim score — próg
+/// kalibrowany pod cosine przestawał cokolwiek znaczyć. Null = reranker wyłączony/pusto.
+/// </summary>
+public sealed record RetrievalResult(
+    IReadOnlyList<RetrievedChunk> Chunks, double MaxSimilarity, double? RerankTopScore = null);
 
 public interface IRetriever
 {

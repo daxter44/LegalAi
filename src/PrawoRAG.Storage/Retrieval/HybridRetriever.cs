@@ -112,10 +112,15 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
 
         var maxSim = sim.Count > 0 ? sim.Values.Max() : 0;
 
-        // Ranking semantyczny (pełna lista kandydatów). Reranking (opcjonalny): cross-encoder przelicza
-        // trafność; gdy włączony, jego TOP-score steruje bramką abstynencji (lepiej rozdzielony niż cosine).
+        // Ranking semantyczny (pełna lista kandydatów). Reranking (opcjonalny): cross-encoder ustawia
+        // KOLEJNOŚĆ źródeł; jego top-score wraca OSOBNYM sygnałem (RerankTopScore) — NIE nadpisuje
+        // MaxSimilarity. Bramka abstynencji zostaje na cosine: stabilna skala pod kalibrację progu,
+        // a score rerankera („najlepszy z podanych") klastruje ~0,99 nawet na śmieciowej puli
+        // (zmierzone w raporcie odmów 2026-07-20). Jeśli kalibracja kiedyś pokaże, że rerank score
+        // rozdziela lepiej — przełączenie to jedna linia TUTAJ, z danymi w ręku, nie cichy skutek
+        // uboczny włączenia rerankera.
         List<RetrievedChunk> ranked;
-        double signal;
+        double? rerankTop = null;
         if (reranker is not null && deduped.Count > 0)
         {
             var scores = await reranker.RerankAsync(query.Text, deduped.Select(c => c.Text).ToList(), ct);
@@ -124,12 +129,11 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
                 .Select((c, i) => c with { RerankScore = byIndex.GetValueOrDefault(i) })
                 .OrderByDescending(c => c.RerankScore ?? double.MinValue)
                 .ToList();
-            signal = ranked.Count > 0 ? ranked[0].RerankScore ?? 0 : 0;
+            rerankTop = ranked.Count > 0 ? ranked[0].RerankScore : null;
         }
         else
         {
             ranked = deduped; // już posortowane po Score (RRF)
-            signal = maxSim;
         }
 
         // QU-3: retrieval strukturalny — gdy pytanie zawiera cytat („art. 94 KW"), pobierz DOKŁADNIE ten
@@ -147,7 +151,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
             .Take(query.TopK)
             .ToList();
 
-        return new RetrievalResult(final, signal);
+        return new RetrievalResult(final, maxSim, rerankTop);
     }
 
     /// <summary>Minimalna liczba NIEZALEŻNYCH orzeczeń cytujących artykuł, żeby wszedł mostem cytowań.

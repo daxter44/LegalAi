@@ -117,8 +117,9 @@ public class HybridRetrieverTests
         await CleanAsync(src);
     }
 
-    [Fact] // R5: reranker przestawia kolejność i to JEGO top-score steruje MaxSimilarity (bramka abstynencji)
-    public async Task Reranker_reorders_and_drives_abstention_signal()
+    [Fact] // R5: reranker przestawia KOLEJNOŚĆ, ale sygnały są ROZDZIELONE (kalibracja przed pilotażem):
+           // MaxSimilarity zostaje cosine (bramka/diagnostyka), top-score rerankera wraca osobno.
+    public async Task Reranker_reorders_but_signals_stay_separated()
     {
         const string src = "TEST-RETR-5";
         await CleanAsync(src);
@@ -133,8 +134,22 @@ public class HybridRetrieverTests
         Assert.NotEmpty(res.Chunks);
         Assert.Contains("zzztarget", res.Chunks[0].Text);   // wypromowany na 1. miejsce
         Assert.Equal(0.99, res.Chunks[0].RerankScore);
-        Assert.Equal(0.99, res.MaxSimilarity, 3);           // abstynencja gatuje na score rerankera, nie cosine
+        Assert.Equal(0.99, res.RerankTopScore!.Value, 3);   // score rerankera OSOBNYM sygnałem
+        Assert.NotEqual(0.99, Math.Round(res.MaxSimilarity, 3)); // MaxSimilarity = cosine, NIE nadpisane
         Assert.True(reranker.Calls > 0);
+        await CleanAsync(src);
+    }
+
+    [Fact] // R6: bez rerankera RerankTopScore jest null (sygnał istnieje tylko, gdy cross-encoder działał)
+    public async Task Without_reranker_rerank_signal_is_null()
+    {
+        const string src = "TEST-RETR-6";
+        await CleanAsync(src);
+        const string text = "Sygnaltako unikalny przepis testowy do sprawdzenia sygnalow";
+        await SeedAsync(src, "s1", DocTypes.Act, text, tokenCount: 20, inForce: true);
+
+        var res = await RetrieveAsync(new RetrievalQuery { Text = text, MinChunkTokens = 0 });
+        Assert.Null(res.RerankTopScore);
         await CleanAsync(src);
     }
 }

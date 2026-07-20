@@ -30,7 +30,7 @@ public static class RefusalEvalRunner
         string Question, IReadOnlyList<ChatTurn> History, string Baseline, DateTimeOffset AskedAt);
 
     private sealed record ReplayResult(
-        string Question, string Baseline, string Outcome, double Signal, bool GatePassed,
+        string Question, string Baseline, string Outcome, double Signal, double? RerankTop, bool GatePassed,
         int Acts, int Judgments, int Amendments, IReadOnlyList<string> TopSources, bool? CitationsClean);
 
     public static async Task RunAsync(IServiceProvider services, IConfiguration cfg, CancellationToken ct)
@@ -63,7 +63,8 @@ public static class RefusalEvalRunner
             results.Add(r);
 
             Console.WriteLine($"[{i + 1,3}/{items.Count}] BYŁO={r.Baseline,-16} JEST={r.Outcome,-16} " +
-                              $"sim={r.Signal:F3} akty={r.Acts} orzecz={r.Judgments} now={r.Amendments} | {Trim(r.Question, 70)}");
+                              $"sim={r.Signal:F3} rr={(r.RerankTop is { } rt ? rt.ToString("F3") : "  -  ")} " +
+                              $"akty={r.Acts} orzecz={r.Judgments} now={r.Amendments} | {Trim(r.Question, 62)}");
             await report.WriteLineAsync(JsonSerializer.Serialize(r));
         }
 
@@ -133,7 +134,7 @@ public static class RefusalEvalRunner
 
         if (AbstentionPolicy.ShouldAbstain(result, threshold))
             return new ReplayResult(item.Question, item.Baseline, "odmowa-progu", result.MaxSimilarity,
-                GatePassed: false, 0, 0, 0, [], null);
+                result.RerankTopScore, GatePassed: false, 0, 0, 0, [], null);
 
         var chunks = result.Chunks;
         var augmenter = sp.GetRequiredService<ITemporalAugmenter>();
@@ -147,7 +148,7 @@ public static class RefusalEvalRunner
 
         if (!generate)
             return new ReplayResult(item.Question, item.Baseline, "(bez generacji)", result.MaxSimilarity,
-                GatePassed: true, acts, judgments, amendments, topSources, null);
+                result.RerankTopScore, GatePassed: true, acts, judgments, amendments, topSources, null);
 
         var llm = sp.GetRequiredService<ILlmProvider>();
         var (req, sources) = GroundedPrompt.Build(item.Question, chunks, item.History);
@@ -173,7 +174,7 @@ public static class RefusalEvalRunner
         }
 
         return new ReplayResult(item.Question, item.Baseline, outcome, result.MaxSimilarity,
-            GatePassed: true, acts, judgments, amendments, topSources, citationsClean);
+            result.RerankTopScore, GatePassed: true, acts, judgments, amendments, topSources, citationsClean);
     }
 
     private static void PrintSummary(List<ReplayResult> results, bool generate)
@@ -196,6 +197,24 @@ public static class RefusalEvalRunner
 
         Console.WriteLine($"Skład źródeł (średnio, gdy bramka przeszła): " +
             $"akty {Avg(results, r => r.Acts):F1}, orzeczenia {Avg(results, r => r.Judgments):F1}, nowele {Avg(results, r => r.Amendments):F1}.");
+
+        // KALIBRACJA BRAMKI: rozkłady OBU sygnałów per wynik. Szukamy progu rozdzielającego
+        // „OK" od odmów treściowych — sygnał, którego zakresy się nie nakładają (albo nakładają
+        // najmniej), nadaje się na bramkę; próg = między max(odmowy) a min(OK), z marginesem.
+        if (generate)
+        {
+            Console.WriteLine("\n=== KALIBRACJA: rozkład sygnałów per wynik (min / śr / max) ===");
+            foreach (var g in results.GroupBy(r => r.Outcome == "OK" ? "OK" : "odmowa/błąd").OrderBy(g => g.Key))
+            {
+                var sims = g.Select(r => r.Signal).ToList();
+                var rrs = g.Where(r => r.RerankTop is not null).Select(r => r.RerankTop!.Value).ToList();
+                Console.WriteLine($"  {g.Key,-12} (n={g.Count(),2})  " +
+                    $"sim: {sims.Min():F3} / {sims.Average():F3} / {sims.Max():F3}   " +
+                    (rrs.Count > 0 ? $"rr: {rrs.Min():F3} / {rrs.Average():F3} / {rrs.Max():F3}" : "rr: -"));
+            }
+            Console.WriteLine("  → próg bramki: między max(odmowa) a min(OK) wybranego sygnału; nakładanie się" +
+                              " zakresów = bramka progowa nie rozdzieli tych przypadków (zostaje odmowa treściowa LLM).");
+        }
 
         // Cel z planu pilotażu: 10-25% odmów. Powyżej = dziury/retrieval; podejrzanie nisko = ryzyko halucynacji.
         static string Pct(int a, int b) => b == 0 ? "-" : $"{100.0 * a / b:F0}%";
