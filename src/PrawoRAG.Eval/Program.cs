@@ -57,7 +57,7 @@ if (args.Contains("--probe-akty"))
 // przez aktualny pipeline; raport BYŁO→JEST + skład źródeł. Eval:RefusalsGenerate=false = bez LLM.
 if (args.Contains("--refusals"))
 {
-    await RefusalEvalRunner.RunAsync(host.Services, cfg, default);
+    await RefusalEvalRunner.RunAsync(host.Services, cfg, args, default);
     return;
 }
 

@@ -33,7 +33,12 @@ public static class RefusalEvalRunner
         string Question, string Baseline, string Outcome, double Signal, double? RerankTop, bool GatePassed,
         int Acts, int Judgments, int Amendments, IReadOnlyList<string> TopSources, bool? CitationsClean);
 
-    public static async Task RunAsync(IServiceProvider services, IConfiguration cfg, CancellationToken ct)
+    /// <summary>Ścieżka zamrożonego zestawu (wersjonowany w repo jak golden-set) — próba per CWD
+    /// repo i katalog binarny.</summary>
+    private static string SetPath(IConfiguration cfg) =>
+        cfg["Eval:RefusalsSetPath"] ?? Path.Combine("src", "PrawoRAG.Eval", "refusal-set.json");
+
+    public static async Task RunAsync(IServiceProvider services, IConfiguration cfg, string[] args, CancellationToken ct)
     {
         var limit = cfg.GetValue<int?>("Eval:RefusalsLimit") ?? 0;
         var generate = cfg.GetValue<bool?>("Eval:RefusalsGenerate") ?? true;
@@ -41,14 +46,42 @@ public static class RefusalEvalRunner
         var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
         var minChunkTokens = cfg.GetValue<int?>("Retrieval:MinChunkTokens") ?? 20;
         var margin = cfg.GetValue<double?>("Retrieval:FollowUpSignalMargin") ?? FollowUpQuery.DefaultSignalMargin;
+        var setPath = SetPath(cfg);
 
-        var items = await LoadReplayItemsAsync(services, limit, ct);
-        if (items.Count == 0)
+        // ZAMROŻONY ZESTAW (metryka musi być porównywalna między biegami — feedback właściciela:
+        // zestaw czytany na żywo z bazy zmienia się z każdym nowym pytaniem na czacie, więc różnice
+        // % między biegami mieszałyby efekt zmian kodu z efektem zmiany zestawu):
+        //   --freeze  → pobierz pytania z bazy i ZAPISZ zestaw do repo (świadoma zmiana = commit);
+        //   (bez)     → czytaj zestaw z pliku; brak pliku = fallback na bazę z ostrzeżeniem.
+        if (args.Contains("--freeze"))
         {
-            Console.WriteLine("Brak pytań użytkowników w tabeli messages — nie ma czego odtwarzać.");
+            var fresh = await LoadReplayItemsAsync(services, limit, ct);
+            Directory.CreateDirectory(Path.GetDirectoryName(setPath)!);
+            await File.WriteAllTextAsync(setPath,
+                JsonSerializer.Serialize(fresh, new JsonSerializerOptions { WriteIndented = true }), ct);
+            Console.WriteLine($"Zamrożono {fresh.Count} pytań → {setPath} (zacommituj; kolejne biegi czytają ten plik).");
             return;
         }
-        Console.WriteLine($"Eval odmów: {items.Count} realnych pytań (generacja: {generate}, próg: {threshold:F2}, TopK: {topK}).\n");
+
+        List<ReplayItem> items;
+        if (File.Exists(setPath))
+        {
+            items = JsonSerializer.Deserialize<List<ReplayItem>>(await File.ReadAllTextAsync(setPath, ct)) ?? [];
+            Console.WriteLine($"Zestaw ZAMROŻONY: {setPath} ({items.Count} pytań, odcisk {Fingerprint(items)}).");
+        }
+        else
+        {
+            items = await LoadReplayItemsAsync(services, limit, ct);
+            Console.WriteLine($"UWAGA: brak {setPath} — czytam NA ŻYWO z bazy ({items.Count} pytań, " +
+                              $"odcisk {Fingerprint(items)}). Wyniki między biegami porównywalne TYLKO przy tym samym " +
+                              $"odcisku; zamroź zestaw: --refusals --freeze.");
+        }
+        if (items.Count == 0)
+        {
+            Console.WriteLine("Brak pytań — ani w zamrożonym zestawie, ani w tabeli messages.");
+            return;
+        }
+        Console.WriteLine($"Eval odmów: {items.Count} pytań (generacja: {generate}, próg: {threshold:F2}, TopK: {topK}).\n");
 
         Directory.CreateDirectory("logs");
         var reportPath = Path.Combine("logs", $"refusals-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
@@ -181,6 +214,8 @@ public static class RefusalEvalRunner
     {
         Console.WriteLine("\n=== PODSUMOWANIE ===");
         var n = results.Count;
+        // Uczciwość statystyczna: przy małym n różnice rzędu 1-2 pytań to szum, nie sygnał.
+        Console.WriteLine($"(n={n}: jedno pytanie = {100.0 / n:F1} pp — różnice mniejsze niż ~2 pytania traktuj jako szum)");
         var wasRefusal = results.Count(r => r.Baseline is "odmowa-progu" or "odmowa-treściowa" or "pusta");
         Console.WriteLine($"BYŁO:  odmowy {wasRefusal}/{n} ({Pct(wasRefusal, n)}) — [{ByKind(results.Select(r => r.Baseline))}]");
 
@@ -234,6 +269,15 @@ public static class RefusalEvalRunner
     /// <summary>Normalizacja do dedupu: białe znaki + spacja przed interpunkcją traktowane jak jej brak
     /// (bez tego „interes?" i „interes ?" to różne klucze — realny false-negative znaleziony 2026-07-19,
     /// dwie kopie tego samego pytania B2B w evalu z różnym wynikiem).</summary>
+    /// <summary>Odcisk zestawu (liczba + skrót SHA znormalizowanych pytań) — wyniki dwóch biegów
+    /// są porównywalne TYLKO przy identycznym odcisku.</summary>
+    private static string Fingerprint(List<ReplayItem> items)
+    {
+        var joined = string.Join("\n", items.Select(i => Normalize(i.Question)).OrderBy(q => q, StringComparer.Ordinal));
+        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(joined));
+        return $"{items.Count}q-{Convert.ToHexString(hash)[..8].ToLowerInvariant()}";
+    }
+
     private static string Normalize(string s)
     {
         var flat = string.Join(' ', s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
