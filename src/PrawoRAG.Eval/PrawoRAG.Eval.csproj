@@ -15,6 +15,7 @@
   <ItemGroup>
     <None Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="golden-set.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="egzaminy-wstepne-2025.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

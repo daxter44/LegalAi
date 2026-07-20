@@ -37,6 +37,14 @@ builder.Services.AddScoped<ITemporalAugmenter, TemporalAugmenter>(); // AKT-2: d
 using var host = builder.Build();
 var cfg = host.Services.GetRequiredService<IConfiguration>();
 
+// Tryb egzaminacyjny (446 pytań ABC z egzaminów wstępnych 2025): --exam lub Eval:Exam=true.
+// Osobny od golden-setu: mierzy wiedzę+retrieval (solo/rag/oracle), nie zachowania produktu.
+if (args.Contains("--exam") || (cfg.GetValue<bool?>("Eval:Exam") ?? false))
+{
+    await ExamRunner.RunAsync(host.Services, cfg, default);
+    return;
+}
+
 var topK = cfg.GetValue<int?>("Retrieval:TopK") ?? 8;
 var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
 var minChunkTokens = cfg.GetValue<int?>("Retrieval:MinChunkTokens") ?? 20;
