@@ -387,6 +387,43 @@ poziomem pewności, a obecna reguła wymusza całość-albo-nic.
 
 ---
 
+## Znalezisko poza numeracją Case — reranker po cichu podmienia sygnał bramki abstynencji
+
+**Kontekst:** cały dzień testów dziś (Case 4-6, sondy JAK) był robiony **z wyłączonym rerankerem** —
+TEI na porcie 8081 nie odpowiadał, gdy próbowaliśmy kierować tam po adresie `192.168.100.11:8081` (3060).
+Okazało się (2026-07-20), że to był błąd adresu, nie awaria usługi: instancja TEI z rerankerem
+(`sdadas/polish-reranker-roberta-v3`, zdrowa, `max_client_batch_size=32`) działa **lokalnie na M4**,
+port 8081 — cały czas dostępna pod `http://localhost:8081`, tylko kierowana błędnie na 3060.
+
+**Po włączeniu z poprawnym adresem — `--refusals` na tych samych 25 pytaniach:** odmowy 38%→17%
+(naprawione 6, regresja 1) — realna, spora poprawa.
+
+**Ale przy okazji ujawniło się znalezisko architektoniczne:** [HybridRetriever.cs:106](src/PrawoRAG.Storage/Retrieval/HybridRetriever.cs)
+```csharp
+signal = ranked.Count > 0 ? ranked[0].RerankScore ?? 0 : 0;
+```
+Gdy reranker jest włączony, **`MaxSimilarity` (sygnał bramki `AbstentionPolicy.ShouldAbstain`) przestaje
+być cosine similarity, a staje się top-1 score cross-encodera** — inna skala, inne znaczenie. Widoczne
+gołym okiem w evalu: bez rerankera `sim` miało sensowny rozrzut (0,79-0,87 na tych samych pytaniach),
+z rerankerem niemal wszystko ląduje ~0,99-1,00 niezależnie od pytania (wyjątek: KSeF, sim=0,724 —
+tam nawet reranker nie był pewny swojej najlepszej kandydatki). Cross-encoder ocenia „najlepsza
+z PODANEJ puli kandydatów", nie „czy to wystarcza do odpowiedzi" — to inny kontrakt semantyczny niż
+kalibrowana similarity, dla której `AbstentionThreshold` był projektowany.
+
+**Dziś to nie krzywdzi produkcji** — `AbstentionThreshold` w obu `appsettings.json` (API i Eval) to
+`0.0`, bramka i tak przepuszcza wszystko niezależnie od tego, co sygnalizuje `MaxSimilarity` (spójne
+z `Abstained=false` widzianym przez cały dzień we wszystkich Case'ach). Ale to dług techniczny: jeśli
+kiedyś ktoś ustawi realny próg przy włączonym rerankerze, próg skalibrowany pod cosine similarity
+(typowo 0,5-0,7) będzie bezużyteczny względem rozkładu score'ów rerankera (klastruje się blisko 1,0)
+— bramka przestanie cokolwiek odsiewać. Wymaga osobnej kalibracji progu dla skali rerankera, albo
+utrzymania dwóch osobnych sygnałów (surowa similarity DO bramki, rerank score DO rankingu) zamiast
+nadpisywania jednego drugim.
+
+**Efekt uboczny dla diagnostyki:** kolumna `sim` w `--refusals` straciła czytelność odkąd reranker
+jest włączony — nie da się już z niej wnioskować o jakości retrievalu na pierwszy rzut oka.
+
+---
+
 ## Podsumowanie — trzy odrębne, nowe wnioski (żaden nie pokrywa się z diagnozą z 2026-07-17)
 
 1. **Bramka progu ≠ jakość odpowiedzi — ale mechanizm różni się między przypadkami.** We wszystkich
