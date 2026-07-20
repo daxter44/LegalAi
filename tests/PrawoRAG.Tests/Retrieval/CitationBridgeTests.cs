@@ -143,6 +143,28 @@ public class CitationBridgeTests
         await CleanAsync(src);
     }
 
+    [Fact] // A1 (JAK-5b): akronim ratuje chunk, który przegrywa AND-a pełnego pytania w torze rzadkim
+    public async Task Acronym_lane_rescues_chunk_missed_by_full_question_and()
+    {
+        const string src = "TEST-ACR-1";
+        await CleanAllAsync();
+        await using (var db = NewDb())
+            await db.Documents.Where(d => d.Source == src).ExecuteDeleteAsync();
+        // Chunk zawiera TYLKO akronim (i inne słowa), NIE zawiera pozostałych słów pytania —
+        // websearch_to_tsquery pełnego pytania go nie złapie (AND), tor akronimowy musi.
+        await SeedAsync(src, "a1", DocTypes.Act, "Ustawa testowa o systemie faktur",
+            "Tworzy się system KSEFTAKO służący do wystawiania faktur ustrukturyzowanych.", articleNo: "1");
+
+        var res = await RetrieveAsync(new RetrievalQuery
+        {
+            Text = "Kogo obejmuje obowiązkowy KSEFTAKO w roku dwudziestym szóstym oraz przejściowość?",
+            MinChunkTokens = 0,
+        });
+
+        Assert.Contains(res.Chunks, c => c.Text.Contains("KSEFTAKO"));
+        await CleanAsync(src);
+    }
+
     [Fact] // M4: most nie dotyka sygnału abstynencji — MaxSimilarity identyczne z mostem i bez
     public async Task Bridge_does_not_change_abstention_signal()
     {

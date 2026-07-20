@@ -97,6 +97,19 @@ próbki z JAK-0) → JAK-4 → JAK-5b → JAK-5a → JAK-2 → JAK-6a (fail-open
 `--refusals` (retrieval-only wystarczy między krokami; pełny z LLM na koniec fazy).
 Commit per task; weryfikacja każdego kroku na pełnym korpusie (M4/3060).
 
+## Status (2026-07-20)
+- JAK-0/1 **wykonane** (5449 chunków wyzerowanych); JAK-3 **wykonane** (Case 5 rozstrzygnięty:
+  kolizje leksykalne → domena rerankera; poszerzanie puli odrzucone). Reranker naprawiony
+  (localhost:8081 na M4, nie 3060) → **odmowy 38%→17% — W CELU fazy**.
+- JAK-5b **zaimplementowane**: `AcronymDetector` (≥2 wielkie litery, 2–8 znaków; wykluczenia:
+  rzymskie, caps-lock; bez kuratorowanej listy) + tor jednotokenowy w fuzji RRF `HybridRetriever`.
+  Weryfikacja na M4: pytanie Case 4 o KSeF (chunki z „KSeF" powinny wejść do kandydatów, reranker
+  je ustawi) + `--refusals` + test A1 w `dotnet test` (LiveDb).
+- Nowe znalezisko (raport): reranker podmienia sygnał bramki (`MaxSimilarity` = rerank score,
+  nie cosine) — dziś nieszkodliwe (próg 0.0), decyzja o rozdzieleniu sygnałów DO PODJĘCIA.
+- Otwarte z planu: JAK-4 (lane provenance), JAK-5a (słownik definicji z korpusu), JAK-2 (filtr
+  w chunkerze), JAK-6a (fail-open rerankera — po znalezisku o sygnale wart pakietowania razem).
+
 ## Runbook operatora (wszystko z M4; baza+TEI na 3060 — wspólny prefiks)
 
 ```bash

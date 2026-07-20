@@ -24,6 +24,10 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     /// </summary>
     private const int HnswEfSearch = 400;
 
+    /// <summary>Ile torów akronimowych maksymalnie (JAK-5b) — pytania mają zwykle 0–1 akronim;
+    /// limit chroni przed pytaniem-listą skrótów.</summary>
+    private const int MaxAcronymLanes = 2;
+
     public async Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, CancellationToken ct)
     {
         var qvec = new Vector(await embedder.EmbedQueryAsync(query.Text, ct));
@@ -56,6 +60,23 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         }
         for (var i = 0; i < sparse.Count; i++)
             rrf[sparse[i].Id] = rrf.GetValueOrDefault(sparse[i].Id) + 1.0 / (RrfK + i + 1);
+
+        // JAK-5b: tor akronimowy (Case 4 — „KSeF"). websearch_to_tsquery AND-uje wszystkie słowa
+        // pytania, więc chunki zawierające akronim, ale nie resztę słów, wypadały z toru rzadkiego,
+        // a embedding nie generalizuje skrótu na pełną nazwę. Osobne, JEDNOTOKENOWE zapytanie
+        // leksykalne per wykryty akronim wchodzi do fuzji RRF jak każdy tor — o precyzję dba dalej
+        // reranking/fuzja, my łatamy wyłącznie dziurę recall. Brak akronimów w pytaniu = zero kosztu.
+        foreach (var acronym in AcronymDetector.Extract(query.Text).Take(MaxAcronymLanes))
+        {
+            var acrHits = await ApplyFilters(db.Chunks, query)
+                .Where(c => c.SearchVector!.Matches(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, acronym)))
+                .Select(c => new { c.Id, Rank = c.SearchVector!.Rank(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, acronym)) })
+                .OrderByDescending(x => x.Rank)
+                .Take(k)
+                .ToListAsync(ct);
+            for (var i = 0; i < acrHits.Count; i++)
+                rrf[acrHits[i].Id] = rrf.GetValueOrDefault(acrHits[i].Id) + 1.0 / (RrfK + i + 1);
+        }
 
         // Nad-pobieramy kandydatów przed dedupem po tekście: standardowe formułki (dyrektywy, tezy TSUE)
         // są cytowane dosłownie w wielu orzeczeniach — bez dedupu N kopii zajmuje N slotów top-K i przez
