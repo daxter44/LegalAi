@@ -15,8 +15,16 @@
 
 <h1 class="sr-only">Czat z asystentem prawnym</h1>
 
+<button class="btn-sidebar-toggle" @onclick="() => _mobileSidebarOpen = true" aria-label="Historia rozmów">
+    ☰ Historia
+</button>
+
 <div class="chat-layout">
-<aside class="chat-sidebar">
+@if (_mobileSidebarOpen)
+{
+    <div class="sidebar-backdrop" @onclick="() => _mobileSidebarOpen = false"></div>
+}
+<aside class="chat-sidebar @(_mobileSidebarOpen ? "open" : "")">
     <button class="btn btn-new-chat" @onclick="NewConversation" disabled="@_busy">➕ Nowa rozmowa</button>
     <nav class="conv-list" aria-label="Historia rozmów">
         @foreach (var c in _conversations)
@@ -223,6 +231,10 @@
         catch { /* best-effort */ }
     }
 
+    /// <summary>Panel historii na mobile (≤900px, patrz app.css) — na desktopie sidebar jest zawsze
+    /// widoczny, ta flaga tam nic nie zmienia (CSS gatuje `.open` tylko pod media query).</summary>
+    private bool _mobileSidebarOpen;
+
     private void NewConversation()
     {
         if (_busy) return;
@@ -230,6 +242,7 @@
         _conversationId = null;
         _notice = null;
         _input = "";
+        _mobileSidebarOpen = false;
     }
 
     /// <summary>Wczytuje rozmowę z historii: pary user/assistant → Exchange. Follow-upy działają
@@ -245,6 +258,7 @@
         _exchanges.Clear();
         _conversationId = id;
         _notice = null;
+        _mobileSidebarOpen = false;
         Exchange? current = null;
         foreach (var m in messages)
         {
