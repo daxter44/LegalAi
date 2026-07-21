@@ -27,6 +27,7 @@ builder.Services.AddScoped<IRetriever, HybridRetriever>();
 builder.Services.AddScoped<ITemporalAugmenter, TemporalAugmenter>(); // AKT-2: dokłada świeże nowele
 builder.Services.Configure<RetrievalOptions>(builder.Configuration.GetSection("Retrieval"));
 builder.Services.Configure<DiagnosticsOptions>(builder.Configuration.GetSection("Diagnostics"));
+builder.Services.Configure<DocumentsOptions>(builder.Configuration.GetSection(DocumentsOptions.SectionName));
 builder.Services.AddOpenApi();
 
 // Blazor Server (UI demo) w tym samym hoście — te same serwisy przez DI, bez skoku HTTP.

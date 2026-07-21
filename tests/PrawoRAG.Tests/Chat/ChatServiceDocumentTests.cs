@@ -57,8 +57,9 @@ public class ChatServiceDocumentTests
         Embeddings = await new FakeEmbeddingProvider().EmbedPassagesAsync(fragments, default),
     };
 
-    private static ChatService Service(IRetriever retriever, ILlmProvider llm) =>
-        new(retriever, new NoOpAugmenter(), llm, Options.Create(new RetrievalOptions()), new FakeEmbeddingProvider());
+    private static ChatService Service(IRetriever retriever, ILlmProvider llm, bool documentsEnabled = true) =>
+        new(retriever, new NoOpAugmenter(), llm, Options.Create(new RetrievalOptions()), new FakeEmbeddingProvider(),
+            Options.Create(new DocumentsOptions { Enabled = documentsEnabled }));
 
     private static async Task<List<ChatEvent>> Drain(IAsyncEnumerable<ChatEvent> events)
     {
@@ -92,6 +93,17 @@ public class ChatServiceDocumentTests
         var llm = new FakeLlm("Odpowiedź [1].");
         var events = await Drain(Service(new FixedRetriever(0.9), llm)
             .AskAsync("pytanie", [], null, default));
+
+        Assert.DoesNotContain(events, e => e is DocSourcesEvent);
+        Assert.DoesNotContain("ZAŁĄCZNIK", llm.LastRequest!.Messages[0].Content);
+    }
+
+    [Fact] // flaga Documents:Enabled=false → dokument ignorowany: brak DocSourcesEvent i sekcji DOKUMENT (ścieżka martwa)
+    public async Task Document_ignored_when_feature_disabled()
+    {
+        var llm = new FakeLlm("Odpowiedź [1].");
+        var events = await Drain(Service(new FixedRetriever(0.9), llm, documentsEnabled: false)
+            .AskAsync("czy §7 jest ważny?", [], await DocAsync("§7. Kara umowna 500 zł/dzień."), default));
 
         Assert.DoesNotContain(events, e => e is DocSourcesEvent);
         Assert.DoesNotContain("ZAŁĄCZNIK", llm.LastRequest!.Messages[0].Content);

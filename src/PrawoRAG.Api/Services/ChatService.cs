@@ -14,8 +14,11 @@ namespace PrawoRAG.Api.Services;
 /// </summary>
 public sealed class ChatService(
     IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> options,
-    IEmbeddingProvider embedder) : IChatService
+    IEmbeddingProvider embedder, IOptions<DocumentsOptions> documents) : IChatService
 {
+    private readonly bool _documentsEnabled = documents.Value.Enabled;
+
+
     public async IAsyncEnumerable<ChatEvent> AskAsync(
         string question, IReadOnlyList<ChatTurn> history, DocumentContext? document,
         [EnumeratorCancellation] CancellationToken ct)
@@ -68,7 +71,7 @@ public sealed class ChatService(
         // PO bramce abstynencji — dokument to fakty, nie prawo; nie może zamienić odmowy w odpowiedź
         // (decyzja #5 planu DOC).
         IReadOnlyList<DocFragment> docFragments = [];
-        if (document is not null)
+        if (_documentsEnabled && document is not null)
         {
             var qvec = await embedder.EmbedQueryAsync(question, ct);
             docFragments = document.SelectFragments(qvec);

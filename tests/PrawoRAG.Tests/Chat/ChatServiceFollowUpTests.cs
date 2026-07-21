@@ -66,7 +66,7 @@ public class ChatServiceFollowUpTests
 
     private static ChatService Service(FakeRetriever retriever, NoOpAugmenter augmenter, FakeLlm llm) =>
         new(retriever, augmenter, llm, Options.Create(new RetrievalOptions { AbstentionThreshold = Threshold }),
-            new Fakes.FakeEmbeddingProvider());
+            new Fakes.FakeEmbeddingProvider(), Options.Create(new DocumentsOptions()));
 
     private static async Task<List<ChatEvent>> Drain(IAsyncEnumerable<ChatEvent> events)
     {

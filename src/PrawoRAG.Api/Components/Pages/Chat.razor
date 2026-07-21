@@ -11,6 +11,7 @@
 @inject CostGuard CostGuard
 @inject AuthenticationStateProvider AuthState
 @inject Microsoft.Extensions.Options.IOptions<DiagnosticsOptions> Diagnostics
+@inject Microsoft.Extensions.Options.IOptions<DocumentsOptions> Documents
 @implements IDisposable
 
 <h1 class="sr-only">Czat z asystentem prawnym</h1>
@@ -158,26 +159,29 @@
     {
         <div class="banner banner-warn" role="status">@_notice</div>
     }
-    <div class="chat-attach">
-        <label class="attach-btn" title="Dołącz PDF (umowa, pismo, wyrok) — treść nie jest zapisywana">
-            📎 <InputFile OnChange="OnFileSelected" accept=".pdf" disabled="@(_busy || _docLoading)" />
-        </label>
-        @if (_docLoading)
-        {
-            <span class="attach-chip">⏳ przetwarzam załącznik…</span>
-        }
-        else if (_document is not null)
-        {
-            <span class="attach-chip" title="Załącznik żyje do końca sesji — treść nie jest zapisywana">
-                📄 @_document.FileName (@_document.PageCount str.@(_document.Truncated ? $", obcięto do {PdfAttachmentExtractor.MaxPages}" : ""))
-                <button class="attach-remove" @onclick="RemoveDocument" disabled="@_busy" title="Usuń załącznik">✕</button>
-            </span>
-        }
-        @if (_docNotice is not null)
-        {
-            <span class="attach-notice">@_docNotice</span>
-        }
-    </div>
+    @if (Documents.Value.Enabled)
+    {
+        <div class="chat-attach">
+            <label class="attach-btn" title="Dołącz PDF (umowa, pismo, wyrok) — treść nie jest zapisywana">
+                📎 <InputFile OnChange="OnFileSelected" accept=".pdf" disabled="@(_busy || _docLoading)" />
+            </label>
+            @if (_docLoading)
+            {
+                <span class="attach-chip">⏳ przetwarzam załącznik…</span>
+            }
+            else if (_document is not null)
+            {
+                <span class="attach-chip" title="Załącznik żyje do końca sesji — treść nie jest zapisywana">
+                    📄 @_document.FileName (@_document.PageCount str.@(_document.Truncated ? $", obcięto do {PdfAttachmentExtractor.MaxPages}" : ""))
+                    <button class="attach-remove" @onclick="RemoveDocument" disabled="@_busy" title="Usuń załącznik">✕</button>
+                </span>
+            }
+            @if (_docNotice is not null)
+            {
+                <span class="attach-notice">@_docNotice</span>
+            }
+        </div>
+    }
     <form class="chat-input" @onsubmit="Send" @onsubmit:preventDefault>
         <textarea @bind="_input" @bind:event="oninput" @onkeydown="OnKeyDown"
                   placeholder="Zadaj pytanie prawne… (Ctrl+Enter wysyła)" rows="2" disabled="@_busy"
