@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @using PrawoRAG.Llm.Grounding
 @using PrawoRAG.Domain.Llm
+@using PrawoRAG.Domain.Privacy
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IChatService ChatService
 @inject PrawoRAG.Domain.Embeddings.IEmbeddingProvider Embedder
@@ -180,6 +181,16 @@
             {
                 <span class="attach-notice">@_docNotice</span>
             }
+        </div>
+    }
+    @{ var _piiHits = SensitiveDataDetector.Detect(_input); }
+    @if (_piiHits.Count > 0)
+    {
+        <div class="pii-warn" role="status">
+            <span class="badge badge-warn"
+                  title="System służy do researchu prawnego — opisz sprawę abstrakcyjnie, bez danych klienta. To podpowiedź, nie gwarancja.">
+                ⚠️ możliwe dane osobowe: @string.Join(", ", _piiHits.Select(SensitiveDataDetector.Label))
+            </span>
         </div>
     }
     <form class="chat-input" @onsubmit="Send" @onsubmit:preventDefault>

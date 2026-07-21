@@ -98,6 +98,7 @@ body {
 }
 
 /* Wejście */
+.pii-warn { margin: var(--s-2) 0; }
 .chat-input { display: flex; gap: var(--s-2); position: sticky; bottom: 0; }
 .chat-input textarea {
     flex: 1; resize: vertical; font: inherit; padding: var(--s-3);
