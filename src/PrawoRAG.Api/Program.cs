@@ -126,6 +126,48 @@ static string WejscieHtml(string? error) => $$"""
     </form></body></html>
     """;
 
+// Publiczny landing na „/" (anonimowy — poza RequireAuthorization; statyczny HTML jak /wejscie).
+// Zalogowany gość → prosto do aplikacji. Chat przeniesiony na /czat.
+const string LandingHtml = """
+    <!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>PrawoRAG — suwerenny research prawny</title>
+    <style>
+    :root{--accent:#1d4ed8}
+    *{box-sizing:border-box}body{font-family:system-ui,sans-serif;margin:0;color:#1c1917;background:#f5f5f4;line-height:1.6}
+    .wrap{max-width:52rem;margin:0 auto;padding:2rem 1.25rem}
+    header{display:flex;align-items:center;gap:.5rem;font-weight:600}
+    .logo{color:var(--accent);font-size:1.4rem}.tag{font-size:.75rem;color:#78716c;border:1px solid #d6d3d1;border-radius:6px;padding:.05rem .4rem}
+    h1{font-size:1.9rem;margin:2.5rem 0 .5rem}.lead{font-size:1.15rem;color:#44403c;margin:0 0 2rem}
+    .pillars{display:grid;gap:1rem;grid-template-columns:1fr}@media(min-width:640px){.pillars{grid-template-columns:1fr 1fr 1fr}}
+    .card{background:#fff;border:1px solid #e7e5e4;border-radius:12px;padding:1.1rem}
+    .card h2{font-size:1rem;margin:0 0 .35rem}.card p{font-size:.9rem;color:#57534e;margin:0}
+    .cta{display:inline-block;margin:2rem 0 .5rem;padding:.7rem 1.4rem;background:var(--accent);color:#fff;text-decoration:none;border-radius:8px;font-weight:600}
+    .muted{font-size:.85rem;color:#78716c}.muted a{color:var(--accent)}
+    .note{margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid #e7e5e4;font-size:.85rem;color:#78716c}
+    </style></head><body><div class="wrap">
+    <header><span class="logo">§</span> PrawoRAG <span class="tag">zamknięty test</span></header>
+
+    <h1>Research prawny z prawdziwymi, klikalnymi cytatami.</h1>
+    <p class="lead">Asystent dla polskich prawników oparty o orzecznictwo i akty prawne. Gdy brak źródła — mówi wprost, zamiast zmyślać. W 100% polski i europejski stos: Twoje pytania nie trafiają do amerykańskich chmur.</p>
+
+    <div class="pillars">
+      <div class="card"><h2>Cytaty, które można kliknąć</h2><p>Każda teza wskazuje konkretny przepis lub orzeczenie. Odpowiedź bez pokrycia w źródłach to uczciwa odmowa, nie konfabulacja.</p></div>
+      <div class="card"><h2>Suwerenność danych</h2><p>Pytania, rozmowy i źródła nie opuszczają infrastruktury PL/UE. Argument dla tajemnicy zawodowej, którego nie daje research na amerykańskim API.</p></div>
+      <div class="card"><h2>Świeżość prawa</h2><p>System oznacza nowelizacje jeszcze nie wchłonięte do tekstów jednolitych — pokazuje, od kiedy obowiązuje dana zmiana.</p></div>
+    </div>
+
+    <a class="cta" href="/wejscie">Mam kod zaproszenia → Wejdź</a>
+    <p class="muted">Chcesz dołączyć do zamkniętego testu? Napisz do zespołu — liczba miejsc ograniczona pojemnością.</p>
+
+    <p class="note">To wstępny research prawny do weryfikacji, nie porada. Zawsze sprawdzaj przy źródle. Więcej: <a href="/o-systemie">co system umie, a czego nie</a>.</p>
+    </div></body></html>
+    """;
+
+app.MapGet("/", (HttpContext http) =>
+    http.User.Identity?.IsAuthenticated == true
+        ? Results.Redirect("/czat")
+        : Results.Content(LandingHtml, "text/html; charset=utf-8"));
+
 app.MapGet("/wejscie", () => Results.Content(WejscieHtml(null), "text/html; charset=utf-8"));
 
 // Login-CSRF przy kodzie zaproszenia = ryzyko pomijalne (statyczny formularz bez tokenu) → DisableAntiforgery.
@@ -139,7 +181,7 @@ app.MapPost("/wejscie", async (HttpContext http, IOptions<AccessOptions> acc) =>
     var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
     await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
         new ClaimsPrincipal(identity), new AuthenticationProperties { IsPersistent = true });
-    return Results.Redirect("/");
+    return Results.Redirect("/czat");
 }).DisableAntiforgery();
 
 app.MapGet("/wyjscie", async (HttpContext http) =>
