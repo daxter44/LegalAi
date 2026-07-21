@@ -1,5 +1,10 @@
 # Plan: Jakość retrievalu na pełnym korpusie (JAK) — z raportu odmów 2026-07-18/19
 
+> **⏸️ STATUS: WSTRZYMANE — DO DOKOŃCZENIA (2026-07-21).** Rdzeń fazy osiągnięty
+> (odmowy 38%→17%, w celu ≤25%). Wznowienie: **kalibracja progu bramki abstynencji**
+> (dziś `Retrieval:AbstentionThreshold=0.0`, procedura w sekcji niżej), następnie
+> otwarte JAK-4 / JAK-5a / JAK-2 / JAK-6a. Szczegóły w bloku „Status (2026-07-20)".
+
 Wejście: `RAPORT-DIAGNOSTYCZNY-ODMOWY-2026-07-18.md` (6 case'ów, 5 mechanizmów) + feedback
 właściciela (2026-07-19). Zasada nadrzędna: **pomiar przed naprawą** (lekcja act-lane — intuicyjny
 fix obalony sondą) i weryfikacja wyłącznie na pełnym korpusie.
