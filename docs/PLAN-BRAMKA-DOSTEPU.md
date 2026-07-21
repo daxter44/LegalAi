@@ -47,6 +47,24 @@ testu kilku osób akceptowalne; persystencja w DB gdy test urośnie).
   w podpowiedziach), ale kody NIE są hasłami — rotować po teście.
 - Rate-limiter HTTP (60/min) obejmuje też `/wejscie` — zgadywanie kodów jest tępione.
 
+## Runbook: włączenie na betę + weryfikacja izolacji (P0-3, 2026-07-21)
+
+Kod izolacji jest kompletny i przetestowany (`AccessGateTests`; `ConversationStore` filtruje po
+`UserId`; obwód Blazora bierze tożsamość z `AuthenticationStateProvider`). Do włączenia = konfiguracja
++ weryfikacja, BEZ zmiany dev-owego `Access:Enabled=false` w `appsettings.json`.
+
+1. **Env deployu** (kody NIE commitowane): `Access__Enabled=true` + `Access__Invites__<KOD>=<NAZWA>`.
+   **Każdy kod = UNIKALNA nazwa** — `UserId` to nazwa, więc dwa kody z tą samą nazwą = współdzielone
+   rozmowy i wspólny dzienny limit.
+2. **Trwałość logowań (KRYTYCZNE w deployu):** ustawić `DataProtection__KeysPath` na trwały wolumen
+   (mechanizm już wpięty, `Program.cs:68`). Bez tego klucze są efemeryczne i **restart aplikacji
+   wylogowuje wszystkich / psuje ciasteczka**. W czystym dev bez znaczenia.
+3. **Weryfikacja izolacji (kryterium wyjścia, wymaga żywej bazy):**
+   - dwa różne kody w dwóch przeglądarkach → każdy widzi WYŁĄCZNIE swoje rozmowy w sidebarze;
+   - próba wejścia w cudze `conversationId` (ręcznie) → pusto (filtr `UserId` po stronie serwera);
+   - `/wyjscie` czyści sesję; ponowne `/wejscie` innym kodem → inna tożsamość, inne rozmowy;
+   - anonimowy `/api/chat` bez cookie/`X-Invite-Code` → 401.
+
 ## Poza zakresem (jawnie)
 
 - Pełne ASP.NET Identity / OIDC / rejestracja (FE-5 — po testach zamkniętych).
