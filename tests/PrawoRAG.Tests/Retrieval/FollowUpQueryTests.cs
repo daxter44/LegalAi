@@ -1,3 +1,4 @@
+using PrawoRAG.Domain.Llm;
 using PrawoRAG.Domain.Retrieval;
 
 namespace PrawoRAG.Tests.Retrieval;
@@ -10,7 +11,7 @@ public class FollowUpQueryTests
 {
     [Fact]
     public void Empty_history_returns_question_unchanged()
-        => Assert.Equal("a co z § 2?", FollowUpQuery.Contextualize([], "a co z § 2?"));
+        => Assert.Equal("a co z § 2?", FollowUpQuery.Contextualize(Array.Empty<string>(), "a co z § 2?"));
 
     [Fact]
     public void Joins_previous_questions_chronologically_before_current()
@@ -56,5 +57,91 @@ public class FollowUpQueryTests
     {
         Assert.False(FollowUpQuery.PickContextual(0.70, 0.65, margin: 0.02)); // 0.05 > 0.02 → surowe
         Assert.True(FollowUpQuery.PickContextual(0.70, 0.65, margin: 0.10));  // 0.05 ≤ 0.10 → kontekstowe
+    }
+
+    // --- Overload ChatTurn: fold kotwic ostatniej realnej odpowiedzi (cytat + rzeczowniki + źródła) ---
+
+    private const string LasAnswer =
+        "Grzywna może wynikać z art. 157 § 1 kodeksu wykroczeń, jeżeli osoba nie opuści lasu na żądanie osoby uprawnionej.";
+
+    [Fact]
+    public void Folds_last_answer_citation_and_nouns_into_query()
+    {
+        // Zgłoszony przypadek: most („art. 157", „las") był tylko w odpowiedzi asystenta, nie w pytaniach.
+        var history = new[] { new ChatTurn("jakie są konsekwencje nocowania w lesie?", LasAnswer) };
+        var result = FollowUpQuery.Contextualize(history, "a kim jest osoba uprawniona z powyższej odpowiedzi?");
+
+        Assert.Contains("a kim jest osoba uprawniona", result); // bieżące pytanie obecne
+        Assert.Contains("art. 157", result);                    // cytat wyłuskany (tor strukturalny)
+        Assert.Contains("las", result);                         // rzeczownik z odpowiedzi (dense/BM25)
+    }
+
+    [Fact]
+    public void Skips_refusal_turn_and_reaches_last_nonnull_answer()
+    {
+        // Q1 z realną odpowiedzią, Q2 = odmowa (Answer=null) → fold sięga wstecz do Q1 (zgłoszone Q2→Q3).
+        var history = new[]
+        {
+            new ChatTurn("jakie są konsekwencje nocowania w lesie?", LasAnswer),
+            new ChatTurn("a kim jest osoba uprawniona?", null),
+        };
+        var result = FollowUpQuery.Contextualize(history, "a kim jest osoba uprawniona z powyższej odpowiedzi?");
+
+        Assert.Contains("art. 157", result); // kotwica z Q1 mimo odmowy w Q2
+    }
+
+    [Fact]
+    public void All_answers_null_falls_back_to_question_only_context()
+    {
+        var history = new[] { new ChatTurn("pierwsze pytanie", null) };
+        Assert.Equal("pierwsze pytanie drugie", FollowUpQuery.Contextualize(history, "drugie"));
+    }
+
+    [Fact]
+    public void Empty_history_overload_returns_question_unchanged()
+        => Assert.Equal("dopytanie", FollowUpQuery.Contextualize(Array.Empty<ChatTurn>(), "dopytanie"));
+
+    [Fact]
+    public void Strips_citation_markers_from_folded_snippet()
+    {
+        var history = new[] { new ChatTurn("q", "Zgodnie z art. 157 [1] chodzi o las [2].") };
+        var result = FollowUpQuery.Contextualize(history, "dopytanie");
+
+        Assert.DoesNotContain("[1]", result);
+        Assert.DoesNotContain("[2]", result);
+    }
+
+    [Fact]
+    public void Citation_survives_even_when_snippet_is_truncated_before_it()
+    {
+        // Cytat leży ZA budżetem fragmentu, ale jest wyłuskiwany z całej odpowiedzi i doklejany osobno.
+        var answer = new string('x', FollowUpQuery.MaxFoldedAnswerChars + 100) + " art. 157 kodeksu wykroczeń";
+        var history = new[] { new ChatTurn("q", answer) };
+        var result = FollowUpQuery.Contextualize(history, "dopytanie");
+
+        Assert.Contains("art. 157", result); // cytat przetrwał
+        Assert.Contains("…", result);          // fragment przycięty do budżetu
+    }
+
+    [Fact]
+    public void Folds_source_anchors_when_present()
+    {
+        var history = new[]
+        {
+            new ChatTurn("q", "krótka odpowiedź", new[] { "art. 157 § 1 KW", "Kodeks wykroczeń" }),
+        };
+        var result = FollowUpQuery.Contextualize(history, "dopytanie");
+
+        Assert.Contains("Kodeks wykroczeń", result);
+        Assert.Contains("art. 157 § 1 KW", result);
+    }
+
+    [Fact]
+    public void Question_context_leads_before_folded_answer()
+    {
+        var history = new[] { new ChatTurn("pierwsze", "odpowiedź z art. 5 KC") };
+        var result = FollowUpQuery.Contextualize(history, "drugie");
+
+        Assert.StartsWith("pierwsze drugie", result); // rdzeń (pytania) prowadzi, fold za nim
     }
 }

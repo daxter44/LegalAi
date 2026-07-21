@@ -39,7 +39,7 @@ public sealed class ChatService(
         var result = await retriever.RetrieveAsync(query, ct);
         if (history.Count > 0)
         {
-            var ctxText = FollowUpQuery.Contextualize(history.Select(t => t.Question).ToList(), question);
+            var ctxText = FollowUpQuery.Contextualize(history, question);
             var ctxQuery = Query(ctxText);
             var ctxResult = await retriever.RetrieveAsync(ctxQuery, ct);
             if (FollowUpQuery.PickContextual(result.MaxSimilarity, ctxResult.MaxSimilarity, o.FollowUpSignalMargin))

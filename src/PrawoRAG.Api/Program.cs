@@ -197,7 +197,7 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         var o = opt.Value;
         var history = (req.History ?? [])
             .Where(t => !string.IsNullOrWhiteSpace(t.Question))
-            .Select(t => new ChatTurn(t.Question, t.Answer))
+            .Select(t => new ChatTurn(t.Question, t.Answer, t.SourceAnchors))
             .ToList();
 
         // Follow-upy (parytet z UI/ChatService): retrieval 2x — samo pytanie vs pytanie + poprzednie
@@ -286,8 +286,10 @@ internal sealed record FiltersDto(string? CourtType, DateOnly? DateFrom, DateOnl
 internal sealed record SearchRequest(string Query, FiltersDto? Filters, int? TopK);
 internal sealed record ChatRequest(string Question, FiltersDto? Filters, IReadOnlyList<HistoryTurnDto>? History = null);
 
-/// <summary>Jedna zakończona tura rozmowy w żądaniu SSE (kontekst follow-upów). Answer=null przy abstynencji.</summary>
-internal sealed record HistoryTurnDto(string Question, string? Answer);
+/// <summary>Jedna zakończona tura rozmowy w żądaniu SSE (kontekst follow-upów). Answer=null przy abstynencji.
+/// SourceAnchors (opcjonalne) = etykiety/tytuły źródeł tamtej tury; klient API może je przysłać dla lepszej
+/// kontekstualizacji follow-upu, brak → łagodna degradacja do cytatów z tekstu odpowiedzi.</summary>
+internal sealed record HistoryTurnDto(string Question, string? Answer, IReadOnlyList<string>? SourceAnchors = null);
 
 public sealed class RetrievalOptions
 {

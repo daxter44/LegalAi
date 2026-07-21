@@ -295,6 +295,17 @@
     private static bool IsRefusal(Exchange ex) =>
         ex.Done && !ex.Abstained && ex.Answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Kotwice źródeł tury (etykieta lokalizatora + tytuł aktu, np. „art. 157 § 1 KW",
+    /// „Kodeks wykroczeń") dla kontekstualizacji retrievalu follow-upu — czyste, bez ryzyka halucynacji.
+    /// Garść pierwszych źródeł wystarcza; więcej rozmywa embedding bieżącej intencji.</summary>
+    private const int FollowUpSourceAnchorsTaken = 4;
+    private static IReadOnlyList<string> SourceAnchors(Exchange ex) =>
+        ex.Sources
+            .Take(FollowUpSourceAnchorsTaken)
+            .Select(s => $"{s.Label} {s.Title}".Trim())
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
+
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && e.CtrlKey) await Send();
@@ -382,7 +393,9 @@
         // Limit tur egzekwuje GroundedPrompt/FollowUpQuery.
         var history = _exchanges
             .Where(e => e.Done && e.Error is null)
-            .Select(e => new ChatTurn(e.Question, e.Abstained || IsRefusal(e) ? null : e.Answer))
+            .Select(e => e.Abstained || IsRefusal(e)
+                ? new ChatTurn(e.Question, null)
+                : new ChatTurn(e.Question, e.Answer, SourceAnchors(e)))
             .ToList();
 
         var ex = new Exchange { Question = question, Streaming = true };
