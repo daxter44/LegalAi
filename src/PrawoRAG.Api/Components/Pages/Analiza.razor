@@ -205,6 +205,24 @@ else
                 {
                     <div class="answer">@((MarkupString)MarkdownRenderer.ToSafeHtml(r.Answer, r.Sources.Count, UnitAnchor(snap, unit.Index)))</div>
                 }
+                @* Feedback per jednostka (AN-6) — wymaga wiersza w DB (persystencja best-effort:
+                   gdy zapis padł, przycisków nie ma). Słownik werdyktów jak w czacie (golden set). *@
+                @if (r.Answer is not null && _storedUnits.TryGetValue(unit.Index, out var su))
+                {
+                    <div class="feedback">
+                        @if (su.FeedbackGiven is null)
+                        {
+                            <span class="feedback-label">Ocena:</span>
+                            <button class="btn-ghost" @onclick='() => UnitFeedback(unit.Index, "up")' title="Trafna analiza">👍</button>
+                            <button class="btn-ghost" @onclick='() => UnitFeedback(unit.Index, "wrong-answer")'>zła odpowiedź</button>
+                            <button class="btn-ghost" @onclick='() => UnitFeedback(unit.Index, "needless-refusal")'>niepotrzebna odmowa</button>
+                        }
+                        else
+                        {
+                            <span class="feedback-thanks">Dziękujemy za ocenę ✓</span>
+                        }
+                    </div>
+                }
                 @if (r.Sources.Count > 0)
                 {
                     <details class="sources">
@@ -331,6 +349,10 @@ else
     // Sidebar
     private List<AnalysisSummaryRow> _analyses = [];
 
+    // Feedback (AN-6): UnitIndex → wiersz DB (Id + dotychczasowa ocena). Wypełniane po zakończeniu
+    // analizy / wczytaniu z archiwum; puste, gdy persystencja padła (przyciski wtedy ukryte).
+    private Dictionary<int, StoredUnit> _storedUnits = new();
+
     // Dopytania
     private readonly List<FollowUpExchange> _followUps = [];
     private string _followUpInput = "";
@@ -385,6 +407,7 @@ else
                 stored = stored with { Status = AnalysisStatus.Interrupted };
             }
             _storedSnapshot = stored.ToSnapshot();
+            _storedUnits = stored.Units.ToDictionary(u => u.UnitIndex);
         }
         catch { _notice = "Nie udało się wczytać analizy."; }
     }
@@ -393,8 +416,44 @@ else
     {
         _session = session;
         _storedSnapshot = null;
-        _changedHandler = () => _ = InvokeAsync(StateHasChanged);
+        _storedUnits = new();
+        _changedHandler = () => _ = InvokeAsync(async () =>
+        {
+            // Po dojściu do stanu terminalnego dociągnij wiersze DB (feedback per jednostka, AN-6)
+            // i odśwież sidebar — jednorazowo (mapa pusta ⇒ jeszcze nie pobrane).
+            if (_session?.Snapshot().Status is AnalysisStatus.Done or AnalysisStatus.Interrupted or AnalysisStatus.Failed
+                && _storedUnits.Count == 0)
+            {
+                await RefreshStoredUnitsAsync();
+                await RefreshAnalysesAsync();
+            }
+            StateHasChanged();
+        });
         _session.Changed += _changedHandler;
+    }
+
+    private async Task RefreshStoredUnitsAsync()
+    {
+        if (Snap() is not { } snap) return;
+        try
+        {
+            if (await Store.GetAsync(snap.Id, _userId, CancellationToken.None) is { } stored)
+                _storedUnits = stored.Units.ToDictionary(u => u.UnitIndex);
+        }
+        catch { /* best-effort — bez DB nie ma feedbacku */ }
+    }
+
+    /// <summary>Ocena jednostki — best-effort, jednorazowa (1:1 w DB; UI blokuje po pierwszym).</summary>
+    private async Task UnitFeedback(int unitIndex, string verdict)
+    {
+        if (!_storedUnits.TryGetValue(unitIndex, out var su) || su.FeedbackGiven is not null) return;
+        try
+        {
+            await Store.AddUnitFeedbackAsync(su.Id, _userId, verdict, null, CancellationToken.None);
+            _storedUnits[unitIndex] = su with { FeedbackGiven = verdict };
+        }
+        catch { /* best-effort */ }
+        await InvokeAsync(StateHasChanged);
     }
 
     private void DetachSession()
@@ -402,6 +461,7 @@ else
         if (_session is not null && _changedHandler is not null) _session.Changed -= _changedHandler;
         _session = null;
         _storedSnapshot = null;
+        _storedUnits = new();
     }
 
     private void RemoveDocument()
@@ -511,6 +571,7 @@ else
             _notice = "Za dużo operacji w krótkim czasie — spróbuj ponownie za chwilę.";
             return;
         }
+        _storedUnits = new(); // po retry mapa feedbacku jest nieaktualna — dociągnie się po Done
         var session = _session;
         var userId = _userId;
         _ = Task.Run(() => Runner.RetryUnitsAsync(session, userId, indexes, session.Token));
