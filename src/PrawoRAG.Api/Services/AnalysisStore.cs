@@ -52,6 +52,35 @@ public interface IAnalysisStore
     Task AddUnitFeedbackAsync(Guid analysisUnitId, string userId, string verdict, string? note, CancellationToken ct);
 }
 
+/// <summary>
+/// Mapowanie raportu z DB na <see cref="AnalysisSnapshot"/> ZDEGRADOWANY (AN-5): jednostki z pustym
+/// Text (treści nie przechowujemy), dziury po nieprzeanalizowanych jednostkach (przerwana analiza)
+/// wypełnione placeholderami — UI indeksuje Results[Index-1], więc pozycje muszą się zgadzać,
+/// a Total musi mówić prawdę (X z N, nie X z X). Czysta funkcja — testowalna poza Blazorem.
+/// </summary>
+public static class StoredAnalysisExtensions
+{
+    public static AnalysisSnapshot ToSnapshot(this StoredAnalysis a)
+    {
+        var maxIndex = a.Units.Count == 0 ? 0 : a.Units.Max(u => u.UnitIndex);
+        var total = Math.Max(a.UnitsTotal, maxIndex);
+        var byIndex = a.Units.ToDictionary(u => u.UnitIndex);
+
+        var units = Enumerable.Range(1, total)
+            .Select(i => new DocUnit(i, byIndex.TryGetValue(i, out var u) ? u.Heading : $"fragment {i}", ""))
+            .ToList();
+        var results = Enumerable.Range(1, total)
+            .Select(i => byIndex.TryGetValue(i, out var u)
+                ? new UnitAnalysis(i, u.Heading, u.Verdict, u.Answer, u.Sources, Check: null, Error: u.Error)
+                : null)
+            .ToList();
+
+        return new AnalysisSnapshot(
+            a.Id, a.FileName, a.PageCount, a.Prompt, a.Status, units, a.UnitsTruncated,
+            results, results.Count(r => r is not null), a.Summary, a.Error);
+    }
+}
+
 /// <summary>Krótkożyciowy DbContext per operacja (scope factory) — jak <see cref="ConversationStore"/>;
 /// singleton, bo woła go singleton <see cref="AnalysisRunner"/> spoza obwodu Blazora.</summary>
 public sealed class AnalysisStore(IServiceScopeFactory scopeFactory) : IAnalysisStore

@@ -81,7 +81,11 @@ public static class AnalysisFollowUp
             if (result is not null)
                 sb.Append(" — ").Append(AnalysisPrompts.Label(result.Verdict)).Append(": ")
                   .Append(Trim(result.Answer ?? result.Error ?? "", 260));
-            sb.Append("\nTreść: ").Append(Trim(unit.Text, 240)).Append('\n');
+            // Snapshot zdegradowany (raport z DB, AN-5) ma puste Text — pusta etykieta „Treść:"
+            // myliłaby model, więc segment pojawia się tylko przy żywej sesji.
+            if (unit.Text.Length > 0)
+                sb.Append("\nTreść: ").Append(Trim(unit.Text, 240));
+            sb.Append('\n');
         }
 
         if (!string.IsNullOrWhiteSpace(snap.Summary))

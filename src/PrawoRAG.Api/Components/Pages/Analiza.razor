@@ -7,6 +7,7 @@
 @inject PrawoRAG.Domain.Embeddings.IEmbeddingProvider Embedder
 @inject AnalysisSessionStore Sessions
 @inject AnalysisRunner Runner
+@inject IAnalysisStore Store
 @inject ICurrentUser CurrentUser
 @inject RateGuard RateGuard
 @inject CostGuard CostGuard
@@ -16,14 +17,39 @@
 
 <h1 class="sr-only">Analiza dokumentu</h1>
 
-<div class="analysis">
 @if (!Options.Value.Enabled)
 {
     <div class="banner banner-warn" role="status">
         Analiza dokumentów jest wyłączona (flaga <code>Analysis:Enabled</code>). To funkcja eksperymentalna.
     </div>
+    return;
 }
-else if (_session is null)
+
+<button class="btn-sidebar-toggle" @onclick="() => _mobileSidebarOpen = true" aria-label="Moje analizy">
+    ☰ Moje analizy
+</button>
+
+<div class="chat-layout">
+@if (_mobileSidebarOpen)
+{
+    <div class="sidebar-backdrop" @onclick="() => _mobileSidebarOpen = false"></div>
+}
+<aside class="chat-sidebar @(_mobileSidebarOpen ? "open" : "")">
+    <button class="btn btn-new-chat" @onclick="Reset">➕ Nowa analiza</button>
+    <nav class="conv-list" aria-label="Moje analizy">
+        @foreach (var a in _analyses)
+        {
+            <button class="conv-item @(a.Id == Snap()?.Id ? "active" : "")"
+                    @onclick="() => LoadAnalysis(a.Id)" title="@a.Prompt">
+                <span class="conv-title">@StatusIcon(a.Status) @a.FileName</span>
+                <span class="conv-date">@a.UpdatedAt.ToLocalTime().ToString("dd.MM HH:mm")</span>
+            </button>
+        }
+    </nav>
+</aside>
+
+<div class="analysis">
+@if (Snap() is not { } snap)
 {
     @* ── Ekran startowy: załącznik + intencja ─────────────────────────────── *@
     <div class="analysis-setup">
@@ -31,7 +57,8 @@ else if (_session is null)
         <p class="empty-hint">
             Dołącz PDF (umowę, pismo), opisz co sprawdzić — system oceni każdy paragraf OSOBNO
             w świetle przepisów i orzecznictwa, a na końcu streści całość. Treść dokumentu żyje
-            wyłącznie w pamięci (ok. @Options.Value.SessionTtlMinutes min) — nie zapisujemy jej nigdzie.
+            wyłącznie w pamięci (ok. @Options.Value.SessionTtlMinutes min) i NIE jest zapisywana;
+            zapisujemy sam raport (werdykty, uzasadnienia, źródła).
         </p>
 
         <div class="chat-attach">
@@ -80,17 +107,23 @@ else if (_session is null)
 }
 else
 {
-    var snap = _session.Snapshot();
-
     @* ── Postęp / raport ──────────────────────────────────────────────────── *@
     <div class="analysis-head">
         <span>📄 <strong>@snap.FileName</strong> · @snap.Prompt</span>
-        <span class="analysis-id" title="Id sesji — analiza działa dalej po odświeżeniu strony; sesja żyje ok. @Options.Value.SessionTtlMinutes min od ostatniego użycia">
+        <span class="analysis-id" title="Id sesji — analiza działa dalej po odświeżeniu strony; raport zostaje na liście">
             sesja: <code>@snap.Id.ToString("N")[..8]</code>
         </span>
     </div>
 
-    @if (snap.Status is AnalysisStatus.Preparing or AnalysisStatus.Analyzing or AnalysisStatus.Summarizing)
+    @if (_degraded)
+    {
+        <div class="banner" role="status">
+            📁 Raport wczytany z archiwum. Treść dokumentu nie jest przechowywana — widoczne są werdykty,
+            uzasadnienia i źródła; ponowienie fragmentów wymaga nowej analizy z plikiem.
+        </div>
+    }
+
+    @if (!_degraded && snap.Status is AnalysisStatus.Preparing or AnalysisStatus.Analyzing or AnalysisStatus.Summarizing)
     {
         <div class="banner" role="status">
             @(snap.Status switch
@@ -120,7 +153,7 @@ else
         </div>
     }
 
-    @if (snap.Status is AnalysisStatus.Done or AnalysisStatus.Interrupted && FailedUnitCount(snap) > 0)
+    @if (!_degraded && snap.Status is AnalysisStatus.Done or AnalysisStatus.Interrupted && FailedUnitCount(snap) > 0)
     {
         <div class="banner banner-warn" role="status">
             @FailedUnitCount(snap) fragmentów zakończyło się błędem.
@@ -145,21 +178,24 @@ else
                 <span class="source-n">@unit.Heading</span>
                 @if (r is null)
                 {
-                    <span class="badge">⏳ w kolejce…</span>
+                    <span class="badge">@(_degraded ? "nieprzeanalizowany" : "⏳ w kolejce…")</span>
                 }
                 else
                 {
                     <span class="badge @VerdictCss(r.Verdict)">@AnalysisPrompts.Label(r.Verdict)</span>
                 }
             </summary>
-            <blockquote class="source-snippet">@Truncate(unit.Text, 400)</blockquote>
+            @if (unit.Text.Length > 0)
+            {
+                <blockquote class="source-snippet">@Truncate(unit.Text, 400)</blockquote>
+            }
             @if (r is not null)
             {
                 @if (r.Error is not null)
                 {
                     <div class="banner banner-danger" role="alert">
                         @r.Error
-                        @if (snap.Status is AnalysisStatus.Done or AnalysisStatus.Interrupted)
+                        @if (!_degraded && snap.Status is AnalysisStatus.Done or AnalysisStatus.Interrupted)
                         {
                             <button class="btn-ghost" @onclick="() => RetryUnits([unit.Index])">↻ ponów</button>
                         }
@@ -167,7 +203,7 @@ else
                 }
                 else if (r.Answer is not null)
                 {
-                    <div class="answer">@((MarkupString)MarkdownRenderer.ToSafeHtml(r.Answer, r.Sources.Count, UnitAnchor(unit.Index)))</div>
+                    <div class="answer">@((MarkupString)MarkdownRenderer.ToSafeHtml(r.Answer, r.Sources.Count, UnitAnchor(snap, unit.Index)))</div>
                 }
                 @if (r.Sources.Count > 0)
                 {
@@ -175,7 +211,7 @@ else
                         <summary>Źródła (@r.Sources.Count)</summary>
                         @foreach (var s in r.Sources)
                         {
-                            <div class="source-card" id="src-@(UnitAnchor(unit.Index))-@s.Index">
+                            <div class="source-card" id="src-@(UnitAnchor(snap, unit.Index))-@s.Index">
                                 <div class="source-head">
                                     <span class="source-n">[@s.Index]</span>
                                     <span class="source-label">@s.Label</span>
@@ -193,11 +229,17 @@ else
         </details>
     }
 
-    @* ── Dopytania (SPK-6) — dopiero po zakończeniu raportu ───────────────── *@
-    @if (snap.Status == AnalysisStatus.Done)
+    @* ── Dopytania (SPK-6) — po zakończeniu raportu; w trybie z archiwum działają na werdyktach ── *@
+    @if (snap.Status is AnalysisStatus.Done or AnalysisStatus.Interrupted)
     {
         <div class="analysis-followup">
             <p class="empty-title">Dopytaj o analizę</p>
+            @if (_degraded)
+            {
+                <p class="empty-hint">Dopytania opierają się na werdyktach i uzasadnieniach z raportu —
+                    bez treści dokumentu (nie jest przechowywana). Aby dopytać o treść konkretnych
+                    paragrafów, uruchom nową analizę z plikiem.</p>
+            }
             @foreach (var ex in _followUps)
             {
                 <div class="msg msg-user">@ex.Question</div>
@@ -243,6 +285,7 @@ else
                     {
                         <div class="banner banner-danger" role="alert">Błąd: @ex.Error</div>
                     }
+                }
                 </div>
             }
             @if (_notice is not null)
@@ -259,9 +302,9 @@ else
                 </button>
             </form>
         </div>
-        <p class="empty-hint">Nowy dokument? <button class="btn-ghost" @onclick="Reset">rozpocznij nową analizę</button></p>
     }
 }
+</div>
 </div>
 
 @code {
@@ -276,10 +319,17 @@ else
     private string? _docNotice;
     private string _prompt = "";
     private string? _notice;
+    private bool _mobileSidebarOpen;
 
-    // Sesja analizy (stan żyje w singletonie — po F5 można wrócić po id; tu trzymamy referencję)
+    // Bieżący raport: żywa sesja (pełny tryb) ALBO snapshot z DB (tryb ograniczony, _degraded=true).
+    // Żywa sesja zawsze wygrywa — DB tylko gdy sesji brak (decyzja krawędziowa AN-5).
     private AnalysisSession? _session;
+    private AnalysisSnapshot? _storedSnapshot;
+    private bool _degraded => _session is null && _storedSnapshot is not null;
     private Action? _changedHandler;
+
+    // Sidebar
+    private List<AnalysisSummaryRow> _analyses = [];
 
     // Dopytania
     private readonly List<FollowUpExchange> _followUps = [];
@@ -288,6 +338,8 @@ else
     private CancellationTokenSource? _cts;
     private string _userId = "demo@local";
 
+    private AnalysisSnapshot? Snap() => _session?.Snapshot() ?? _storedSnapshot;
+
     protected override async Task OnInitializedAsync()
     {
         // Tożsamość jak w Chat.razor: AuthenticationState, nie IHttpContextAccessor.
@@ -295,6 +347,61 @@ else
         _userId = auth.User.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name }
             ? name
             : CurrentUser.UserId;
+        await RefreshAnalysesAsync();
+    }
+
+    /// <summary>Lista analiz w sidebarze — best-effort (brak bazy nie blokuje funkcji).</summary>
+    private async Task RefreshAnalysesAsync()
+    {
+        try { _analyses = (await Store.ListAsync(_userId, 50, CancellationToken.None)).ToList(); }
+        catch { /* best-effort */ }
+    }
+
+    /// <summary>Wczytanie raportu: żywa sesja wygrywa (pełny tryb: treść, retry, embeddingi);
+    /// inaczej rekord DB jako snapshot zdegradowany. Rekord „Analyzing" bez żywej sesji = kłamstwo
+    /// po restarcie — samonaprawa oznacza go jako Przerwany.</summary>
+    private async Task LoadAnalysis(Guid id)
+    {
+        if (Snap()?.Id == id) { _mobileSidebarOpen = false; return; }
+        DetachSession();
+        _followUps.Clear();
+        _notice = null;
+        _mobileSidebarOpen = false;
+
+        if (Sessions.TryGet(id, _userId) is { } live)
+        {
+            AttachSession(live);
+            return;
+        }
+
+        try
+        {
+            var stored = await Store.GetAsync(id, _userId, CancellationToken.None);
+            if (stored is null) { _notice = "Nie udało się wczytać analizy."; return; }
+            if (stored.Status == AnalysisStatus.Analyzing)
+            {
+                // Samonaprawa: proces nie ma żywej sesji o tym id → analiza zginęła (restart).
+                await Store.MarkInterruptedAsync(id, CancellationToken.None);
+                stored = stored with { Status = AnalysisStatus.Interrupted };
+            }
+            _storedSnapshot = stored.ToSnapshot();
+        }
+        catch { _notice = "Nie udało się wczytać analizy."; }
+    }
+
+    private void AttachSession(AnalysisSession session)
+    {
+        _session = session;
+        _storedSnapshot = null;
+        _changedHandler = () => _ = InvokeAsync(StateHasChanged);
+        _session.Changed += _changedHandler;
+    }
+
+    private void DetachSession()
+    {
+        if (_session is not null && _changedHandler is not null) _session.Changed -= _changedHandler;
+        _session = null;
+        _storedSnapshot = null;
     }
 
     private void RemoveDocument()
@@ -357,8 +464,9 @@ else
     }
 
     /// <summary>Start długiego procesu: sesja w singletonie + runner W TLE (świadomie bez await —
-    /// analiza przeżywa F5/rekonekt obwodu; id sesji pozwala wrócić). Zdarzenie Changed odświeża UI.</summary>
-    private void StartAnalysis()
+    /// analiza przeżywa F5/rekonekt obwodu; wraca się do niej z listy). Token SESJI (nie obwodu):
+    /// anulowanie z przycisku/sweepu TTL, nie przez F5.</summary>
+    private async Task StartAnalysis()
     {
         var prompt = _prompt.Trim();
         if (_pdf is null || _units.Count == 0 || prompt.Length == 0) return;
@@ -374,15 +482,12 @@ else
         }
 
         _notice = null;
-        _session = Sessions.Create(_userId, _fileName, _pdf.PageCount, prompt, _units, _unitsTruncated);
-        _changedHandler = () => _ = InvokeAsync(StateHasChanged);
-        _session.Changed += _changedHandler;
+        var session = Sessions.Create(_userId, _fileName, _pdf.PageCount, prompt, _units, _unitsTruncated);
+        AttachSession(session);
 
-        // Token SESJI (nie obwodu): anulowanie z przycisku/sweepu TTL, a nie przez F5 —
-        // analiza ma przeżyć odświeżenie strony.
-        var session = _session;
         var userId = _userId;
         _ = Task.Run(() => Runner.RunAsync(session, userId, session.Token));
+        await RefreshAnalysesAsync(); // rekord Analyzing pojawia się na liście best-effort z opóźnieniem
     }
 
     private void CancelAnalysis() => _session?.Cancel();
@@ -411,19 +516,24 @@ else
         _ = Task.Run(() => Runner.RetryUnitsAsync(session, userId, indexes, session.Token));
     }
 
-    /// <summary>Dopytanie: routing kontekstu per pytanie (odwołania wprost → cosine → przekrojowo),
-    /// tura-kotwica + ostatnie dopytania jako historia zwykłego czatu RAG.</summary>
+    /// <summary>Dopytanie: routing kontekstu per pytanie (odwołania wprost → cosine przy żywej sesji →
+    /// przekrojowo), tura-kotwica + ostatnie dopytania jako historia zwykłego czatu RAG. W trybie
+    /// z archiwum kotwica opiera się na werdyktach/uzasadnieniach (bez treści §).</summary>
     private async Task SendFollowUp()
     {
         var question = _followUpInput.Trim();
-        if (question.Length == 0 || _followUpBusy || _session is null) return;
+        if (question.Length == 0 || _followUpBusy) return;
 
         _notice = null;
-        if (Sessions.TryGet(_session.Snapshot().Id, _userId) is null)
+        // Żywa sesja mogła wygasnąć w trakcie oglądania — degradacja do rekordu DB zamiast blokady.
+        if (_session is not null && Sessions.TryGet(_session.Snapshot().Id, _userId) is null)
         {
-            _notice = "Sesja analizy wygasła — rozpocznij analizę ponownie (treści nie przechowujemy).";
-            return;
+            var id = _session.Snapshot().Id;
+            DetachSession();
+            await LoadAnalysis(id);
         }
+        if (Snap() is not { } snap) return;
+
         if (!RateGuard.TryAcquire(_userId))
         {
             _notice = "Za dużo zapytań w krótkim czasie — spróbuj ponownie za chwilę.";
@@ -437,7 +547,6 @@ else
 
         _followUpInput = "";
         _followUpBusy = true;
-        var snap = _session.Snapshot();
 
         var ex = new FollowUpExchange { Question = question, Streaming = true };
         _followUps.Add(ex);
@@ -446,9 +555,9 @@ else
 
         try
         {
-            // Routing: odwołania wprost → embeddingi (o ile są) → tryb przekrojowy (pusta selekcja).
+            // Routing: odwołania wprost → embeddingi (tylko żywa sesja) → tryb przekrojowy.
             var selected = AnalysisFollowUp.FindReferencedUnits(question, snap.Units);
-            if (selected.Count == 0 && _session.UnitEmbeddings is { } embeddings)
+            if (selected.Count == 0 && _session?.UnitEmbeddings is { } embeddings)
             {
                 var qvec = await Embedder.EmbedQueryAsync(question, ct);
                 selected = AnalysisFollowUp.SelectByEmbedding(qvec, embeddings);
@@ -487,15 +596,16 @@ else
         }
     }
 
-    private void Reset()
+    private async Task Reset()
     {
-        if (_session is not null && _changedHandler is not null) _session.Changed -= _changedHandler;
-        _session = null;
+        DetachSession();
         _followUps.Clear();
         _followUpInput = "";
         _notice = null;
+        _mobileSidebarOpen = false;
         RemoveDocument();
         _prompt = "";
+        await RefreshAnalysesAsync();
     }
 
     private static string VerdictCss(UnitVerdict v) => v switch
@@ -507,8 +617,16 @@ else
         _ => "",
     };
 
-    private string UnitAnchor(int unitIndex) =>
-        $"au{_session?.Snapshot().Id.ToString("N")[..6]}-{unitIndex}";
+    private static string StatusIcon(AnalysisStatus s) => s switch
+    {
+        AnalysisStatus.Done => "✓",
+        AnalysisStatus.Failed => "✗",
+        AnalysisStatus.Interrupted => "⏸",
+        _ => "⏳",
+    };
+
+    private static string UnitAnchor(AnalysisSnapshot snap, int unitIndex) =>
+        $"au{snap.Id.ToString("N")[..6]}-{unitIndex}";
 
     private static string Truncate(string text, int max) =>
         text.Length <= max ? text : text[..max] + "…";
