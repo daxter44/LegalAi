@@ -28,7 +28,9 @@ services:
   # modelu wymaga re-embeddingu całego korpusu (zob. plan, „Lock modelu embeddingów").
   tei:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-    command: ["--model-id", "${EMBEDDING_MODEL_ID:-sdadas/mmlw-retrieval-roberta-large-v2}", "--port", "80", "--auto-truncate"]
+    # --max-client-batch-size 256: parytet z deployem GPU (RUNBOOK-3060) i klientem
+    # (Embeddings:MaxBatch=256) — pozwala wysyłać większe batche /embed i /tokenize (RÓWN-3).
+    command: ["--model-id", "${EMBEDDING_MODEL_ID:-sdadas/mmlw-retrieval-roberta-large-v2}", "--port", "80", "--auto-truncate", "--max-client-batch-size", "256"]
     environment:
       HUGGINGFACE_HUB_CACHE: /data
     ports:
