@@ -34,6 +34,7 @@ builder.Services.Configure<DocumentsOptions>(builder.Configuration.GetSection(Do
 // powrotu po F5), runner działa w tle poza obwodem Blazora.
 builder.Services.Configure<AnalysisOptions>(builder.Configuration.GetSection(AnalysisOptions.SectionName));
 builder.Services.AddSingleton<AnalysisSessionStore>();
+builder.Services.AddSingleton<IAnalysisStore, AnalysisStore>(); // raport BEZ treści dokumentu (AN-3)
 builder.Services.AddSingleton<AnalysisRunner>();
 builder.Services.AddOpenApi();
 

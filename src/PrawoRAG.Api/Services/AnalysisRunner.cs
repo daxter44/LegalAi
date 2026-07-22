@@ -16,10 +16,17 @@ namespace PrawoRAG.Api.Services;
 /// wrócić do wyniku po F5).
 /// </summary>
 public sealed class AnalysisRunner(
-    IServiceScopeFactory scopes, IOptions<AnalysisOptions> options, CostGuard costGuard)
+    IServiceScopeFactory scopes, IOptions<AnalysisOptions> options, CostGuard costGuard, IAnalysisStore store)
 {
     public async Task RunAsync(AnalysisSession session, string userId, CancellationToken ct)
     {
+        // Persystencja raportu (AN-3) jest BEST-EFFORT w całości: analiza dla użytkownika ma
+        // priorytet nad zapisem (wzorzec Chat.razor). Rekord powstaje NA STARCIE (status Analyzing),
+        // żeby analiza w toku była widoczna na liście po F5.
+        await Persist(() => store.CreateAsync(
+            session.Id, userId, session.FileName, session.PageCount, session.Prompt,
+            session.Units.Count, session.UnitsTruncated, CancellationToken.None));
+
         try
         {
             // Przygotowanie: embeddingi jednostek (routing dopytań, SPK-6). Best-effort — bez nich
@@ -38,16 +45,24 @@ public sealed class AnalysisRunner(
             await Task.WhenAll(session.Units.Select(async unit =>
             {
                 await gate.WaitAsync(ct);
+                UnitAnalysis? result = null;
                 try
                 {
-                    session.SetUnitResult(await AnalyzeUnitAsync(session.Prompt, unit, userId, ct));
+                    result = await AnalyzeUnitAsync(session.Prompt, unit, userId, ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    session.SetUnitResult(new UnitAnalysis(
-                        unit.Index, unit.Heading, UnitVerdict.Error, null, [], Error: ex.Message));
+                    result = new UnitAnalysis(
+                        unit.Index, unit.Heading, UnitVerdict.Error, null, [], Error: ex.Message);
                 }
                 finally { gate.Release(); }
+                if (result is not null)
+                {
+                    session.SetUnitResult(result);
+                    // Zapis W TRAKCIE (nie na końcu): kill procesu w połowie = częściowy raport
+                    // (status Interrupted po sweepie), nie nic.
+                    await Persist(() => store.UpsertUnitAsync(session.Id, result, CancellationToken.None));
+                }
             }));
 
             session.SetStatus(AnalysisStatus.Summarizing);
@@ -56,17 +71,26 @@ public sealed class AnalysisRunner(
             catch (OperationCanceledException) { throw; }
             catch { /* raport per-jednostka stoi bez streszczenia */ }
             session.Complete(summary);
+            await Persist(() => store.CompleteAsync(session.Id, summary, CancellationToken.None));
         }
         catch (OperationCanceledException)
         {
             // Anulowane (przycisk w UI albo sweep TTL) — częściowy raport zostaje czytelny,
             // to NIE awaria: Interrupted, nie Failed.
             session.SetStatus(AnalysisStatus.Interrupted);
+            await Persist(() => store.MarkInterruptedAsync(session.Id, CancellationToken.None));
         }
         catch (Exception ex)
         {
             session.Fail(ex.Message);
+            await Persist(() => store.FailAsync(session.Id, ex.Message, CancellationToken.None));
         }
+    }
+
+    /// <summary>Zapis best-effort: awaria bazy nie może zablokować ani zwalić analizy.</summary>
+    private static async Task Persist(Func<Task> op)
+    {
+        try { await op(); } catch { /* best-effort */ }
     }
 
     /// <summary>Faza map jednej jednostki: dzienne limity kosztów (CostGuard — dokument to KILKANAŚCIE

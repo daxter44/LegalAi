@@ -60,11 +60,50 @@ public class AnalysisRunnerTests
         }
     }
 
+    /// <summary>Fake persystencji raportu: rejestruje wywołania (asercje) i opcjonalnie rzuca
+    /// (awaria bazy nie może zwalić analizy).</summary>
+    private sealed class RecordingAnalysisStore : IAnalysisStore
+    {
+        public bool Throw { get; set; }
+        public List<Guid> Created { get; } = [];
+        public List<(Guid AnalysisId, UnitAnalysis Unit)> Upserts { get; } = [];
+        public List<(Guid AnalysisId, string? Summary)> Completed { get; } = [];
+        public List<Guid> Interrupted { get; } = [];
+        public List<(Guid AnalysisId, string Error)> Failed { get; } = [];
+
+        private void MaybeThrow() { if (Throw) throw new InvalidOperationException("baza padła"); }
+
+        public Task CreateAsync(Guid id, string userId, string fileName, int pageCount, string prompt,
+            int unitsTotal, bool unitsTruncated, CancellationToken ct)
+        { MaybeThrow(); lock (Created) Created.Add(id); return Task.CompletedTask; }
+
+        public Task UpsertUnitAsync(Guid analysisId, UnitAnalysis unit, CancellationToken ct)
+        { MaybeThrow(); lock (Upserts) Upserts.Add((analysisId, unit)); return Task.CompletedTask; }
+
+        public Task CompleteAsync(Guid analysisId, string? summary, CancellationToken ct)
+        { MaybeThrow(); lock (Completed) Completed.Add((analysisId, summary)); return Task.CompletedTask; }
+
+        public Task FailAsync(Guid analysisId, string error, CancellationToken ct)
+        { MaybeThrow(); lock (Failed) Failed.Add((analysisId, error)); return Task.CompletedTask; }
+
+        public Task MarkInterruptedAsync(Guid analysisId, CancellationToken ct)
+        { MaybeThrow(); lock (Interrupted) Interrupted.Add(analysisId); return Task.CompletedTask; }
+
+        public Task<int> MarkAllInterruptedAsync(CancellationToken ct) => Task.FromResult(0);
+        public Task<IReadOnlyList<AnalysisSummaryRow>> ListAsync(string userId, int limit, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<AnalysisSummaryRow>>([]);
+        public Task<StoredAnalysis?> GetAsync(Guid id, string userId, CancellationToken ct)
+            => Task.FromResult<StoredAnalysis?>(null);
+        public Task AddUnitFeedbackAsync(Guid analysisUnitId, string userId, string verdict, string? note, CancellationToken ct)
+            => Task.CompletedTask;
+    }
+
     private static IReadOnlyList<DocUnit> Units(int n) =>
         Enumerable.Range(1, n).Select(i => new DocUnit(i, $"§ {i}", $"§ {i} Treść postanowienia numer {i}.")).ToList();
 
     private static (AnalysisRunner Runner, AnalysisSessionStore Store) Harness(
-        ILlmProvider llm, double signal = 0.9, int maxParallelism = 4, AccessOptions? access = null)
+        ILlmProvider llm, double signal = 0.9, int maxParallelism = 4, AccessOptions? access = null,
+        RecordingAnalysisStore? analysisStore = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton<IEmbeddingProvider>(new FakeEmbeddingProvider());
@@ -77,7 +116,8 @@ public class AnalysisRunnerTests
 
         var options = Options.Create(new AnalysisOptions { MaxParallelism = maxParallelism });
         var costGuard = new CostGuard(Options.Create(access ?? new AccessOptions()), TimeProvider.System);
-        return (new AnalysisRunner(provider.GetRequiredService<IServiceScopeFactory>(), options, costGuard),
+        return (new AnalysisRunner(provider.GetRequiredService<IServiceScopeFactory>(), options, costGuard,
+                    analysisStore ?? new RecordingAnalysisStore()),
                 new AnalysisSessionStore(TimeProvider.System, options));
     }
 
@@ -192,6 +232,40 @@ public class AnalysisRunnerTests
         Assert.Equal(2, snap.Results.Count(r => r!.Verdict == UnitVerdict.Error && r.Error!.Contains("limit")));
         Assert.Equal(2, llm.Requests.Count);   // streszczenie też ucięte limitem
         Assert.Null(snap.Summary);
+    }
+
+    [Fact] // persystencja raportu: Create na starcie, upsert per jednostka, Complete na końcu
+    public async Task Runner_persists_report_lifecycle()
+    {
+        var persisted = new RecordingAnalysisStore();
+        var llm = new ScriptedLlm(r => r.Messages[0].Content == AnalysisPrompts.SummarySystemPrompt
+            ? "Streszczenie." : "WERDYKT: OK\nOdpowiedź [1].");
+        var (runner, store) = Harness(llm, analysisStore: persisted);
+        var session = store.Create("tester", "u.pdf", 1, "p", Units(3), false);
+
+        await runner.RunAsync(session, "tester", default);
+
+        Assert.Equal([session.Id], persisted.Created);
+        Assert.Equal(3, persisted.Upserts.Count);
+        Assert.All(persisted.Upserts, u => Assert.Equal(session.Id, u.AnalysisId));
+        Assert.Equal([(session.Id, "Streszczenie.")], persisted.Completed);
+        Assert.Empty(persisted.Failed);
+    }
+
+    [Fact] // awaria bazy przy KAŻDYM zapisie → analiza i tak kończy się Done (persystencja best-effort)
+    public async Task Store_failure_does_not_break_analysis()
+    {
+        var persisted = new RecordingAnalysisStore { Throw = true };
+        var llm = new ScriptedLlm(r => r.Messages[0].Content == AnalysisPrompts.SummarySystemPrompt
+            ? "Streszczenie." : "WERDYKT: OK\nOdpowiedź [1].");
+        var (runner, store) = Harness(llm, analysisStore: persisted);
+        var session = store.Create("tester", "u.pdf", 1, "p", Units(2), false);
+
+        await runner.RunAsync(session, "tester", default);
+
+        var snap = session.Snapshot();
+        Assert.Equal(AnalysisStatus.Done, snap.Status);
+        Assert.Equal(2, snap.Completed);
     }
 
     [Fact] // anulowanie tokenem sesji → Interrupted (częściowy raport), NIE Failed
