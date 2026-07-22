@@ -27,6 +27,11 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options) : Db
     public DbSet<MessageEntity> Messages => Set<MessageEntity>();
     public DbSet<FeedbackEntity> Feedbacks => Set<FeedbackEntity>();
 
+    // --- analiza dokumentów (raport BEZ treści dokumentu — patrz AnalysisEntity) ---
+    public DbSet<AnalysisEntity> Analyses => Set<AnalysisEntity>();
+    public DbSet<AnalysisUnitEntity> AnalysisUnits => Set<AnalysisUnitEntity>();
+    public DbSet<AnalysisUnitFeedbackEntity> AnalysisUnitFeedbacks => Set<AnalysisUnitFeedbackEntity>();
+
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.HasPostgresExtension("vector");
@@ -113,6 +118,46 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options) : Db
             e.HasOne(x => x.Message)
                 .WithOne(m => m.Feedback)
                 .HasForeignKey<FeedbackEntity>(x => x.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<AnalysisEntity>(e =>
+        {
+            e.ToTable("analyses");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UserId).HasMaxLength(320);
+            e.Property(x => x.FileName).HasMaxLength(300);
+            e.Property(x => x.Status).HasMaxLength(20);
+            e.Property(x => x.Error).HasMaxLength(2000);
+            e.HasIndex(x => new { x.UserId, x.UpdatedAt }); // lista własnych analiz, najnowsze pierwsze
+        });
+
+        b.Entity<AnalysisUnitEntity>(e =>
+        {
+            e.ToTable("analysis_units");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Heading).HasMaxLength(200);
+            e.Property(x => x.Verdict).HasMaxLength(20);
+            e.Property(x => x.Sources).HasColumnType("jsonb");
+            e.Property(x => x.Error).HasMaxLength(2000);
+            e.HasOne(x => x.Analysis)
+                .WithMany(a => a.Units)
+                .HasForeignKey(x => x.AnalysisId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Klucz naturalny — retry jednostki nadpisuje wiersz (upsert), nie dubluje.
+            e.HasIndex(x => new { x.AnalysisId, x.UnitIndex }).IsUnique();
+        });
+
+        b.Entity<AnalysisUnitFeedbackEntity>(e =>
+        {
+            e.ToTable("analysis_unit_feedback");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UserId).HasMaxLength(320);
+            e.Property(x => x.Verdict).HasMaxLength(30);
+            e.Property(x => x.Note).HasMaxLength(2000);
+            e.HasOne(x => x.Unit)
+                .WithOne(u => u.Feedback)
+                .HasForeignKey<AnalysisUnitFeedbackEntity>(x => x.AnalysisUnitId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
