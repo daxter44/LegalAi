@@ -28,6 +28,13 @@ builder.Services.AddScoped<ITemporalAugmenter, TemporalAugmenter>(); // AKT-2: d
 builder.Services.Configure<RetrievalOptions>(builder.Configuration.GetSection("Retrieval"));
 builder.Services.Configure<DiagnosticsOptions>(builder.Configuration.GetSection("Diagnostics"));
 builder.Services.Configure<DocumentsOptions>(builder.Configuration.GetSection(DocumentsOptions.SectionName));
+
+// --- Analiza dokumentów (spike SPK) — map-reduce per jednostka; Analysis:Enabled=false (domyślnie)
+// chowa stronę /analiza. Store i runner to singletony: sesja żyje w pamięci procesu (id = bilet
+// powrotu po F5), runner działa w tle poza obwodem Blazora.
+builder.Services.Configure<AnalysisOptions>(builder.Configuration.GetSection(AnalysisOptions.SectionName));
+builder.Services.AddSingleton<AnalysisSessionStore>();
+builder.Services.AddSingleton<AnalysisRunner>();
 builder.Services.AddOpenApi();
 
 // Blazor Server (UI demo) w tym samym hoście — te same serwisy przez DI, bez skoku HTTP.

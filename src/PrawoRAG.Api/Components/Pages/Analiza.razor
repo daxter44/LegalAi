@@ -1,0 +1,485 @@
+@page "/analiza"
+@rendermode InteractiveServer
+@using PrawoRAG.Domain.Llm
+@using PrawoRAG.Domain.Privacy
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IChatService ChatService
+@inject PrawoRAG.Domain.Embeddings.IEmbeddingProvider Embedder
+@inject AnalysisSessionStore Sessions
+@inject AnalysisRunner Runner
+@inject ICurrentUser CurrentUser
+@inject RateGuard RateGuard
+@inject CostGuard CostGuard
+@inject AuthenticationStateProvider AuthState
+@inject Microsoft.Extensions.Options.IOptions<AnalysisOptions> Options
+@implements IDisposable
+
+<h1 class="sr-only">Analiza dokumentu</h1>
+
+<div class="analysis">
+@if (!Options.Value.Enabled)
+{
+    <div class="banner banner-warn" role="status">
+        Analiza dokumentów jest wyłączona (flaga <code>Analysis:Enabled</code>). To funkcja eksperymentalna.
+    </div>
+}
+else if (_session is null)
+{
+    @* ── Ekran startowy: załącznik + intencja ─────────────────────────────── *@
+    <div class="analysis-setup">
+        <p class="empty-title">Analiza dokumentu fragment po fragmencie</p>
+        <p class="empty-hint">
+            Dołącz PDF (umowę, pismo), opisz co sprawdzić — system oceni każdy paragraf OSOBNO
+            w świetle przepisów i orzecznictwa, a na końcu streści całość. Treść dokumentu żyje
+            wyłącznie w pamięci (ok. @Options.Value.SessionTtlMinutes min) — nie zapisujemy jej nigdzie.
+        </p>
+
+        <div class="chat-attach">
+            <label class="attach-btn" title="Dołącz PDF — treść nie jest zapisywana">
+                📎 <InputFile OnChange="OnFileSelected" accept=".pdf" disabled="@_docLoading" />
+            </label>
+            @if (_docLoading)
+            {
+                <span class="attach-chip">⏳ przetwarzam załącznik…</span>
+            }
+            else if (_pdf is not null)
+            {
+                <span class="attach-chip">
+                    📄 @_fileName (@_pdf.PageCount str.) — wykryto @_units.Count jednostek analizy
+                    @(_unitsTruncated ? $" (obcięto do {Options.Value.MaxUnits})" : "")
+                    <button class="attach-remove" @onclick="RemoveDocument" title="Usuń załącznik">✕</button>
+                </span>
+            }
+            @if (_docNotice is not null)
+            {
+                <span class="attach-notice">@_docNotice</span>
+            }
+        </div>
+
+        @{ var piiHits = SensitiveDataDetector.Detect(_prompt); }
+        @if (piiHits.Count > 0)
+        {
+            <div class="pii-warn" role="status">
+                <span class="badge badge-warn">⚠️ możliwe dane osobowe: @string.Join(", ", piiHits.Select(SensitiveDataDetector.Label))</span>
+            </div>
+        }
+        <form class="chat-input" @onsubmit="StartAnalysis" @onsubmit:preventDefault>
+            <textarea @bind="_prompt" @bind:event="oninput" rows="2"
+                      placeholder="Co sprawdzić? np. „oceń ryzyka dla najemcy”"
+                      aria-label="Intencja analizy"></textarea>
+            <button type="submit" class="btn btn-primary"
+                    disabled="@(_pdf is null || _units.Count == 0 || string.IsNullOrWhiteSpace(_prompt))">
+                Analizuj (@_units.Count × zapytanie)
+            </button>
+        </form>
+        @if (_notice is not null)
+        {
+            <div class="banner banner-warn" role="status">@_notice</div>
+        }
+    </div>
+}
+else
+{
+    var snap = _session.Snapshot();
+
+    @* ── Postęp / raport ──────────────────────────────────────────────────── *@
+    <div class="analysis-head">
+        <span>📄 <strong>@snap.FileName</strong> · @snap.Prompt</span>
+        <span class="analysis-id" title="Id sesji — analiza działa dalej po odświeżeniu strony; sesja żyje ok. @Options.Value.SessionTtlMinutes min od ostatniego użycia">
+            sesja: <code>@snap.Id.ToString("N")[..8]</code>
+        </span>
+    </div>
+
+    @if (snap.Status is AnalysisStatus.Preparing or AnalysisStatus.Analyzing or AnalysisStatus.Summarizing)
+    {
+        <div class="banner" role="status">
+            @(snap.Status switch
+            {
+                AnalysisStatus.Preparing => "⏳ przygotowuję dokument…",
+                AnalysisStatus.Analyzing => $"⏳ analizuję fragmenty: {snap.Completed}/{snap.Total}…",
+                _ => "⏳ piszę streszczenie…",
+            })
+            <progress max="@snap.Total" value="@snap.Completed" style="width:100%"></progress>
+        </div>
+    }
+    @if (snap.Status == AnalysisStatus.Failed)
+    {
+        <div class="banner banner-danger" role="alert">Analiza nie powiodła się: @snap.Error</div>
+    }
+    @if (snap.UnitsTruncated)
+    {
+        <div class="banner banner-warn" role="status">
+            Dokument ma więcej fragmentów niż limit @Options.Value.MaxUnits — przeanalizowano pierwsze @snap.Total.
+        </div>
+    }
+
+    @if (snap.Status == AnalysisStatus.Done && snap.Summary is not null)
+    {
+        <div class="msg msg-assistant analysis-summary">
+            <strong>Streszczenie</strong>
+            <div class="answer">@((MarkupString)MarkdownRenderer.ToSafeHtml(snap.Summary))</div>
+            <p class="empty-hint">⚖️ Streszczenie wtórne wobec analiz poniżej — rozstrzygają werdykty per fragment i ich źródła.</p>
+        </div>
+    }
+
+    @foreach (var unit in snap.Units)
+    {
+        var r = snap.Results[unit.Index - 1];
+        <details class="analysis-unit" open="@(r is { Verdict: UnitVerdict.Risk or UnitVerdict.Error })">
+            <summary>
+                <span class="source-n">@unit.Heading</span>
+                @if (r is null)
+                {
+                    <span class="badge">⏳ w kolejce…</span>
+                }
+                else
+                {
+                    <span class="badge @VerdictCss(r.Verdict)">@AnalysisPrompts.Label(r.Verdict)</span>
+                }
+            </summary>
+            <blockquote class="source-snippet">@Truncate(unit.Text, 400)</blockquote>
+            @if (r is not null)
+            {
+                @if (r.Error is not null)
+                {
+                    <div class="banner banner-danger" role="alert">@r.Error</div>
+                }
+                else if (r.Answer is not null)
+                {
+                    <div class="answer">@((MarkupString)MarkdownRenderer.ToSafeHtml(r.Answer, r.Sources.Count, UnitAnchor(unit.Index)))</div>
+                }
+                @if (r.Sources.Count > 0)
+                {
+                    <details class="sources">
+                        <summary>Źródła (@r.Sources.Count)</summary>
+                        @foreach (var s in r.Sources)
+                        {
+                            <div class="source-card" id="src-@(UnitAnchor(unit.Index))-@s.Index">
+                                <div class="source-head">
+                                    <span class="source-n">[@s.Index]</span>
+                                    <span class="source-label">@s.Label</span>
+                                    @if (!string.IsNullOrWhiteSpace(s.Url))
+                                    {
+                                        <a class="source-link" href="@s.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
+                                    }
+                                </div>
+                                <blockquote class="source-snippet">@s.Snippet</blockquote>
+                            </div>
+                        }
+                    </details>
+                }
+            }
+        </details>
+    }
+
+    @* ── Dopytania (SPK-6) — dopiero po zakończeniu raportu ───────────────── *@
+    @if (snap.Status == AnalysisStatus.Done)
+    {
+        <div class="analysis-followup">
+            <p class="empty-title">Dopytaj o analizę</p>
+            @foreach (var ex in _followUps)
+            {
+                <div class="msg msg-user">@ex.Question</div>
+                <div class="msg msg-assistant">
+                    @if (ex.Abstained)
+                    {
+                        <div class="banner banner-warn" role="status">@ex.AbstainMessage</div>
+                    }
+                    else
+                    {
+                        <div class="answer" aria-live="polite">
+                            @if (ex.Answer.Length > 0)
+                            {
+                                @((MarkupString)MarkdownRenderer.ToSafeHtml(ex.Answer, ex.Sources.Count, ex.AnchorId))
+                            }
+                            else if (ex.Streaming)
+                            {
+                                <span class="typing" aria-label="generowanie odpowiedzi">…</span>
+                            }
+                        </div>
+                        @if (ex.Sources.Count > 0)
+                        {
+                            <details class="sources" open>
+                                <summary>Źródła (@ex.Sources.Count)</summary>
+                                @foreach (var s in ex.Sources)
+                                {
+                                    <div class="source-card" id="src-@(ex.AnchorId)-@s.Index">
+                                        <div class="source-head">
+                                            <span class="source-n">[@s.Index]</span>
+                                            <span class="source-label">@s.Label</span>
+                                            @if (!string.IsNullOrWhiteSpace(s.Url))
+                                            {
+                                                <a class="source-link" href="@s.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
+                                            }
+                                        </div>
+                                        <blockquote class="source-snippet">@s.Snippet</blockquote>
+                                    </div>
+                                }
+                            </details>
+                        }
+                    }
+                    @if (ex.Error is not null)
+                    {
+                        <div class="banner banner-danger" role="alert">Błąd: @ex.Error</div>
+                    }
+                </div>
+            }
+            @if (_notice is not null)
+            {
+                <div class="banner banner-warn" role="status">@_notice</div>
+            }
+            <form class="chat-input" @onsubmit="SendFollowUp" @onsubmit:preventDefault>
+                <textarea @bind="_followUpInput" @bind:event="oninput" rows="2" disabled="@_followUpBusy"
+                          placeholder="np. „a co dokładnie z § 7?” albo „które paragrafy są najbardziej ryzykowne?”"
+                          aria-label="Dopytanie"></textarea>
+                <button type="submit" class="btn btn-primary"
+                        disabled="@(_followUpBusy || string.IsNullOrWhiteSpace(_followUpInput))">
+                    @(_followUpBusy ? "…" : "Wyślij")
+                </button>
+            </form>
+        </div>
+        <p class="empty-hint">Nowy dokument? <button class="btn-ghost" @onclick="Reset">rozpocznij nową analizę</button></p>
+    }
+}
+</div>
+
+@code {
+    private const int MaxPromptLen = 2000;
+
+    // Ekran startowy
+    private PdfText? _pdf;
+    private string _fileName = "";
+    private IReadOnlyList<DocUnit> _units = [];
+    private bool _unitsTruncated;
+    private bool _docLoading;
+    private string? _docNotice;
+    private string _prompt = "";
+    private string? _notice;
+
+    // Sesja analizy (stan żyje w singletonie — po F5 można wrócić po id; tu trzymamy referencję)
+    private AnalysisSession? _session;
+    private Action? _changedHandler;
+
+    // Dopytania
+    private readonly List<FollowUpExchange> _followUps = [];
+    private string _followUpInput = "";
+    private bool _followUpBusy;
+    private CancellationTokenSource? _cts;
+    private string _userId = "demo@local";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Tożsamość jak w Chat.razor: AuthenticationState, nie IHttpContextAccessor.
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name }
+            ? name
+            : CurrentUser.UserId;
+    }
+
+    private void RemoveDocument()
+    {
+        _pdf = null;
+        _fileName = "";
+        _units = [];
+        _unitsTruncated = false;
+        _docNotice = null;
+    }
+
+    /// <summary>Upload → ekstrakcja (PdfPig) → bramka skanów → podział na jednostki analizy
+    /// (podgląd liczby PRZED startem — użytkownik widzi, ile zapytań LLM uruchomi).</summary>
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        RemoveDocument();
+        var file = e.File;
+        if (!file.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            _docNotice = "Obsługujemy wyłącznie pliki PDF.";
+            return;
+        }
+        if (file.Size > PdfAttachmentExtractor.MaxBytes)
+        {
+            _docNotice = $"Plik jest za duży (limit {PdfAttachmentExtractor.MaxBytes / (1024 * 1024)} MB).";
+            return;
+        }
+
+        _docLoading = true;
+        try
+        {
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(PdfAttachmentExtractor.MaxBytes).CopyToAsync(ms);
+            var pdf = PdfAttachmentExtractor.Extract(ms.ToArray());
+            if (pdf.IsScanLike)
+            {
+                _docNotice = "Ten PDF wygląda na skan — obsługujemy dokumenty z warstwą tekstową (bez OCR).";
+                return;
+            }
+            var units = LegalUnitSplitter.Split(pdf.Pages);
+            if (units.Count == 0)
+            {
+                _docNotice = "Nie udało się wyodrębnić fragmentów do analizy z tego pliku.";
+                return;
+            }
+            _unitsTruncated = units.Count > Options.Value.MaxUnits;
+            _units = _unitsTruncated ? units.Take(Options.Value.MaxUnits).ToList() : units;
+            _pdf = pdf;
+            _fileName = file.Name;
+        }
+        catch (Exception)
+        {
+            _docNotice = "Nie udało się odczytać tego PDF (plik uszkodzony lub zabezpieczony).";
+        }
+        finally
+        {
+            _docLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>Start długiego procesu: sesja w singletonie + runner W TLE (świadomie bez await —
+    /// analiza przeżywa F5/rekonekt obwodu; id sesji pozwala wrócić). Zdarzenie Changed odświeża UI.</summary>
+    private void StartAnalysis()
+    {
+        var prompt = _prompt.Trim();
+        if (_pdf is null || _units.Count == 0 || prompt.Length == 0) return;
+        if (prompt.Length > MaxPromptLen)
+        {
+            _notice = $"Opis jest za długi (limit {MaxPromptLen} znaków).";
+            return;
+        }
+        if (!RateGuard.TryAcquire(_userId))
+        {
+            _notice = "Za dużo operacji w krótkim czasie — spróbuj ponownie za chwilę.";
+            return;
+        }
+
+        _notice = null;
+        _session = Sessions.Create(_fileName, _pdf.PageCount, prompt, _units, _unitsTruncated);
+        _changedHandler = () => _ = InvokeAsync(StateHasChanged);
+        _session.Changed += _changedHandler;
+
+        var session = _session;
+        var userId = _userId;
+        _ = Task.Run(() => Runner.RunAsync(session, userId, CancellationToken.None));
+    }
+
+    /// <summary>Dopytanie: routing kontekstu per pytanie (odwołania wprost → cosine → przekrojowo),
+    /// tura-kotwica + ostatnie dopytania jako historia zwykłego czatu RAG.</summary>
+    private async Task SendFollowUp()
+    {
+        var question = _followUpInput.Trim();
+        if (question.Length == 0 || _followUpBusy || _session is null) return;
+
+        _notice = null;
+        if (Sessions.TryGet(_session.Snapshot().Id) is null)
+        {
+            _notice = "Sesja analizy wygasła — rozpocznij analizę ponownie (treści nie przechowujemy).";
+            return;
+        }
+        if (!RateGuard.TryAcquire(_userId))
+        {
+            _notice = "Za dużo zapytań w krótkim czasie — spróbuj ponownie za chwilę.";
+            return;
+        }
+        if (!CostGuard.TryAcquire(_userId, out var limitReason))
+        {
+            _notice = CostGuard.LimitMessage(limitReason);
+            return;
+        }
+
+        _followUpInput = "";
+        _followUpBusy = true;
+        var snap = _session.Snapshot();
+
+        var ex = new FollowUpExchange { Question = question, Streaming = true };
+        _followUps.Add(ex);
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        try
+        {
+            // Routing: odwołania wprost → embeddingi (o ile są) → tryb przekrojowy (pusta selekcja).
+            var selected = AnalysisFollowUp.FindReferencedUnits(question, snap.Units);
+            if (selected.Count == 0 && _session.UnitEmbeddings is { } embeddings)
+            {
+                var qvec = await Embedder.EmbedQueryAsync(question, ct);
+                selected = AnalysisFollowUp.SelectByEmbedding(qvec, embeddings);
+            }
+            var anchor = AnalysisFollowUp.ComposeAnchorTurn(snap, selected);
+
+            // Kotwica MUSI przeżyć TakeLast(4) w GroundedPrompt → maks. 3 ostatnie dopytania.
+            var history = new List<ChatTurn> { anchor };
+            history.AddRange(_followUps
+                .Where(f => f.Done && f.Error is null && !f.Abstained)
+                .Select(f => new ChatTurn(f.Question, f.Answer))
+                .TakeLast(3));
+
+            await foreach (var evt in ChatService.AskAsync(question, history, null, ct))
+            {
+                switch (evt)
+                {
+                    case SourcesEvent s: ex.Sources = s.Sources; break;
+                    case TokenEvent t: ex.Answer += t.Text; break;
+                    case AbstainEvent a: ex.Abstained = true; ex.AbstainMessage = a.Message; break;
+                    case DoneEvent d: ex.Done = true; break;
+                    case ChatErrorEvent err: ex.Error = err.Message; break;
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { /* przerwane */ }
+        catch (Exception e) { ex.Error = e.Message; }
+        finally
+        {
+            ex.Streaming = false;
+            ex.Done = true;
+            CostGuard.Record(_userId, ex.Answer.Length);
+            _followUpBusy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void Reset()
+    {
+        if (_session is not null && _changedHandler is not null) _session.Changed -= _changedHandler;
+        _session = null;
+        _followUps.Clear();
+        _followUpInput = "";
+        _notice = null;
+        RemoveDocument();
+        _prompt = "";
+    }
+
+    private static string VerdictCss(UnitVerdict v) => v switch
+    {
+        UnitVerdict.Ok => "badge-ok",
+        UnitVerdict.Risk => "badge-danger",
+        UnitVerdict.NoSources => "badge-warn",
+        UnitVerdict.Error => "badge-danger",
+        _ => "",
+    };
+
+    private string UnitAnchor(int unitIndex) =>
+        $"au{_session?.Snapshot().Id.ToString("N")[..6]}-{unitIndex}";
+
+    private static string Truncate(string text, int max) =>
+        text.Length <= max ? text : text[..max] + "…";
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        if (_session is not null && _changedHandler is not null) _session.Changed -= _changedHandler;
+    }
+
+    private sealed class FollowUpExchange
+    {
+        public string AnchorId { get; } = Guid.NewGuid().ToString("N")[..8];
+        public required string Question { get; init; }
+        public string Answer { get; set; } = "";
+        public IReadOnlyList<ChatSource> Sources { get; set; } = [];
+        public bool Abstained { get; set; }
+        public string? AbstainMessage { get; set; }
+        public bool Streaming { get; set; }
+        public bool Done { get; set; }
+        public string? Error { get; set; }
+    }
+}
