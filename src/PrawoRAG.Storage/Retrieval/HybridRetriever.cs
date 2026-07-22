@@ -68,14 +68,26 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // reranking/fuzja, my łatamy wyłącznie dziurę recall. Brak akronimów w pytaniu = zero kosztu.
         foreach (var acronym in AcronymDetector.Extract(query.Text).Take(MaxAcronymLanes))
         {
-            var acrHits = await ApplyFilters(db.Chunks, query)
-                .Where(c => c.SearchVector!.Matches(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, acronym)))
-                .Select(c => new { c.Id, Rank = c.SearchVector!.Rank(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, acronym)) })
-                .OrderByDescending(x => x.Rank)
-                .Take(k)
-                .ToListAsync(ct);
-            for (var i = 0; i < acrHits.Count; i++)
-                rrf[acrHits[i].Id] = rrf.GetValueOrDefault(acrHits[i].Id) + 1.0 / (RrfK + i + 1);
+            // Fail-open: heurystyka detektora bywa fałszywym trafieniem na zwykłe słowo pisane
+            // WIELKIMI LITERAMI (zaobserwowane na żywo: „UMOWA" — dopasowuje setki tysięcy chunków,
+            // ORDER BY ts_rank po takim zbiorze jest kosztowne i potrafi przekroczyć CommandTimeout).
+            // To tylko dodatkowy sygnał recall (komentarz wyżej) — awaria tego toru NIE MOŻE wywalić
+            // całej odpowiedzi czatu, tak jak awaria augmentera już jest best-effort.
+            try
+            {
+                var acrHits = await ApplyFilters(db.Chunks, query)
+                    .Where(c => c.SearchVector!.Matches(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, acronym)))
+                    .Select(c => new { c.Id, Rank = c.SearchVector!.Rank(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, acronym)) })
+                    .OrderByDescending(x => x.Rank)
+                    .Take(k)
+                    .ToListAsync(ct);
+                for (var i = 0; i < acrHits.Count; i++)
+                    rrf[acrHits[i].Id] = rrf.GetValueOrDefault(acrHits[i].Id) + 1.0 / (RrfK + i + 1);
+            }
+            catch (Exception) when (ct.IsCancellationRequested == false)
+            {
+                // best-effort — pomiń ten sygnał, reszta retrievalu (dense+sparse) i tak działa.
+            }
         }
 
         // Nad-pobieramy kandydatów przed dedupem po tekście: standardowe formułki (dyrektywy, tezy TSUE)
