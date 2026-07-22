@@ -1,6 +1,40 @@
+# Analiza dokumentów (map-reduce) — SPK (spike) + AN (produktyzacja)
+
+Data: 2026-07-22 · Branch: `feat/halfvec-retriever` (spike zmergowany) · Status: **funkcjonalność
+produkcyjna** — spike (SPK-1…6) zweryfikowany E2E na żywym stacku, potem utwardzony taskami AN-0…8.
+
+## Warstwa produkcyjna (AN, 2026-07-22)
+
+1. **Persystencja raportu BEZ treści dokumentu** (AN-2/3): tabele `analyses` + `analysis_units` +
+   `analysis_unit_feedback` (migracja `AddDocumentAnalyses`). Zapisujemy prompt, nagłówki jednostek,
+   werdykty, odpowiedzi LLM, źródła (jsonb), streszczenie, status. **NIE zapisujemy treści § ani
+   embeddingów** (tajemnica zawodowa — decyzja DOC #1). Świadomy kompromis: odpowiedzi LLM
+   parafrazują fragmenty dokumentu (jak historia czatu). Zapis z runnera W TRAKCIE (upsert per
+   jednostka; kill procesu = częściowy raport) i w całości **best-effort** — awaria bazy nie blokuje
+   analizy.
+2. **User-scoping** (AN-1): sesja in-memory (`TryGet(id, userId)`) i rekordy DB filtrowane po
+   UserId — id sesji widać w UI, sam Guid nie jest biletem do cudzego dokumentu.
+3. **Anulowanie + statusy** (AN-1): CTS w sesji (przycisk ⏹, sweep TTL); `Interrupted` ≠ `Failed`
+   (częściowy raport czytelny). Samonaprawa: rekord `Analyzing` bez żywej sesji (restart) jest
+   oznaczany `Interrupted` — przy odczycie i sweepem na starcie procesu (AN-7).
+4. **Retry jednostek BŁĄD** (AN-4): tylko przy żywej sesji (treść jednostek żyje w pamięci);
+   upsert nadpisuje wiersz (klucz naturalny `(AnalysisId, UnitIndex)`), streszczenie regenerowane.
+5. **Sidebar „Moje analizy" + raport z archiwum** (AN-5): żywa sesja wygrywa (pełny tryb); bez niej
+   snapshot ZDEGRADOWANY z DB (puste treści, dziury po nieprzeanalizowanych jednostkach jako
+   placeholdery — `Total` mówi prawdę X z N). **Dopytania w trybie ograniczonym** działają na
+   werdyktach/uzasadnieniach (banner komunikuje brak treści; routing embeddingowy tylko przy żywej
+   sesji). Wygaśnięcie sesji w trakcie = degradacja, nie blokada.
+6. **Feedback per jednostka** (AN-6): słownik werdyktów jak w czacie (`up`/`wrong-answer`/
+   `needless-refusal`), 1:1 z jednostką — spójny materiał do golden setu.
+7. **Retencja** (AN-7): raporty analiz kasowane po 183 dniach razem z rozmowami (kaskada FK).
+
+---
+
+Poniżej oryginalny dokument spike'u (architektura map-reduce bez zmian).
+
 # Spike: Analiza dokumentów (map-reduce) — SPK
 
-Data: 2026-07-22 · Branch: `spike/analiza-dokumentow` (od `feat/halfvec-retriever`) · Status: **kod + testy gotowe (360/360), E2E na żywym stacku DO WYKONANIA** (checklist niżej).
+Data: 2026-07-22 · Branch: `spike/analiza-dokumentow` (od `feat/halfvec-retriever`) · Status: zweryfikowany E2E, zmergowany.
 
 ## Cel spike'u
 
