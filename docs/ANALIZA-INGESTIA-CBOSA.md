@@ -8,16 +8,24 @@ Czy i jak zasilić korpus orzeczeniami z CBOSA (orzeczenia.nsa.gov.pl) — luka 
 obejmuje sądownictwa administracyjnego (NSA + 16 WSA), a to domena o dużej wartości dla praktyki
 (podatki, budowlanka, dostęp do informacji publicznej…).
 
-## Ustalenia (stan faktyczny)
+## Ustalenia (stan faktyczny; skorygowane po weryfikacji empirycznej 2026-07-22)
 
 1. **CBOSA nie ma API.** KIDP formalnie wnioskowała do Prezesa NSA o udostępnienie API, powołując
    się na ustawę z 11.08.2021 o otwartych danych (API to forma preferowana, a dla danych
    dynamicznych — obowiązkowa) — bez publicznej odpowiedzi.
-2. **Scraping wyszukiwarki jest aktywnie blokowany**: CAPTCHA po kilku zapytaniach;
-   `robots.txt` zabrania `/cbo/search`, `/cbo/find`, `/cbo/do/*`, wariantów `*.txt` i w całości
-   blokuje GPTBot/MSNbot. Zadeklarowana `sitemap.xml` jest MARTWA (pod-sitemapy z 2009 r.).
-   Istniejące scrapery (np. `ad-m/cbosa`) obchodzą blokady przez proxy — **droga odrzucona**:
-   dla komercyjnego produktu ryzyko prawne/wizerunkowe nie do przyjęcia.
+2. **Strona jest jednak technicznie DOSTĘPNA i trywialna do sparsowania** (weryfikacja własna,
+   wbrew wtórnym doniesieniom o CAPTCHA — właściciel potwierdza brak CAPTCHA, my również jej nie
+   napotkaliśmy):
+   - lista `/cbo/find?p=1…239383` działa bez blokady; raportuje **2 393 829 orzeczeń** (10/stronę);
+   - strony `/doc/<ID>` — prosty HTML z metadanymi (sygnatura, data, sąd, skład, symbol sprawy,
+     organ, wynik) + **wersja RTF** pod `/doc/<ID>.rtf`;
+   - baza aktualna NA BIEŻĄCO (trafione orzeczenie z 2026-07-21); uwaga: świeże/nieprawomocne
+     bywają samą sentencją — uzasadnienia dochodzą później (delta musi umieć AKTUALIZOWAĆ dokument);
+   - `robots.txt` zabrania botom `/cbo/find|search|do/*` (strony `/doc/…` NIE są zabronione),
+     sitemapa martwa od 2009. Kwalifikacja robots.txt przy własnym crawlu → pytanie do bramki
+     prawnej, nie do inżynierii.
+   Odrzucone pozostaje tylko OBCHODZENIE blokad (proxy-rotacja jak `ad-m/cbosa`) — jeśli serwer
+   zacznie limitować, odpowiedzią jest wolniejsze tempo/wniosek do NSA, nie ukrywanie się.
 3. **KLUCZOWE: istnieje gotowy, legalnie opublikowany dataset** —
    **`JuDDGES/pl-nsa`** (Hugging Face, projekt naukowy JuDDGES):
    - ~**1,82 mln orzeczeń** NSA+WSA z pełnymi tekstami (`full_text`, uzasadnienia, tezy),
@@ -47,46 +55,62 @@ obejmuje sądownictwa administracyjnego (NSA + 16 WSA), a to domena o dużej war
 - Wąskim gardłem będzie (jak przy SAOS/ISAP) CPU-bound preprocessing, nie GPU — planować
   równoległość przetwarzania wstępnego.
 
-## Warianty podzbioru na start (do decyzji)
+## Wymaganie biznesowe (właściciel, 2026-07-22)
 
-| Wariant | Zakres | Szacunek | Za | Przeciw |
-|---|---|---|---|---|
-| A | tylko NSA (bez WSA), wyroki, 2015+ | ~200–400 tys.? (do zmierzenia z metadanych) | najwyższa ranga orzeczeń, precedensotwórcze | traci świeże linie WSA |
-| B | domenowy (symbole spraw, np. podatki 6110*…) | zależnie od domeny | pod pilotaż z konkretną grupą prawników | wymaga wyboru domeny docelowej |
-| C | całość | 1,8–2,25 mln | kompletność | koszt dysku/czasu; przetestować dopiero po A/B |
+**Produkt wymaga PEŁNEJ bazy sądownictwa administracyjnego** — podzbiór może być tylko etapem
+przejściowym, nie stanem docelowym. Warianty niżej czytać jako KOLEJNOŚĆ dochodzenia do całości,
+nie jako wybór zakresu.
 
-Rozkład liczności per sąd/typ/rok da się policzyć Z SAMYCH METADANYCH datasetu przed decyzją
-(tani krok #1).
+## Droga do pełnej bazy — dwie ścieżki (mogą iść RAZEM)
 
-## Świeżość (delta-sync) — otwarte
+| | Backfill z datasetu JuDDGES + własny crawl delty | Pełny własny crawl CBOSA |
+|---|---|---|
+| Objętość do pobrania | ~0,14–0,57 mln stron (delta 2025-03→dziś + braki) | ~2,39 mln stron (+ listy) |
+| Czas przy uczciwym tempie 1–2 req/s | dni | ~14–28 dni ciągiem |
+| Obciążenie serwera sądu | minimalne | istotne |
+| Zależność od strony trzeciej | JuDDGES (CC BY 4.0, atrybucja) | brak |
+| Kontrola jakości/formatu | format JuDDGES + własny parser delty | jeden własny format od początku |
 
-Dataset kończy się na 2025-03 (raw) / aktualizacja 2026-01 (enriched). Opcje:
-1. konsumować kolejne aktualizacje datasetu JuDDGES (zero ryzyka, opóźnienie miesiące),
-2. **wniosek o ponowne wykorzystywanie ISP / API do NSA** (jak KIDP) — czysto prawna ścieżka,
-   długa, ale docelowo właściwa dla produktu komercyjnego,
-3. ostrożny crawl pojedynczych `/doc/…` (robots ich nie zabrania) TYLKO po pozytywnej opinii
-   prawnej — nie projektować przed nią.
-Dla orzecznictwa świeżość jest mniej krytyczna niż dla aktów (AKT pilnuje prawa) — opcja 1
-wystarcza na start.
+Rekomendacja techniczna: **hybryda** — backfill z `pl-nsa` (od razu 1,8–2,25 mln pełnych tekstów,
+zero obciążania CBOSA), własny crawler dociąga deltę i uzupełnia braki (rekonsyliacja po
+`judgment_id`/sygnaturze), a docelowo staje się stałym mechanizmem świeżości. Pełny własny crawl
+zostaje jako plan B, gdyby prawnik zakwestionował dataset (albo właściciel wolał niezależność —
+technicznie wykonalny, tylko wolniejszy i mniej grzeczny wobec infrastruktury sądu).
+
+## Warianty kolejności ingestii (przy hybrydzie; do decyzji tylko KOLEJNOŚĆ)
+
+Docelowo wchodzi CAŁOŚĆ (wymaganie biznesowe); kolejność embedowania można sterować wartością:
+NSA/wyroki najpierw → domeny pilotażowe → reszta WSA. Rozkład liczności per sąd/typ/rok da się
+policzyć Z SAMYCH METADANYCH datasetu (tani krok #1). Skala całości bez zmian: ~15–25 mln chunków,
+30–50 GB wektorów + HNSW — do zwymiarowania dysku/RAM na 3060 PRZED startem procesu.
+
+## Świeżość (delta-sync)
+
+Własny crawler delty (uczciwe tempo, jawny User-Agent, bez obchodzenia blokad): enumeracja po
+zakresie dat w wyszukiwarce → nowe/zmienione `/doc/<ID>` (+RTF). Musi umieć AKTUALIZOWAĆ dokument
+(sentencja → później uzasadnienie; nieprawomocne → prawomocne) — pipeline już to wspiera
+(ContentHash + re-process). Równolegle formalny **wniosek o ponowne wykorzystywanie ISP / API do
+NSA** (jak KIDP) — legitymizuje dostęp długoterminowo.
 
 ## Action itemy
 
 - [ ] **Prawne (do bramki 0.5, zewnętrzny prawnik — dopisać do zleconego zakresu, NIE robić
-      researchu samodzielnie):** (a) status prawny korzystania z datasetu JuDDGES (CC BY 4.0 —
-      forma atrybucji w produkcie) i samych orzeczeń (art. 4 pr. aut.); (b) regulamin/nota CBOSA;
-      (c) ścieżka wniosku o ponowne wykorzystywanie ISP do NSA.
-- [ ] **Rozpoznanie taniego kroku:** pobrać SAME METADANE `pl-nsa` (bez tekstów) i policzyć
-      rozkład per sąd/rok/typ/symbol → dane do decyzji o podzbiorze (wariant A/B/C).
-- [ ] **Decyzja właściciela:** podzbiór na start + czy raw czy enriched (rekomendacja: **raw**,
-      własne wzbogacenia policzymy jak dla SAOS).
-- [ ] Po decyzjach: plan implementacji `NsaConnector` (osobny dokument, wzorzec PLAN-*.md).
+      researchu samodzielnie):** (a) dataset JuDDGES (CC BY 4.0 — forma atrybucji w produkcie)
+      i status orzeczeń (art. 4 pr. aut.); (b) regulamin/nota CBOSA + kwalifikacja robots.txt
+      przy własnym crawlu; (c) wniosek ISP/API do NSA.
+- [ ] **Tani krok #1:** pobrać SAME METADANE `pl-nsa` i policzyć rozkład per sąd/rok/typ/symbol
+      → kolejność ingestii + wymiarowanie dysku; przy okazji rekonsyliacja liczności z 2 393 829
+      ze strony (czego brakuje w datasecie).
+- [ ] **Decyzja właściciela:** hybryda vs pełny własny crawl; raw vs enriched (rekomendacja: raw).
+- [ ] Po decyzjach: plan implementacji (`NsaConnector` + crawler delty) — osobny PLAN-*.md.
 
-## Rekomendacja
+## Rekomendacja (zrewidowana po weryfikacji empirycznej)
 
-Ingestia z CBOSA przez scraping — **nie**. Ingestia przez dataset **JuDDGES/pl-nsa** — **tak**,
-zaczynając od analizy metadanych i podzbioru (wariant A lub B), z atrybucją CC BY i po
-potwierdzeniu w bramce prawnej. Delta-sync: aktualizacje datasetu teraz, równolegle formalny
-wniosek do NSA o API/ISP.
+Cel = PEŁNA baza (2,39 mln). Droga: **hybryda** — backfill z `JuDDGES/pl-nsa` (szybko, legalnie,
+bez obciążania serwera sądu) + własny, jawny crawler CBOSA na deltę/braki, docelowo stały
+mechanizm świeżości; równolegle wniosek do NSA o API/ISP. Pełny własny crawl = plan B (wykonalny:
+~2,39 mln stron, 14–28 dni przy 1–2 req/s). Bez obchodzenia ewentualnych blokad — gdy serwer
+ograniczy, zwalniamy albo eskalujemy wnioskiem, nie proxy.
 
 ## Źródła
 
