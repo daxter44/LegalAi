@@ -53,6 +53,19 @@ public sealed class FileSystemRawDocumentStore(IOptions<RawStoreOptions> options
         }
     }
 
+    public async Task<RawDocument?> ReadAsync(string source, string externalId, CancellationToken ct)
+    {
+        var path = PathFor(source, externalId);
+        if (!File.Exists(path)) return null;
+        StoredRawDocument? stored;
+        await using (var fs = File.OpenRead(path))
+            stored = await JsonSerializer.DeserializeAsync<StoredRawDocument>(fs, Json, ct);
+        // Weryfikacja tożsamości: nazwa pliku jest sanityzowana (ELI „/") — teoretyczna kolizja dwóch
+        // różnych ExternalId do tej samej nazwy; prawdziwy id żyje w treści, więc potwierdzamy zgodność.
+        var raw = stored?.ToRaw();
+        return raw is not null && raw.ExternalId == externalId ? raw : null;
+    }
+
     public Task<int> CountAsync(string source, CancellationToken ct)
     {
         var dir = SourceDir(source);

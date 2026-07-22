@@ -75,6 +75,7 @@ public static class IngestionServiceCollectionExtensions
         services.AddSingleton<IRawDocumentStore, FileSystemRawDocumentStore>();
         services.AddSingleton<RawFetchRunner>();
         services.AddSingleton<RawProcessRunner>();
+        services.AddSingleton<ReprocessFailedRunner>(); // celowany reprocessing dokumentów Failed
         services.AddSingleton<AmendmentRelinkRunner>(); // AKT-5.2: relink nowel w stanie ustalonym
         services.AddSingleton<QualityReportRunner>();
         return services;

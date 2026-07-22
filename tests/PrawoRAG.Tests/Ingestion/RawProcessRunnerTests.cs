@@ -42,6 +42,9 @@ public sealed class RawProcessRunnerTests : IDisposable
             foreach (var d in docs.Where(d => d.Source == source)) yield return d;
             await Task.CompletedTask;
         }
+
+        public Task<RawDocument?> ReadAsync(string source, string externalId, CancellationToken ct) =>
+            Task.FromResult(docs.FirstOrDefault(d => d.Source == source && d.ExternalId == externalId));
     }
 
     /// <summary>Fake pipeline'u: wynik sterowany skryptem (dokument, nr wywołania); zlicza co przetworzył.</summary>

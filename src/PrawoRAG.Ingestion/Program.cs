@@ -57,6 +57,16 @@ switch (mode)
         Console.WriteLine($"PROCESS DONE [{source}]: {procSummary}");
         break;
     }
+    case "reprocess-failed":
+    {
+        // Celowany reprocessing dokumentów Failed (np. ISAP „za długie") — czyta po id z magazynu,
+        // NIE enumeruje całości. Wypisuje rozkład powodów porażek i nową próbę. Uruchamiaj po naprawie
+        // przyczyny albo na mocniejszej maszynie (GPU) — awarie przejściowe znikną, deterministyczne wrócą.
+        var reprocess = host.Services.GetRequiredService<ReprocessFailedRunner>();
+        var summary = await reprocess.RunAsync(source, maxItems, default);
+        Console.WriteLine($"REPROCESS-FAILED DONE [{source}]: {summary}");
+        break;
+    }
     case "report":
     {
         // Raport jakości normalizacji (bez embeddingu, bez bazy) — ocena parsowania typów przed masowym pobraniem.
@@ -102,5 +112,5 @@ switch (mode)
     }
     default:
         throw new InvalidOperationException(
-            $"Nieznany Ingestion:Mode '{mode}'. Dozwolone: fetch | process | fetch-process | stream | report | discover | sync-eli.");
+            $"Nieznany Ingestion:Mode '{mode}'. Dozwolone: fetch | process | fetch-process | stream | reprocess-failed | report | discover | sync-eli.");
 }
