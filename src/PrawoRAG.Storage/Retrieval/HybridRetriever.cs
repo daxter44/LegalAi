@@ -73,6 +73,12 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
             // ORDER BY ts_rank po takim zbiorze jest kosztowne i potrafi przekroczyć CommandTimeout).
             // To tylko dodatkowy sygnał recall (komentarz wyżej) — awaria tego toru NIE MOŻE wywalić
             // całej odpowiedzi czatu, tak jak awaria augmentera już jest best-effort.
+            // SAVEPOINT jest KONIECZNY: sam try/catch nie wystarczy — Postgres po błędzie zatruwa
+            // CAŁĄ otaczającą transakcję (25P02 „current transaction is aborted"), więc bez rollbacku
+            // do savepointu każde KOLEJNE zapytanie w tej transakcji (drugi akronim, finalny fetch
+            // chunków) też by padło, mimo złapanego wyjątku (zmierzone na żywo, 2026-07-22).
+            const string savepoint = "acronym_lane";
+            await tx.CreateSavepointAsync(savepoint, ct);
             try
             {
                 var acrHits = await ApplyFilters(db.Chunks, query)
@@ -86,7 +92,8 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
             }
             catch (Exception) when (ct.IsCancellationRequested == false)
             {
-                // best-effort — pomiń ten sygnał, reszta retrievalu (dense+sparse) i tak działa.
+                // best-effort — cofnij TYLKO ten tor (savepoint), reszta transakcji zostaje ważna.
+                await tx.RollbackToSavepointAsync(savepoint, ct);
             }
         }
 
