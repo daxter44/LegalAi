@@ -28,6 +28,14 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     /// limit chroni przed pytaniem-listą skrótów.</summary>
     private const int MaxAcronymLanes = 2;
 
+    /// <summary>Krótki, dedykowany timeout dla toru akronimowego — nie globalny 30s. Zmierzone na
+    /// żywo: pospolite słowo złapane heurystyką (np. „UMOWA") dopasowuje setki tysięcy chunków,
+    /// ORDER BY ts_rank po takim zbiorze jest kosztowny. Prawdziwy akronim (rzadkie słowo, np.
+    /// „KSeF" — zmierzone 130ms) kończy się w ułamku sekundy; 3s to hojny margines, nie próg dla
+    /// dobrego przypadku. Krótszy timeout = szybsza degradacja zamiast marnowania 30s per fałszywe
+    /// trafienie (dotkliwe przy wielu wywołaniach pod rząd, np. analiza dokumentu per jednostka).</summary>
+    private static readonly TimeSpan AcronymLaneTimeout = TimeSpan.FromSeconds(3);
+
     public async Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, CancellationToken ct)
     {
         var qvec = new Vector(await embedder.EmbedQueryAsync(query.Text, ct));
@@ -66,16 +74,50 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // a embedding nie generalizuje skrótu na pełną nazwę. Osobne, JEDNOTOKENOWE zapytanie
         // leksykalne per wykryty akronim wchodzi do fuzji RRF jak każdy tor — o precyzję dba dalej
         // reranking/fuzja, my łatamy wyłącznie dziurę recall. Brak akronimów w pytaniu = zero kosztu.
-        foreach (var acronym in AcronymDetector.Extract(query.Text).Take(MaxAcronymLanes))
+        var acronyms = AcronymDetector.Extract(query.Text).Take(MaxAcronymLanes).ToList();
+        if (acronyms.Count > 0)
         {
-            var acrHits = await ApplyFilters(db.Chunks, query)
-                .Where(c => c.SearchVector!.Matches(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, acronym)))
-                .Select(c => new { c.Id, Rank = c.SearchVector!.Rank(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, acronym)) })
-                .OrderByDescending(x => x.Rank)
-                .Take(k)
-                .ToListAsync(ct);
-            for (var i = 0; i < acrHits.Count; i++)
-                rrf[acrHits[i].Id] = rrf.GetValueOrDefault(acrHits[i].Id) + 1.0 / (RrfK + i + 1);
+            // Krótki timeout TYLKO na czas toru akronimowego — przywrócony niezależnie od wyniku,
+            // żeby finalny fetch chunków (poniżej) miał normalny, pełny limit.
+            var originalTimeout = db.Database.GetCommandTimeout();
+            db.Database.SetCommandTimeout(AcronymLaneTimeout);
+            try
+            {
+                foreach (var acronym in acronyms)
+                {
+                    // Fail-open: heurystyka detektora bywa fałszywym trafieniem na zwykłe słowo pisane
+                    // WIELKIMI LITERAMI (zaobserwowane na żywo: „UMOWA" — dopasowuje setki tysięcy
+                    // chunków, ORDER BY ts_rank po takim zbiorze jest kosztowne). To tylko dodatkowy
+                    // sygnał recall (komentarz wyżej) — awaria tego toru NIE MOŻE wywalić całej
+                    // odpowiedzi czatu, tak jak awaria augmentera już jest best-effort.
+                    // SAVEPOINT jest KONIECZNY: sam try/catch nie wystarczy — Postgres po błędzie
+                    // zatruwa CAŁĄ otaczającą transakcję (25P02 „current transaction is aborted"),
+                    // więc bez rollbacku do savepointu każde KOLEJNE zapytanie w tej transakcji
+                    // (drugi akronim, finalny fetch chunków) też by padło (zmierzone na żywo, 2026-07-22).
+                    const string savepoint = "acronym_lane";
+                    await tx.CreateSavepointAsync(savepoint, ct);
+                    try
+                    {
+                        var acrHits = await ApplyFilters(db.Chunks, query)
+                            .Where(c => c.SearchVector!.Matches(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, acronym)))
+                            .Select(c => new { c.Id, Rank = c.SearchVector!.Rank(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, acronym)) })
+                            .OrderByDescending(x => x.Rank)
+                            .Take(k)
+                            .ToListAsync(ct);
+                        for (var i = 0; i < acrHits.Count; i++)
+                            rrf[acrHits[i].Id] = rrf.GetValueOrDefault(acrHits[i].Id) + 1.0 / (RrfK + i + 1);
+                    }
+                    catch (Exception) when (ct.IsCancellationRequested == false)
+                    {
+                        // best-effort — cofnij TYLKO ten tor (savepoint), reszta transakcji zostaje ważna.
+                        await tx.RollbackToSavepointAsync(savepoint, ct);
+                    }
+                }
+            }
+            finally
+            {
+                db.Database.SetCommandTimeout(originalTimeout);
+            }
         }
 
         // Nad-pobieramy kandydatów przed dedupem po tekście: standardowe formułki (dyrektywy, tezy TSUE)

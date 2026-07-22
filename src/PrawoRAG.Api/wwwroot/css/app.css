@@ -176,3 +176,21 @@ body {
 
 /* Diagnostyka: badge tokenów in/out (widoczny tylko z flagą Diagnostics:ShowTokenUsage) */
 .badge-tokens { background: var(--c-accent-weak); color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
+
+/* Analiza dokumentów (spike SPK): strona /analiza — raport per jednostka + dopytania */
+.analysis { width: 100%; max-width: 860px; display: flex; flex-direction: column; gap: var(--s-3); }
+.analysis-setup { display: flex; flex-direction: column; gap: var(--s-3); }
+.analysis-head {
+    display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-3);
+    flex-wrap: wrap; padding-bottom: var(--s-2); border-bottom: 1px solid var(--c-border);
+}
+.analysis-id { font-size: var(--fs-12); color: var(--c-text-muted); }
+.analysis-summary { max-width: none; }
+.analysis-unit {
+    background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius);
+    padding: var(--s-3) var(--s-4);
+}
+.analysis-unit > summary {
+    cursor: pointer; display: flex; align-items: center; gap: var(--s-3); font-size: var(--fs-14);
+}
+.analysis-followup { margin-top: var(--s-5); display: flex; flex-direction: column; gap: var(--s-3); }
