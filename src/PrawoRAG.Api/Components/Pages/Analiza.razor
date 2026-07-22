@@ -120,6 +120,14 @@ else
         </div>
     }
 
+    @if (snap.Status is AnalysisStatus.Done or AnalysisStatus.Interrupted && FailedUnitCount(snap) > 0)
+    {
+        <div class="banner banner-warn" role="status">
+            @FailedUnitCount(snap) fragmentów zakończyło się błędem.
+            <button class="btn-ghost" @onclick="RetryFailed">↻ Ponów nieudane (@FailedUnitCount(snap))</button>
+        </div>
+    }
+
     @if (snap.Status == AnalysisStatus.Done && snap.Summary is not null)
     {
         <div class="msg msg-assistant analysis-summary">
@@ -149,7 +157,13 @@ else
             {
                 @if (r.Error is not null)
                 {
-                    <div class="banner banner-danger" role="alert">@r.Error</div>
+                    <div class="banner banner-danger" role="alert">
+                        @r.Error
+                        @if (snap.Status is AnalysisStatus.Done or AnalysisStatus.Interrupted)
+                        {
+                            <button class="btn-ghost" @onclick="() => RetryUnits([unit.Index])">↻ ponów</button>
+                        }
+                    </div>
                 }
                 else if (r.Answer is not null)
                 {
@@ -372,6 +386,30 @@ else
     }
 
     private void CancelAnalysis() => _session?.Cancel();
+
+    private static int FailedUnitCount(AnalysisSnapshot snap) =>
+        snap.Results.Count(r => r is { Verdict: UnitVerdict.Error });
+
+    private void RetryFailed()
+    {
+        if (_session is null) return;
+        RetryUnits(_session.ErrorUnitIndexes());
+    }
+
+    /// <summary>Ponowienie jednostek BŁĄD — tylko przy żywej sesji (treść jednostek jest wyłącznie
+    /// w pamięci); w tle jak start analizy.</summary>
+    private void RetryUnits(IReadOnlyList<int> indexes)
+    {
+        if (_session is null || indexes.Count == 0) return;
+        if (!RateGuard.TryAcquire(_userId))
+        {
+            _notice = "Za dużo operacji w krótkim czasie — spróbuj ponownie za chwilę.";
+            return;
+        }
+        var session = _session;
+        var userId = _userId;
+        _ = Task.Run(() => Runner.RetryUnitsAsync(session, userId, indexes, session.Token));
+    }
 
     /// <summary>Dopytanie: routing kontekstu per pytanie (odwołania wprost → cosine → przekrojowo),
     /// tura-kotwica + ostatnie dopytania jako historia zwykłego czatu RAG.</summary>

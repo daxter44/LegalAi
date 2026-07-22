@@ -13,21 +13,20 @@ namespace PrawoRAG.Api.Services;
 /// Awaria jednej jednostki nie wali sesji (werdykt BŁĄD); awaria streszczenia nie wali raportu
 /// (raport per-jednostka jest składany mechanicznie w UI). Scope DI PER JEDNOSTKA — wspólny scoped
 /// DbContext nie jest thread-safe. Singleton: działa w tle poza obwodem Blazora (id sesji pozwala
-/// wrócić do wyniku po F5).
+/// wrócić do wyniku po F5). Persystencja raportu (AN-3) w całości BEST-EFFORT — analiza dla
+/// użytkownika ma priorytet nad zapisem.
 /// </summary>
 public sealed class AnalysisRunner(
     IServiceScopeFactory scopes, IOptions<AnalysisOptions> options, CostGuard costGuard, IAnalysisStore store)
 {
     public async Task RunAsync(AnalysisSession session, string userId, CancellationToken ct)
     {
-        // Persystencja raportu (AN-3) jest BEST-EFFORT w całości: analiza dla użytkownika ma
-        // priorytet nad zapisem (wzorzec Chat.razor). Rekord powstaje NA STARCIE (status Analyzing),
-        // żeby analiza w toku była widoczna na liście po F5.
+        // Rekord powstaje NA STARCIE (status Analyzing) — analiza w toku jest widoczna na liście po F5.
         await Persist(() => store.CreateAsync(
             session.Id, userId, session.FileName, session.PageCount, session.Prompt,
             session.Units.Count, session.UnitsTruncated, CancellationToken.None));
 
-        try
+        await ExecuteAsync(session, userId, async () =>
         {
             // Przygotowanie: embeddingi jednostek (routing dopytań, SPK-6). Best-effort — bez nich
             // dopytania degradują się do trybu przekrojowego, analiza działa dalej.
@@ -38,32 +37,34 @@ public sealed class AnalysisRunner(
                 session.SetUnitEmbeddings(await embedder.EmbedPassagesAsync(
                     session.Units.Select(u => u.Text).ToList(), ct));
             }
+            catch (OperationCanceledException) { throw; }
             catch { /* best-effort */ }
 
             session.SetStatus(AnalysisStatus.Analyzing);
-            using var gate = new SemaphoreSlim(Math.Max(1, options.Value.MaxParallelism));
-            await Task.WhenAll(session.Units.Select(async unit =>
-            {
-                await gate.WaitAsync(ct);
-                UnitAnalysis? result = null;
-                try
-                {
-                    result = await AnalyzeUnitAsync(session.Prompt, unit, userId, ct);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    result = new UnitAnalysis(
-                        unit.Index, unit.Heading, UnitVerdict.Error, null, [], Error: ex.Message);
-                }
-                finally { gate.Release(); }
-                if (result is not null)
-                {
-                    session.SetUnitResult(result);
-                    // Zapis W TRAKCIE (nie na końcu): kill procesu w połowie = częściowy raport
-                    // (status Interrupted po sweepie), nie nic.
-                    await Persist(() => store.UpsertUnitAsync(session.Id, result, CancellationToken.None));
-                }
-            }));
+            await MapUnitsAsync(session, userId, session.Units, ct);
+        }, ct);
+    }
+
+    /// <summary>Ponowienie wskazanych jednostek (AN-4; UI podaje te z werdyktem BŁĄD). Wymaga ŻYWEJ
+    /// sesji — treść jednostek istnieje tylko w pamięci. Po ponowieniu streszczenie jest REGENEROWANE
+    /// (stare mogło opisywać błędy, których już nie ma) i nadpisywane w rekordzie DB.</summary>
+    public async Task RetryUnitsAsync(AnalysisSession session, string userId, IReadOnlyList<int> indexes, CancellationToken ct)
+    {
+        if (indexes.Count == 0) return;
+        var byIndex = session.Units.ToDictionary(u => u.Index);
+        var units = indexes.Where(byIndex.ContainsKey).Select(i => byIndex[i]).ToList();
+        foreach (var u in units) session.MarkUnitPending(u.Index);
+
+        await ExecuteAsync(session, userId, () => MapUnitsAsync(session, userId, units, ct), ct);
+    }
+
+    /// <summary>Wspólny szkielet przebiegu: ciało (map) → streszczenie → Complete; anulowanie →
+    /// Interrupted (częściowy raport czytelny, NIE awaria); wyjątek → Failed. Stany lustrzane w DB.</summary>
+    private async Task ExecuteAsync(AnalysisSession session, string userId, Func<Task> body, CancellationToken ct)
+    {
+        try
+        {
+            await body();
 
             session.SetStatus(AnalysisStatus.Summarizing);
             string? summary = null;
@@ -75,8 +76,6 @@ public sealed class AnalysisRunner(
         }
         catch (OperationCanceledException)
         {
-            // Anulowane (przycisk w UI albo sweep TTL) — częściowy raport zostaje czytelny,
-            // to NIE awaria: Interrupted, nie Failed.
             session.SetStatus(AnalysisStatus.Interrupted);
             await Persist(() => store.MarkInterruptedAsync(session.Id, CancellationToken.None));
         }
@@ -87,10 +86,31 @@ public sealed class AnalysisRunner(
         }
     }
 
-    /// <summary>Zapis best-effort: awaria bazy nie może zablokować ani zwalić analizy.</summary>
-    private static async Task Persist(Func<Task> op)
+    /// <summary>Faza map dla wskazanych jednostek: semafor równoległości, wynik do sesji + upsert
+    /// do DB W TRAKCIE (kill procesu w połowie = częściowy raport, nie nic).</summary>
+    private async Task MapUnitsAsync(AnalysisSession session, string userId, IReadOnlyList<DocUnit> units, CancellationToken ct)
     {
-        try { await op(); } catch { /* best-effort */ }
+        using var gate = new SemaphoreSlim(Math.Max(1, options.Value.MaxParallelism));
+        await Task.WhenAll(units.Select(async unit =>
+        {
+            await gate.WaitAsync(ct);
+            UnitAnalysis? result = null;
+            try
+            {
+                result = await AnalyzeUnitAsync(session.Prompt, unit, userId, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                result = new UnitAnalysis(
+                    unit.Index, unit.Heading, UnitVerdict.Error, null, [], Error: ex.Message);
+            }
+            finally { gate.Release(); }
+            if (result is not null)
+            {
+                session.SetUnitResult(result);
+                await Persist(() => store.UpsertUnitAsync(session.Id, result, CancellationToken.None));
+            }
+        }));
     }
 
     /// <summary>Faza map jednej jednostki: dzienne limity kosztów (CostGuard — dokument to KILKANAŚCIE
@@ -156,5 +176,11 @@ public sealed class AnalysisRunner(
             sb.Append(delta);
         costGuard.Record(userId, sb.Length);
         return sb.Length > 0 ? sb.ToString().Trim() : null;
+    }
+
+    /// <summary>Zapis best-effort: awaria bazy nie może zablokować ani zwalić analizy.</summary>
+    private static async Task Persist(Func<Task> op)
+    {
+        try { await op(); } catch { /* best-effort */ }
     }
 }

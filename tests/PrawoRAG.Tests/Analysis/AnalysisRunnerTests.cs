@@ -293,6 +293,53 @@ public class AnalysisRunnerTests
         Assert.True(snap.Completed < 3);               // przerwane w trakcie
     }
 
+    [Fact] // retry: nadpisuje jednostki BŁĄD, nie dotyka OK, regeneruje streszczenie i nadpisuje rekord
+    public async Task Retry_overwrites_failed_units_and_refreshes_summary()
+    {
+        var persisted = new RecordingAnalysisStore();
+        var broken = true; // pierwsza faza: § 2 pada; po przełączeniu retry naprawia
+        var llm = new ScriptedLlm(r =>
+            r.Messages[0].Content == AnalysisPrompts.SummarySystemPrompt
+                ? (broken ? "Streszczenie z błędem." : "Streszczenie naprawione.")
+                : broken && r.Messages[^1].Content.Contains("§ 2 Treść")
+                    ? throw new InvalidOperationException("awaria providera")
+                    : "WERDYKT: OK\nOdpowiedź [1].");
+        var (runner, store) = Harness(llm, analysisStore: persisted);
+        var session = store.Create("tester", "u.pdf", 1, "p", Units(3), false);
+
+        await runner.RunAsync(session, "tester", default);
+        Assert.Equal(UnitVerdict.Error, session.Snapshot().Results[1]!.Verdict);
+        var okBefore = session.Snapshot().Results[0];
+
+        broken = false;
+        await runner.RetryUnitsAsync(session, "tester", session.ErrorUnitIndexes(), default);
+
+        var snap = session.Snapshot();
+        Assert.Equal(AnalysisStatus.Done, snap.Status);
+        Assert.Equal(UnitVerdict.Ok, snap.Results[1]!.Verdict);           // BŁĄD naprawiony
+        Assert.Same(okBefore, snap.Results[0]);                            // OK nietknięte
+        Assert.Equal("Streszczenie naprawione.", snap.Summary);            // streszczenie zregenerowane
+        Assert.Equal(2, persisted.Completed.Count);                        // rekord DB nadpisany
+        Assert.Equal(4, persisted.Upserts.Count);                          // 3 map + 1 retry
+        Assert.Equal(2, persisted.Upserts.Count(u => u.Unit.Index == 2));  // upsert nadpisał § 2
+    }
+
+    [Fact] // retry z pustą listą = no-op (bez wywołań LLM i zapisu)
+    public async Task Retry_with_no_indexes_is_noop()
+    {
+        var persisted = new RecordingAnalysisStore();
+        var llm = new ScriptedLlm(_ => "WERDYKT: OK\nOdpowiedź [1].");
+        var (runner, store) = Harness(llm, analysisStore: persisted);
+        var session = store.Create("tester", "u.pdf", 1, "p", Units(1), false);
+        await runner.RunAsync(session, "tester", default);
+        var callsBefore = llm.Requests.Count;
+
+        await runner.RetryUnitsAsync(session, "tester", [], default);
+
+        Assert.Equal(callsBefore, llm.Requests.Count);
+        Assert.Single(persisted.Completed);
+    }
+
     [Fact] // embeddingi jednostek trafiają do sesji (routing dopytań)
     public async Task Unit_embeddings_are_stored()
     {
