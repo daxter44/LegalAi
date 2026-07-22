@@ -19,7 +19,9 @@ public sealed class AnalysisOptions
     public int MaxUnits { get; set; } = 40;
 }
 
-public enum AnalysisStatus { Preparing, Analyzing, Summarizing, Done, Failed }
+/// <summary><see cref="Interrupted"/> = anulowana przez użytkownika ALBO ucięta restartem procesu —
+/// częściowy raport pozostaje czytelny (w odróżnieniu od <see cref="Failed"/> = awaria całości).</summary>
+public enum AnalysisStatus { Preparing, Analyzing, Summarizing, Done, Failed, Interrupted }
 
 /// <summary>Werdykt analizy jednej jednostki — parsowany z pierwszej linii odpowiedzi map-prompta
 /// (albo nadany wprost: abstynencja → <see cref="NoSources"/>, wyjątek → <see cref="Error"/>).</summary>
@@ -48,6 +50,7 @@ public sealed class AnalysisSession
 {
     private readonly object _lock = new();
     private readonly UnitAnalysis?[] _results;
+    private readonly CancellationTokenSource _cts = new();
     private AnalysisStatus _status = AnalysisStatus.Preparing;
     private int _completed;
     private string? _summary;
@@ -57,19 +60,38 @@ public sealed class AnalysisSession
     /// null = embedding się nie powiódł (dopytania degradują się do trybu przekrojowego).</summary>
     private IReadOnlyList<float[]>? _unitEmbeddings;
 
-    public AnalysisSession(string fileName, int pageCount, string prompt, IReadOnlyList<DocUnit> units, bool unitsTruncated, DateTimeOffset createdAt)
+    private readonly TimeProvider _time;
+
+    public AnalysisSession(string userId, string fileName, int pageCount, string prompt, IReadOnlyList<DocUnit> units, bool unitsTruncated, TimeProvider time)
     {
+        _time = time;
+        UserId = userId;
         FileName = fileName;
         PageCount = pageCount;
         Prompt = prompt;
         Units = units;
         UnitsTruncated = unitsTruncated;
-        CreatedAt = createdAt;
-        LastTouched = createdAt;
+        CreatedAt = time.GetUtcNow();
+        LastTouched = CreatedAt;
         _results = new UnitAnalysis?[units.Count];
     }
 
-    public Guid Id { get; } = Guid.NewGuid();
+    public Guid Id { get; } = Guid.CreateVersion7();
+
+    /// <summary>Właściciel sesji — <see cref="AnalysisSessionStore.TryGet"/> odmawia dostępu przy
+    /// niezgodności (id sesji NIE jest sekretem: pokazujemy go w UI, więc sam Guid nie może być
+    /// biletem do cudzego dokumentu).</summary>
+    public string UserId { get; }
+
+    /// <summary>Token anulowania analizy — przekazywany do runnera; <see cref="Cancel"/> z UI
+    /// (albo sweep TTL store'a) przerywa jednostki w locie. Ukończone wyniki zostają.</summary>
+    public CancellationToken Token => _cts.Token;
+
+    public void Cancel()
+    {
+        try { _cts.Cancel(); } catch (ObjectDisposedException) { /* wyścig ze sweepem — nieistotny */ }
+    }
+
     public DateTimeOffset CreatedAt { get; }
     public DateTimeOffset LastTouched { get; private set; }
     public string FileName { get; }
@@ -110,13 +132,40 @@ public sealed class AnalysisSession
         get { lock (_lock) return _unitEmbeddings; }
     }
 
-    /// <summary>Zapis wyniku jednostki (faza map, wołane współbieżnie). Index = DocUnit.Index (1-based).</summary>
+    /// <summary>Zapis wyniku jednostki (faza map, wołane współbieżnie). Index = DocUnit.Index (1-based).
+    /// Odświeża też <see cref="LastTouched"/> — analiza W TOKU sama przedłuża sobie TTL (bez tego
+    /// sweep store'a mógłby ubić długą analizę, której nikt nie ogląda).</summary>
     public void SetUnitResult(UnitAnalysis result)
     {
         lock (_lock)
         {
             if (_results[result.Index - 1] is null) _completed++;
             _results[result.Index - 1] = result;
+            LastTouched = _time.GetUtcNow();
+        }
+        Changed?.Invoke();
+    }
+
+    /// <summary>Indeksy jednostek z werdyktem BŁĄD — kandydaci do ponowienia (AN-4).</summary>
+    public IReadOnlyList<int> ErrorUnitIndexes()
+    {
+        lock (_lock)
+            return _results
+                .Where(r => r is { Verdict: UnitVerdict.Error })
+                .Select(r => r!.Index)
+                .ToList();
+    }
+
+    /// <summary>Cofa jednostkę do stanu „w kolejce" przed ponowieniem: wynik znika, licznik spada,
+    /// status wraca do Analyzing (UI pokazuje postęp jak przy pierwszym przebiegu).</summary>
+    public void MarkUnitPending(int index)
+    {
+        lock (_lock)
+        {
+            if (_results[index - 1] is null) return;
+            _results[index - 1] = null;
+            _completed--;
+            _status = AnalysisStatus.Analyzing;
         }
         Changed?.Invoke();
     }

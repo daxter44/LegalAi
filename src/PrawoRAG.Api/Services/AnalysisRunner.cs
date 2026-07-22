@@ -53,8 +53,15 @@ public sealed class AnalysisRunner(
             session.SetStatus(AnalysisStatus.Summarizing);
             string? summary = null;
             try { summary = await SummarizeAsync(session, userId, ct); }
+            catch (OperationCanceledException) { throw; }
             catch { /* raport per-jednostka stoi bez streszczenia */ }
             session.Complete(summary);
+        }
+        catch (OperationCanceledException)
+        {
+            // Anulowane (przycisk w UI albo sweep TTL) — częściowy raport zostaje czytelny,
+            // to NIE awaria: Interrupted, nie Failed.
+            session.SetStatus(AnalysisStatus.Interrupted);
         }
         catch (Exception ex)
         {

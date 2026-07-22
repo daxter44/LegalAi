@@ -84,7 +84,7 @@ public class AnalysisRunnerTests
     private static async Task<AnalysisSnapshot> RunAsync(
         AnalysisRunner runner, AnalysisSessionStore store, int units, string prompt = "oceń ryzyka")
     {
-        var session = store.Create("umowa.pdf", 2, prompt, Units(units), unitsTruncated: false);
+        var session = store.Create("tester", "umowa.pdf", 2, prompt, Units(units), unitsTruncated: false);
         await runner.RunAsync(session, "tester", default);
         return session.Snapshot();
     }
@@ -194,12 +194,37 @@ public class AnalysisRunnerTests
         Assert.Null(snap.Summary);
     }
 
+    [Fact] // anulowanie tokenem sesji → Interrupted (częściowy raport), NIE Failed
+    public async Task Cancellation_yields_interrupted_not_failed()
+    {
+        var started = new TaskCompletionSource();
+        AnalysisSession? sessionRef = null;
+        var llm = new ScriptedLlm(_ =>
+        {
+            started.TrySetResult();     // pierwsza jednostka weszła do LLM → można anulować
+            return "WERDYKT: OK\nOdpowiedź [1].";
+        });
+        var (runner, store) = Harness(llm, maxParallelism: 1);
+        var session = store.Create("tester", "u.pdf", 2, "p", Units(3), false);
+        sessionRef = session;
+
+        var run = runner.RunAsync(session, "tester", session.Token);
+        await started.Task;
+        session.Cancel();
+        await run;
+
+        var snap = session.Snapshot();
+        Assert.Equal(AnalysisStatus.Interrupted, snap.Status);
+        Assert.Null(snap.Error);                       // to nie awaria
+        Assert.True(snap.Completed < 3);               // przerwane w trakcie
+    }
+
     [Fact] // embeddingi jednostek trafiają do sesji (routing dopytań)
     public async Task Unit_embeddings_are_stored()
     {
         var llm = new ScriptedLlm(_ => "WERDYKT: OK\nOdpowiedź [1].");
         var (runner, store) = Harness(llm);
-        var session = store.Create("u.pdf", 1, "p", Units(3), false);
+        var session = store.Create("tester", "u.pdf", 1, "p", Units(3), false);
 
         await runner.RunAsync(session, "tester", default);
 

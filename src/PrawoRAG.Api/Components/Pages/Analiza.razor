@@ -100,11 +100,18 @@ else
                 _ => "⏳ piszę streszczenie…",
             })
             <progress max="@snap.Total" value="@snap.Completed" style="width:100%"></progress>
+            <button class="btn-ghost" @onclick="CancelAnalysis" title="Przerwij — ukończone fragmenty zostaną">⏹ Anuluj</button>
         </div>
     }
     @if (snap.Status == AnalysisStatus.Failed)
     {
         <div class="banner banner-danger" role="alert">Analiza nie powiodła się: @snap.Error</div>
+    }
+    @if (snap.Status == AnalysisStatus.Interrupted)
+    {
+        <div class="banner banner-warn" role="status">
+            Analiza przerwana (@snap.Completed/@snap.Total fragmentów ukończonych) — częściowy raport poniżej.
+        </div>
     }
     @if (snap.UnitsTruncated)
     {
@@ -353,14 +360,18 @@ else
         }
 
         _notice = null;
-        _session = Sessions.Create(_fileName, _pdf.PageCount, prompt, _units, _unitsTruncated);
+        _session = Sessions.Create(_userId, _fileName, _pdf.PageCount, prompt, _units, _unitsTruncated);
         _changedHandler = () => _ = InvokeAsync(StateHasChanged);
         _session.Changed += _changedHandler;
 
+        // Token SESJI (nie obwodu): anulowanie z przycisku/sweepu TTL, a nie przez F5 —
+        // analiza ma przeżyć odświeżenie strony.
         var session = _session;
         var userId = _userId;
-        _ = Task.Run(() => Runner.RunAsync(session, userId, CancellationToken.None));
+        _ = Task.Run(() => Runner.RunAsync(session, userId, session.Token));
     }
+
+    private void CancelAnalysis() => _session?.Cancel();
 
     /// <summary>Dopytanie: routing kontekstu per pytanie (odwołania wprost → cosine → przekrojowo),
     /// tura-kotwica + ostatnie dopytania jako historia zwykłego czatu RAG.</summary>
@@ -370,7 +381,7 @@ else
         if (question.Length == 0 || _followUpBusy || _session is null) return;
 
         _notice = null;
-        if (Sessions.TryGet(_session.Snapshot().Id) is null)
+        if (Sessions.TryGet(_session.Snapshot().Id, _userId) is null)
         {
             _notice = "Sesja analizy wygasła — rozpocznij analizę ponownie (treści nie przechowujemy).";
             return;
