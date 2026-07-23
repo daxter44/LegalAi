@@ -154,11 +154,60 @@ artykułu, ich niska pozycja wygląda na POPRAWNĄ (nie dotyczą wprost pytania)
 konkuruje w tych ~60 miejscach (śmieci czy trafna treść), podniesienie liczby to zgadywanie, nie
 naprawa. Ten dokument świadomie NIE proponuje takiej zmiany z tego samego powodu.
 
+## [FAKT — zmierzone `Eval__ProbeDumpFused=true`, narzędzie CIT-2] Pełny zfuzowany ranking top-60
+
+Ten sam dzień, po zaciągnięciu commitów `757f20e` (CIT-1: `CitationParser.ActHint` rozpoznaje pełne
+nazwy ustaw korpusowo) i `9c8343f` (CIT-2: `ChunkClassifier` + `Eval__ProbeDumpFused`) z równoległej
+sesji. Sonda odtworzona identycznym pytaniem, teraz z klasyfikacją automatem zamiast liczeniem ręcznym.
+
+**Cel sondy (art. 1a, definicja budynku) ląduje dokładnie na pozycji #60** tego dumpu — potwierdzone
+tą samą sondą, spójne z wcześniejszym pomiarem „pula RRF: #60/86".
+
+**Rozkład klas na 60 pozycjach (wydruk narzędzia):**
+
+| klasa | liczba/60 |
+|---|---|
+| orzeczenie (judgment) | 28 |
+| akt-bazowy (BaseAct) | 15 |
+| wariant (AmendmentVariant) | 9 |
+| nowela (AmendmentAct) | 8 |
+| uchylony/pominięty (RepealedOrOmitted) | 0 |
+| cienkie (≤40 tok.) | 27 |
+| cienkie + punkt wyliczenia (ThinEnumeration) | 9 |
+| punkt wyliczenia (dowolnej długości) | 11 |
+
+**Rozbicie regionu #33-59 (27 pozycji między odcięciem `TopK×4=32` a celem na #60) — policzone
+bezpośrednio z wypisanych pozycji:**
+
+| klasa | liczba/27 |
+|---|---|
+| orzeczenie | 13 |
+| akt-bazowy (inny artykuł) | 4 |
+| wariant | 6 |
+| nowela | 4 |
+
+**Obserwacja bezpośrednia, bez zaokrągleń**: `uchylony/pominięty` = 0/60 — pozycje tego typu widoczne
+wcześniej w SAMYM dense top-40 (np. „Art. 22 (pominięty)" na #2 dense) nie występują w zfuzowanym
+top-60 wcale. Ranking BM25, wchodzący do fuzji, ich tam nie stawia.
+
+**Arytmetyka pod decyzję CIT-3/CIT-4 (bezpośrednio z powyższych liczb, nie osobny pomiar)**:
+- Usunięcie WSZYSTKICH 6 wariantów z regionu #33-59 przesunęłoby cel z #60 najwyżej na #54 — nadal
+  22 pozycje za cutoffem #32. Sam dedup wariantów (zakres CIT-3) nie wystarcza, żeby ten konkretny
+  cel przekroczył próg.
+- `cienkie+wyliczenie` (zakres CIT-4) to tylko 9/60 na całej liście — mniejsza kategoria niż liczba
+  wariantów+noweli razem (17/60).
+- Największa pojedyncza kategoria w całości (28/60) i w regionie blokującym (13/27) to `orzeczenie`
+  — poza zakresem zarówno CIT-3, jak i CIT-4 tak jak są dziś nazwane/opisane w kodzie.
+
 ## Otwarte pytania (nie zbadane w tej sesji)
 
-1. ~~Co dokładnie zajmuje pozycje #1-59 w fuzji RRF dla tego pytania~~ — **ZMIERZONE** (sekcja
-   „Co faktycznie zajmuje top-40 dense" wyżej, dla top-40 dense; pozostaje niezbadane, czy pozycje
-   41-59 w fuzji RRF wyglądają podobnie, czy inaczej — dump objął tylko pierwsze 40).
+1. ~~Co dokładnie zajmuje pozycje #1-59 w fuzji RRF dla tego pytania~~ — **ZMIERZONE w pełni**
+   (sekcja „Pełny zfuzowany ranking top-60" wyżej, narzędzie CIT-2). Niezbadane pozostaje, czy ten
+   sam rozkład klas (dominacja orzeczeń, ~15% wariantów+noweli) powtarza się na INNYCH pytaniach,
+   czy to specyficzne dla tego jednego przypadku — jeden zmierzony ranking nie ustala wzorca.
+1a. ~~Czy CIT-1 (rozpoznawanie pełnych nazw ustaw) naprawia Turę 2~~ — kod scalony, ale NIE
+   zweryfikowane na żywo (czy fuzzy resolver po `ActHint="podatkach i opłatach lokalnych"`
+   faktycznie trafia w `DU/1991/31` — `ResolveActAsync`/pg_trgm nie zostały tu przetestowane end-to-end).
 2. Jaki odsetek pytań o konkretny artykuł konkretnej (nie-kodeksowej) ustawy cierpi na ten sam brak
    rozpoznania w `ActHint()` — pojedynczy zmierzony przypadek nie mówi nic o skali.
 3. Czy naprawa `ActHint()` (rozszerzenie o pełne nazwy ustaw) powinna być słownikiem popularnych
