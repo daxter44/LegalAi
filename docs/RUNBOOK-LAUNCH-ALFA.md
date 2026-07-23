@@ -40,6 +40,11 @@ Access__Invites__<kod3>=tester3
 ```
 
 ## Krok 5 — uruchom + wystaw
+- Env (niecommitowane) — trwałe klucze DataProtection, inaczej po restarcie aplikacji padają
+  ciasteczka logowania i testerzy wpisują kod od nowa:
+  ```
+  DataProtection__KeysPath=<ścieżka na dysku, np. ./keys>   # katalog musi przetrwać restart
+  ```
 - `dotnet run -c Release --project src/PrawoRAG.Api` na M4.
 - Tunel (cloudflared/ngrok) → publiczny URL dla testerów. 0 zł serwera.
 
