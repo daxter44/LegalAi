@@ -59,6 +59,11 @@ public sealed record RetrievedChunk
     /// <summary>AKT-4: data wejścia w życie, gdy chunk to fragment nowelizacji NIEWCHŁONIĘTEJ do tekstu
     /// jednolitego (dołożony przez <see cref="ITemporalAugmenter"/>). Null = zwykłe źródło.</summary>
     public string? AmendmentEffectiveDate { get; init; }
+
+    /// <summary>Podstawy prawne, na których oparło się orzeczenie (z metadanych dokumentu:
+    /// <c>referencedRegulations</c>). Konkretna informacja dla prawnika — pokazywana jako chipy przy
+    /// karcie wyroku, bez czytania uzasadnienia. Null/pusto dla aktów i orzeczeń bez tych metadanych.</summary>
+    public IReadOnlyList<string>? LegalBases { get; init; }
 }
 
 /// <summary>

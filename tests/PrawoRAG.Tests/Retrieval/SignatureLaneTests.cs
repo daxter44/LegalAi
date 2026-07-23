@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
 using PrawoRAG.Domain;
@@ -37,15 +38,18 @@ public class SignatureLaneTests
         await db.Documents.Where(d => d.Source == Src || d.Source == "TEST-SIG-1" || d.Source == "TEST-SIG-2").ExecuteDeleteAsync();
     }
 
-    private static async Task SeedJudgmentAsync(string extId, string caseNumberNormalized, string text)
+    private static async Task SeedJudgmentAsync(string extId, string caseNumberNormalized, string text, string? legalBasisText = null)
     {
         var vec = (await Emb.EmbedPassagesAsync([text], default))[0];
         await using var db = NewDb();
+        var meta = legalBasisText is null ? null
+            : JsonSerializer.SerializeToDocument(new { referencedRegulations = new[] { new { text = legalBasisText } } });
         var doc = new DocumentEntity
         {
             Id = Guid.CreateVersion7(), Source = Src, ExternalId = extId, DocType = DocTypes.Judgment,
             Title = $"{Src}/{extId}", ContentHash = $"{Src}:{extId}", Status = DocumentStatus.Indexed,
-            CaseNumber = caseNumberNormalized, IngestedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+            CaseNumber = caseNumberNormalized, TypedMetadata = meta,
+            IngestedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
         };
         db.Documents.Add(doc);
         db.Chunks.Add(new ChunkEntity
@@ -63,8 +67,9 @@ public class SignatureLaneTests
         await CleanAsync();
         try
         {
-            // Treść BEZ własnej sygnatury (jak realny full_text NSA) + dystraktor z inną sygnaturą.
-            await SeedJudgmentAsync("target", "IX ZZ 99999/99", TargetText);
+            // Treść BEZ własnej sygnatury (jak realny full_text NSA) + podstawa prawna w metadanych.
+            await SeedJudgmentAsync("target", "IX ZZ 99999/99", TargetText,
+                legalBasisText: "Ustawa o planowaniu i zagospodarowaniu przestrzennym (Dz.U. 2023 poz 977), art. 28 ust. 1");
             await SeedJudgmentAsync("distractor", "IX ZZ 11111/11",
                 "Zupełnie inna sprawa dotycząca zezwolenia na usunięcie drzew i kar administracyjnych.");
 
@@ -77,6 +82,9 @@ public class SignatureLaneTests
             // Trafienie dokładne (Score=MaxValue) na wierzchu — WŁAŚCIWE orzeczenie, mimo że jego treść
             // nie zawiera własnej sygnatury (semantyka/BM25 by go nie zwróciły).
             Assert.Equal(TargetText, res.Chunks[0].Text);
+            // Podstawy prawne przenoszą się z metadanych do wyniku (łańcuch DB → RetrievedChunk).
+            Assert.NotNull(res.Chunks[0].LegalBases);
+            Assert.Contains(res.Chunks[0].LegalBases!, b => b.Contains("Dz.U. 2023 poz 977"));
         }
         finally { await CleanAsync(); }
     }

@@ -202,3 +202,11 @@ body {
     background: var(--c-surface); border-left: 3px solid var(--c-border);
     padding: var(--s-2) var(--s-3); margin: var(--s-2) 0; max-height: 22rem; overflow-y: auto;
 }
+
+/* Podstawy prawne orzeczenia — chipy na karcie źródła (konkretna informacja bez czytania uzasadnienia) */
+.legal-bases { display: flex; flex-wrap: wrap; gap: var(--s-1); align-items: baseline; margin: var(--s-1) 0; }
+.legal-bases-label { font-size: var(--fs-12); color: var(--c-text-muted); }
+.legal-basis-chip {
+    font-size: var(--fs-12); background: var(--c-accent-weak); color: var(--c-text);
+    border-radius: var(--radius); padding: .05rem .4rem;
+}

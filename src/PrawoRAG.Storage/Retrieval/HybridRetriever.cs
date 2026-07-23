@@ -144,6 +144,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
                 Title = c.Document.Title,
                 SourceUrl = c.Document.SourceUrl,
                 Locator = Deserialize(c.Locator),
+                LegalBases = LegalBasesDisplay(c.Document.TypedMetadata),
                 Score = rrf[c.Id],
                 Similarity = sim.TryGetValue(c.Id, out var s) ? s : null,
             })
@@ -320,11 +321,31 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
                     ChunkId = h.Id, DocumentId = h.DocumentId, Text = h.Text, Section = h.Section,
                     Source = h.Document!.Source, DocType = h.Document.DocType, Title = h.Document.Title,
                     SourceUrl = h.Document.SourceUrl, Locator = Deserialize(h.Locator),
+                    LegalBases = LegalBasesDisplay(h.Document.TypedMetadata),
                     Score = double.MaxValue, Similarity = null, // trafienie dokładne — zawsze na górę
                 });
             }
         }
         return result;
+    }
+
+    /// <summary>Czytelne podstawy prawne z <c>referencedRegulations</c> (jsonb) — pole „text" każdego
+    /// obiektu (wspólne dla SAOS i NSA). Cap 6, żeby karta była zwięzła. Null gdy brak.</summary>
+    private static IReadOnlyList<string>? LegalBasesDisplay(JsonDocument? meta)
+    {
+        if (meta is null || meta.RootElement.ValueKind != JsonValueKind.Object ||
+            !meta.RootElement.TryGetProperty("referencedRegulations", out var arr) ||
+            arr.ValueKind != JsonValueKind.Array) return null;
+
+        var list = new List<string>();
+        foreach (var el in arr.EnumerateArray())
+        {
+            if (list.Count >= 6) break;
+            if (el.ValueKind == JsonValueKind.Object && el.TryGetProperty("text", out var t) &&
+                t.ValueKind == JsonValueKind.String && t.GetString() is { Length: > 0 } s)
+                list.Add(s);
+        }
+        return list.Count > 0 ? list : null;
     }
 
     /// <summary>Dokładne trafienia po lokalizatorze dla cytatów wykrytych w pytaniu (QU-3). Omija

@@ -104,7 +104,8 @@ public sealed class ConversationStore(IServiceScopeFactory scopeFactory) : IConv
                 Title: Str(el, "Title") ?? "",
                 Url: Str(el, "Url"),
                 Snippet: Str(el, "Snippet") ?? "",
-                AmendmentEffectiveDate: Str(el, "AmendmentEffectiveDate")));
+                AmendmentEffectiveDate: Str(el, "AmendmentEffectiveDate"),
+                LegalBases: StrArray(el, "LegalBases")));
         }
         return result;
 
@@ -112,6 +113,13 @@ public sealed class ConversationStore(IServiceScopeFactory scopeFactory) : IConv
             el.TryGetProperty(name, out var v) ? v : null;
         static string? Str(JsonElement el, string name) =>
             el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        static IReadOnlyList<string>? StrArray(JsonElement el, string name)
+        {
+            if (!el.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.Array) return null;
+            var items = v.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String)
+                .Select(x => x.GetString()!).ToList();
+            return items.Count > 0 ? items : null;
+        }
     }
 
     public async Task AddFeedbackAsync(Guid messageId, string userId, string verdict, string? note, CancellationToken ct)

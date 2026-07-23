@@ -83,7 +83,7 @@ public sealed class ChatService(
         var (request, sources) = GroundedPrompt.Build(question, chunks, history,
             docFragments.Select(f => f.Text).ToList());
         yield return new SourcesEvent(sources
-            .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet, s.AmendmentEffectiveDate)).ToList());
+            .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet, s.AmendmentEffectiveDate, s.LegalBases)).ToList());
 
         // Tokeny in/out z providera (usage przychodzi na końcu strumienia) — zbierane zawsze,
         // widoczność w UI steruje flaga Diagnostics:ShowTokenUsage. Rozumowanie (thinking) — jeśli model

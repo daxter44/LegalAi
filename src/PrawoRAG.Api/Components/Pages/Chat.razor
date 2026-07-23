@@ -134,6 +134,16 @@
                                             <a class="source-link" href="@s.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
                                         }
                                     </div>
+                                    @if (s.LegalBases is { Count: > 0 })
+                                    {
+                                        <div class="legal-bases" title="Podstawy prawne, na których oparło się to orzeczenie">
+                                            <span class="legal-bases-label">Podstawa prawna:</span>
+                                            @foreach (var b in s.LegalBases)
+                                            {
+                                                <span class="legal-basis-chip">@b</span>
+                                            }
+                                        </div>
+                                    }
                                     <blockquote class="source-snippet">@s.Snippet</blockquote>
                                 </div>
                             }
