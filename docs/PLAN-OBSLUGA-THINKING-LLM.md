@@ -1,7 +1,38 @@
-# TODO: obsługa „myślenia" (thinking/reasoning) providerów OpenAI-compatible
+# Obsługa „myślenia" (thinking/reasoning) providerów OpenAI-compatible
 
-Data: 2026-07-23. Próba podjęta i WYCOFANA w tej samej sesji (zmiany nigdy niescommitowane) —
-ten dokument to zapis stanu wiedzy, żeby następne podejście nie zaczynało od zera.
+Data: 2026-07-23. **ZAIMPLEMENTOWANE (drugie podejście)** — poprzednia próba wycofana bez diagnozy;
+tym razem parser jest CZYSTĄ, przetestowaną funkcją, a nie zgadywaniem na żywo. Sekcje „Co było
+zrobione (wycofane)" i „Otwarte pytania" niżej to zapis pierwszego podejścia (kontekst historyczny).
+
+## Rozwiązanie (2026-07-23)
+
+- **`ReasoningSplitter`** (`src/PrawoRAG.Llm/ReasoningSplitter.cs`) — automat stanowy rozdzielający
+  strumień na widoczne + rozumowanie. Obsługuje OBA warianty: (a) Google flaga
+  `extra_content.google.thought` (autorytatywna: jej brak = koniec myślenia) + literalne tagi
+  `<thought>` jako artefakt do odrzucenia; (b) self-hosted gołe `<think>`/`<thought>` (także tag
+  rozcięty między deltami, bufor granicy). Brak flagi i tagów (Claude/Bielik) → pass-through, zero
+  regresji. **7 testów** (`ReasoningSplitterTests`) — poprawność NIE zależy od żywego biegu.
+- **Provider** (`OpenAiCompatibleLlmProvider`): parsuje flagę per delta, przepuszcza przez splitter,
+  emituje TYLKO widoczne delty (rozumowanie poza strumieniem → naprawia werdykt `/analiza`,
+  walidację cytatów i renderowany markdown), oddaje rozumowanie przez `LlmRequest.OnReasoning`
+  (raz, na końcu — wzorem `OnUsage`). Dodano `PRAWORAG_DUMP_RESPONSE` — zrzut SUROWYCH linii `data:`
+  przed parsowaniem (postulat pkt 3 niżej; do diagnozy realnego strumienia bez zgadywania).
+- **UI**: `ReasoningEvent` (ChatService) → w `Chat.razor` rozwijana sekcja „🧠 Rozumowanie modelu"
+  (jak panel źródeł; tylko in-memory, nie persystowane). Analiza dokumentów korzysta pośrednio:
+  strip rozumowania w providerze naprawia parsowanie werdyktu (badge „?").
+
+## Model czy orkiestracja? (odpowiedź na pytanie z 2026-07-23)
+
+Treść rozumowania = własność MODELU (reasoning-tuned checkpoint). Ale flaga `google.thought` =
+orkiestracja GOOGLE — **self-hosted Ollama/llama.cpp jej nie wystawi**, tylko gołe tagi `<think>`
+(lub pole `reasoning_content`). Dlatego splitter wykrywa oba; po przełączeniu na lokalny reasoning-model
+rozumowanie zadziała out-of-the-box PRZEZ TAGI (o ile checkpoint faktycznie „myśli"), bez zależności
+od flagi Google. **Nie zweryfikowane na żywej Gemmie w tej sesji** (brak dostępu do stacku) — parser
+pokryty testami; przy pierwszym realnym biegu użyj `PRAWORAG_DUMP_RESPONSE`, jeśli coś odbiega od formatu.
+
+---
+
+## (Historia) TODO pierwszego podejścia — WYCOFANE
 
 ## Kontekst
 

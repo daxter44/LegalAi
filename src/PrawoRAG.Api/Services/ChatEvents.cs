@@ -25,6 +25,11 @@ public sealed record DocSourcesEvent(string FileName, IReadOnlyList<DocSource> F
 /// <summary>Kolejny fragment odpowiedzi LLM (streaming token po tokenie).</summary>
 public sealed record TokenEvent(string Text) : ChatEvent;
 
+/// <summary>„Rozumowanie" modelu (thinking/CoT) wydzielone ze strumienia — emitowane RAZ, po tokenach,
+/// przed <see cref="DoneEvent"/>. UI pokazuje je w rozwijanej sekcji (jak źródła). Puste/brak = model
+/// nie „myślał" (Claude/Bielik) → event nie leci.</summary>
+public sealed record ReasoningEvent(string Text) : ChatEvent;
+
 /// <summary>Bramka abstynencji: brak pokrycia w źródłach — nie generujemy odpowiedzi.</summary>
 public sealed record AbstainEvent(string Message, double MaxSimilarity) : ChatEvent;
 

@@ -86,9 +86,11 @@ public sealed class ChatService(
             .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet, s.AmendmentEffectiveDate)).ToList());
 
         // Tokeny in/out z providera (usage przychodzi na końcu strumienia) — zbierane zawsze,
-        // widoczność w UI steruje flaga Diagnostics:ShowTokenUsage.
+        // widoczność w UI steruje flaga Diagnostics:ShowTokenUsage. Rozumowanie (thinking) — jeśli model
+        // je wystawił (Gemini/Gemma) — provider oddaje je osobno, poza widocznym strumieniem.
         LlmUsage? usage = null;
-        request = request with { OnUsage = u => usage = u };
+        string? reasoning = null;
+        request = request with { OnUsage = u => usage = u, OnReasoning = r => reasoning = r };
 
         var full = new StringBuilder();
         await foreach (var delta in llm.StreamCompletionAsync(request, ct))
@@ -96,6 +98,9 @@ public sealed class ChatService(
             full.Append(delta);
             yield return new TokenEvent(delta);
         }
+
+        if (!string.IsNullOrWhiteSpace(reasoning))
+            yield return new ReasoningEvent(reasoning);
 
         // ANTY-FABRYKACJA — czy cytaty [n]/[Dk]/artykuły/sygnatury istnieją w dostarczonym kontekście.
         var contextTexts = chunks
