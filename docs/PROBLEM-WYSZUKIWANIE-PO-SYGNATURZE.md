@@ -1,8 +1,29 @@
 # Problem: orzeczenia nie są znajdowalne po WŁASNEJ sygnaturze
 
-Data: 2026-07-23. Znalezione przy weryfikacji jakości ingestii NSA, PRZED pełnym runem (~650 tys.
-wyroków). Dotyczy **wszystkich źródeł orzeczniczych** (SAOS i NSA), nie tylko nowej ingestii.
-Bez zmian w kodzie — dokument opisuje ustalony stan faktyczny i warianty do decyzji.
+Data: 2026-07-23. **ROZWIĄZANE — wariant B (lane sygnatury), zweryfikowane na kodzie i testach.**
+
+## Rozwiązanie (wdrożone)
+
+Sygnatura to identyfikator strukturalny, nie zapytanie semantyczne → dedykowany exact-match, bez
+re-embeddingu:
+- `CaseNumberKey` (Domain): `Normalize` (kanoniczny klucz: trim + pojedyncze spacje + wielkie litery)
+  + `Detect` (wyłuskanie sygnatur z pytania, IgnoreCase; wzorzec ŁAPIE wariant WSA z „/", którego
+  `CitationValidator.CaseNumberRegex` gubił).
+- `documents.CaseNumber` — znormalizowana kolumna + indeks (migracja `AddDocumentCaseNumber`
+  z **backfillem z istniejącego korpusu** SAOS+NSA → działa od razu na obecnych danych, bez
+  re-embeddingu). Populowana przy ingestii z `Locator.CaseNumber`.
+- `HybridRetriever.SignatureAsync`: pytanie z sygnaturą → pobiera DOKŁADNIE to orzeczenie (Score=MaxValue,
+  na wierzchu), przed torem strukturalnym/mostem/semantyką. Brak sygnatury → zero kosztu.
+- Testy: `CaseNumberKeyTests` (normalizacja + detekcja, w tym „SA/Po"), `SignatureLaneTests` (żywy PG:
+  orzeczenie znalezione po sygnaturze mimo że treść jej nie zawiera).
+
+Wariant A (nagłówek do treści → re-embedding) i C (osobny tekst do BM25) — NIE podjęte (zbędne;
+B rozwiązuje bez dotykania embeddingów). Uwaga: backfill zadziałał lokalnie; na maszynie z pełnym
+korpusem migracja doda kolumnę i wypełni ją z `TypedMetadata->>'caseNumber'` przy `database update`.
+
+---
+
+## (Analiza wyjściowa) Dotyczy **wszystkich źródeł orzeczniczych** (SAOS i NSA).
 
 ## Objaw
 

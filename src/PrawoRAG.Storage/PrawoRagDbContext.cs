@@ -49,6 +49,8 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options) : Db
             e.HasIndex(x => new { x.Source, x.SourceModificationDate });
             e.HasIndex(x => x.CourtType);
             e.HasIndex(x => x.InForce);
+            e.Property(x => x.CaseNumber).HasMaxLength(64);
+            e.HasIndex(x => x.CaseNumber); // exact-match po sygnaturze (retrieval strukturalny)
         });
 
         b.Entity<ChunkEntity>(e =>

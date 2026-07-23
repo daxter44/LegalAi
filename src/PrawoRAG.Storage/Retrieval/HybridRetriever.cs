@@ -178,6 +178,12 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
             ranked = deduped; // już posortowane po Score (RRF)
         }
 
+        // Sygnatura akt: gdy pytanie zawiera sygnaturę („III SA/Po 154/26"), pobierz DOKŁADNIE to
+        // orzeczenie po znormalizowanym kluczu i wstaw na SAM WIERZCH. Sygnatura to identyfikator,
+        // nie zapytanie semantyczne — similarity nigdy tego nie gwarantuje (własna sygnatura ląduje
+        // w tekście chunka tylko przypadkiem). DOKŁADA, nie usuwa; brak sygnatury → zero kosztu.
+        var signature = await SignatureAsync(query, ct);
+
         // QU-3: retrieval strukturalny — gdy pytanie zawiera cytat („art. 94 KW"), pobierz DOKŁADNIE ten
         // artykuł po metadanych i wstaw na górę (gwarantowane sloty). DOKŁADA, nigdy nie usuwa semantycznych;
         // brak rozpoznania aktu → zachowanie jak dziś (zero regresji).
@@ -188,7 +194,8 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // kotwica na początku listy źródeł). Sygnał abstynencji liczony wyżej — most go NIE dotyka
         // (tylko dokłada źródła; nie może zamienić odmowy w odpowiedź).
         var bridge = await CitationBridgeAsync(query, deduped, ct);
-        var final = structural.Concat(bridge).Concat(ranked)
+        // Kolejność slotów: SYGNATURA (najbardziej konkretny ask) → cytat strukturalny → most → semantyka.
+        var final = signature.Concat(structural).Concat(bridge).Concat(ranked)
             .GroupBy(c => c.ChunkId).Select(g => g.First()) // dedup; wcześniejsze tory wygrywają slot
             .Take(query.TopK)
             .ToList();
@@ -279,6 +286,46 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     }
 
     private sealed record DenseHit(Guid Id, double Dist);
+
+    /// <summary>Ile chunków jednego orzeczenia dociąga lane sygnatury — początek dokumentu (sentencja
+    /// + start uzasadnienia) po ChunkIndex; tam jest rozstrzygnięcie, którego szuka prawnik.</summary>
+    private const int SignatureChunksPerDoc = 12;
+
+    /// <summary>
+    /// Lane sygnatury: pytanie zawiera sygnaturę akt → pobierz DOKŁADNIE to orzeczenie po
+    /// znormalizowanym kluczu (<c>documents.CaseNumber</c>, indeks) i wstaw na wierzch. To retrieval
+    /// STRUKTURALNY (exact-match), nie semantyczny — bez re-embeddingu, działa też na istniejącym
+    /// korpusie (SAOS) po backfillu kolumny. Brak sygnatury w pytaniu → pusto (zero kosztu).
+    /// </summary>
+    private async Task<List<RetrievedChunk>> SignatureAsync(RetrievalQuery query, CancellationToken ct)
+    {
+        var keys = CaseNumberKey.Detect(query.Text);
+        if (keys.Count == 0) return [];
+
+        var result = new List<RetrievedChunk>();
+        var seen = new HashSet<Guid>();
+        foreach (var key in keys.Take(3))
+        {
+            var hits = await db.Chunks.Include(x => x.Document)
+                .Where(x => x.Document!.CaseNumber == key)
+                .OrderBy(x => x.Document!.ExternalId).ThenBy(x => x.ChunkIndex)
+                .Take(SignatureChunksPerDoc)
+                .ToListAsync(ct);
+
+            foreach (var h in hits)
+            {
+                if (!seen.Add(h.Id)) continue;
+                result.Add(new RetrievedChunk
+                {
+                    ChunkId = h.Id, DocumentId = h.DocumentId, Text = h.Text, Section = h.Section,
+                    Source = h.Document!.Source, DocType = h.Document.DocType, Title = h.Document.Title,
+                    SourceUrl = h.Document.SourceUrl, Locator = Deserialize(h.Locator),
+                    Score = double.MaxValue, Similarity = null, // trafienie dokładne — zawsze na górę
+                });
+            }
+        }
+        return result;
+    }
 
     /// <summary>Dokładne trafienia po lokalizatorze dla cytatów wykrytych w pytaniu (QU-3). Omija
     /// <c>MinChunkTokens</c> (P5 — krótki § nie może wypaść) i pobiera CAŁY artykuł (P3).</summary>

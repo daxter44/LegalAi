@@ -106,6 +106,7 @@ public sealed class IngestionPipeline(
         doc.UpdatedAt = DateTimeOffset.UtcNow;
         if (isNew) doc.IngestedAt = doc.UpdatedAt;
         doc.CourtType = norm.TypedMetadata.GetValueOrDefault("courtType") as string;
+        doc.CaseNumber = PrawoRAG.Domain.Retrieval.CaseNumberKey.Normalize(norm.Locator?.CaseNumber); // exact-match po sygnaturze
         doc.InForce = norm.TypedMetadata.GetValueOrDefault("inForce") as bool?; // akty ELI; dla orzeczeń null
         doc.JudgmentDate = norm.Locator?.JudgmentDate;
         doc.Year = norm.Locator?.JudgmentDate?.Year;
