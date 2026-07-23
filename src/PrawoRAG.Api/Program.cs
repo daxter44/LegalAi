@@ -44,6 +44,7 @@ builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddScoped<IConversationStore, ConversationStore>();
+builder.Services.AddScoped<IDocumentReader, DocumentReader>(); // widok pełnego dokumentu (/dokument/{id})
 builder.Services.AddHostedService<RetentionService>(); // retencja logów 6 mies. (C9/FE-4.4)
 
 // --- Bramka dostępu na zamknięty test (3.7) — kody zaproszeń + twarde dzienne limity kosztów ---

@@ -43,7 +43,9 @@
             {
                 <div class="source-card search-hit">
                     <div class="source-head">
-                        <span class="source-label">@(string.IsNullOrWhiteSpace(h.Locator) ? h.Title : h.Locator)</span>
+                        <a class="search-hit-title" href="@($"/dokument/{h.DocumentId}")">
+                            @(string.IsNullOrWhiteSpace(h.Locator) ? h.Title : h.Locator)
+                        </a>
                         @if (h.FragmentCount > 1)
                         {
                             <span class="badge">@h.FragmentCount pasujących fragmentów</span>
@@ -53,17 +55,20 @@
                             <a class="source-link" href="@h.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
                         }
                     </div>
+                    <blockquote class="source-snippet">@h.Snippet</blockquote>
                     @if (h.LegalBases is { Count: > 0 })
                     {
-                        <div class="legal-bases" title="Podstawy prawne, na których oparło się to orzeczenie">
-                            <span class="legal-bases-label">Podstawa prawna:</span>
-                            @foreach (var b in h.LegalBases)
-                            {
-                                <span class="legal-basis-chip">@b</span>
-                            }
-                        </div>
+                        <details class="legal-bases-details">
+                            <summary>Podstawa prawna (@h.LegalBases.Count)</summary>
+                            <div class="legal-bases">
+                                @foreach (var b in h.LegalBases)
+                                {
+                                    <span class="legal-basis-chip">@b</span>
+                                }
+                            </div>
+                        </details>
                     }
-                    <blockquote class="source-snippet">@h.Snippet</blockquote>
+                    <a class="search-hit-open" href="@($"/dokument/{h.DocumentId}")">Otwórz dokument →</a>
                 </div>
             }
         }

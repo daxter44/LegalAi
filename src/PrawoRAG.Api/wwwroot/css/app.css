@@ -18,10 +18,11 @@ body {
 /* Szkielet */
 .app-shell { display: flex; flex-direction: column; min-height: 100%; }
 .app-header {
-    display: flex; align-items: center; padding: var(--s-3) var(--s-6);
+    display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap;
+    padding: var(--s-3) var(--s-6);
     background: var(--c-surface); border-bottom: 1px solid var(--c-border);
 }
-.app-brand { display: flex; align-items: baseline; gap: var(--s-2); }
+.app-brand { display: flex; align-items: baseline; gap: var(--s-2); text-decoration: none; color: inherit; }
 .app-logo { color: var(--c-accent); font-size: var(--fs-24); font-weight: 700; }
 .app-title { font-weight: 600; font-size: var(--fs-18); }
 .app-tag {
@@ -164,8 +165,9 @@ body {
 }
 
 /* Nawigacja w nagłówku + strona „O systemie" */
-.app-nav { margin-left: auto; }
-.app-nav a { color: var(--c-text-muted); font-size: var(--fs-14); text-decoration: none; }
+/* Nawigacja: flex z odstępami (bez tego linki nachodziły na siebie) + zawijanie na wąskich ekranach. */
+.app-nav { margin-left: auto; display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
+.app-nav a { color: var(--c-text-muted); font-size: var(--fs-14); text-decoration: none; white-space: nowrap; }
 .app-nav a:hover { color: var(--c-accent); text-decoration: underline; }
 .about { width: 100%; max-width: 720px; line-height: 1.6; }
 .about h1 { font-size: var(--fs-24); }
@@ -216,3 +218,24 @@ body {
 .search-intro { display: flex; flex-direction: column; gap: var(--s-1); }
 .search-count { font-size: var(--fs-13); color: var(--c-text-muted); margin: 0; }
 .search-hit { margin: 0; }
+
+/* Podstawa prawna — sekcja zwijana (domyślnie zwinięta, żeby nie zaciemniać karty) */
+.legal-bases-details { margin: var(--s-2) 0 0; font-size: var(--fs-13); }
+.legal-bases-details > summary { cursor: pointer; color: var(--c-text-muted); }
+
+/* Wynik wyszukiwarki: klikalny tytuł + „Otwórz dokument" */
+.search-hit-title { font-weight: 600; color: var(--c-accent); text-decoration: none; }
+.search-hit-title:hover { text-decoration: underline; }
+.search-hit-open { display: inline-block; margin-top: var(--s-2); font-size: var(--fs-13); color: var(--c-accent); text-decoration: none; }
+.search-hit-open:hover { text-decoration: underline; }
+
+/* Widok pełnego dokumentu (/dokument/{id}) */
+.docview { width: 100%; max-width: 820px; display: flex; flex-direction: column; gap: var(--s-3); }
+.doc-back { font-size: var(--fs-14); color: var(--c-text-muted); text-decoration: none; align-self: flex-start; }
+.doc-back:hover { color: var(--c-accent); text-decoration: underline; }
+.docview-body { max-width: none; }
+.docview-title { font-size: var(--fs-18); margin: 0 0 var(--s-2); }
+.docview-meta { display: flex; flex-wrap: wrap; gap: var(--s-3); font-size: var(--fs-13); color: var(--c-text-muted); margin-bottom: var(--s-3); }
+.docview-section { font-size: var(--fs-16); margin: var(--s-4) 0 var(--s-1); }
+.docview-text { white-space: pre-wrap; line-height: 1.6; }
+.docview-note { margin-top: var(--s-4); }

@@ -134,17 +134,19 @@
                                             <a class="source-link" href="@s.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
                                         }
                                     </div>
+                                    <blockquote class="source-snippet">@s.Snippet</blockquote>
                                     @if (s.LegalBases is { Count: > 0 })
                                     {
-                                        <div class="legal-bases" title="Podstawy prawne, na których oparło się to orzeczenie">
-                                            <span class="legal-bases-label">Podstawa prawna:</span>
-                                            @foreach (var b in s.LegalBases)
-                                            {
-                                                <span class="legal-basis-chip">@b</span>
-                                            }
-                                        </div>
+                                        <details class="legal-bases-details">
+                                            <summary>Podstawa prawna (@s.LegalBases.Count)</summary>
+                                            <div class="legal-bases">
+                                                @foreach (var b in s.LegalBases)
+                                                {
+                                                    <span class="legal-basis-chip">@b</span>
+                                                }
+                                            </div>
+                                        </details>
                                     }
-                                    <blockquote class="source-snippet">@s.Snippet</blockquote>
                                 </div>
                             }
                         </details>
