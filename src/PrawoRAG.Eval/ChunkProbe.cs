@@ -98,7 +98,82 @@ public static class ChunkProbe
 
         if (cfg.GetValue<bool?>("Eval:ProbeDumpTop") ?? false)
             await DumpTopDenseAsync(db, qvec, ct);
+
+        if (cfg.GetValue<bool?>("Eval:ProbeDumpFused") ?? false)
+            await DumpFusedAsync(db, qvec, question, ct);
     }
+
+    /// <summary>CIT-2: zamiast dumpu SAMEGO dense (<see cref="DumpTopDenseAsync"/>) wypisuje PEŁNY,
+    /// zfuzowany ranking RRF (dense+sparse, te same stałe co retriever) z klasyfikacją per pozycja
+    /// (<see cref="ChunkClassifier"/>) — instrument do zmierzenia, CO realnie zajmuje fused #1-N, zanim
+    /// powstanie zgadywany fix (CIT-3/CIT-4). Rysuje linię odcięcia puli TopK*4 (przed dedupem).
+    /// „act/nowela/wariant/uchylony/cienkie-wyliczenie/orzeczenie" to klasy z realnego dumpu
+    /// PRZYPADEK-BUDOWLA-BUDYNEK-UPOL — tu policzone automatem, nie okiem.</summary>
+    private static async Task DumpFusedAsync(PrawoRagDbContext db, Vector qvec, string question, CancellationToken ct)
+    {
+        const int dumpN = 60;      // obejmij region #1-59, o który pyta raport (dedup cutoff = 32)
+        const int dedupCutoff = 32; // TopK*4 — pula cięta PRZED dedupem (parytet z HybridRetriever)
+
+        List<Guid> dense;
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            await db.Database.ExecuteSqlRawAsync("SET LOCAL hnsw.ef_search = 400", ct);
+            dense = await db.Database.SqlQueryRaw<Guid>($$"""
+                SELECT c."Id" AS "Value" FROM chunks c
+                WHERE c."Embedding" IS NOT NULL
+                ORDER BY (c."Embedding"::halfvec(1024) <=> {0}::halfvec(1024))
+                LIMIT {{ProductionK}}
+                """, qvec).ToListAsync(ct);
+        }
+        var sparse = await db.Chunks.AsNoTracking()
+            .Where(c => c.SearchVector!.Matches(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, question)))
+            .OrderByDescending(c => c.SearchVector!.Rank(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, question)))
+            .Select(c => c.Id).Take(ProductionK).ToListAsync(ct);
+
+        var rrf = new Dictionary<Guid, double>();
+        for (var i = 0; i < dense.Count; i++) rrf[dense[i]] = rrf.GetValueOrDefault(dense[i]) + 1.0 / (60 + i + 1);
+        for (var i = 0; i < sparse.Count; i++) rrf[sparse[i]] = rrf.GetValueOrDefault(sparse[i]) + 1.0 / (60 + i + 1);
+        var pool = rrf.OrderByDescending(kv => kv.Value).Select(kv => kv.Key).Take(dumpN).ToList();
+
+        var rows = await db.Chunks.AsNoTracking().Include(c => c.Document)
+            .Where(c => pool.Contains(c.Id))
+            .Select(c => new { c.Id, c.Document!.Title, c.Document.DocType, c.Section, c.Text, c.TokenCount })
+            .ToListAsync(ct);
+        var byId = rows.ToDictionary(r => r.Id);
+
+        Console.WriteLine($"\n=== FUSED RRF top-{pool.Count} (klasyfikacja automatem — CIT-2) ===");
+        var classes = new List<ChunkClass>(pool.Count);
+        for (var i = 0; i < pool.Count; i++)
+        {
+            if (i == dedupCutoff)
+                Console.WriteLine($"  ── linia odcięcia puli do dedupu (TopK*4 = {dedupCutoff}) — niżej ODPADA przed dedupem/rerankiem ──");
+            if (!byId.TryGetValue(pool[i], out var r)) continue;
+            var cls = ChunkClassifier.Classify(new ChunkFacts(r.DocType, r.Title, r.Section, r.Text, r.TokenCount));
+            classes.Add(cls);
+            Console.WriteLine($"  #{i + 1,-3} {Tag(cls.Kind),-12} [{Trim(r.Section ?? "", 26),-26}] {Trim(r.Title, 40),-40} {Preview(r.Text)}");
+        }
+
+        Console.WriteLine("\n  Rozkład klas (etykieta priorytetowa):");
+        foreach (var g in classes.GroupBy(c => c.Kind).OrderByDescending(g => g.Count()))
+            Console.WriteLine($"    {Tag(g.Key),-14} {g.Count(),3}/{classes.Count}");
+        Console.WriteLine("  Flagi ortogonalne (nakładki — jak ręczna tabela w PRZYPADEK-BUDOWLA):");
+        Console.WriteLine($"    orzeczenia    {classes.Count(c => !c.IsAct),3}   akty {classes.Count(c => c.IsAct),3}");
+        Console.WriteLine($"    nowele        {classes.Count(c => c.IsAmendmentAct),3}   warianty {classes.Count(c => c.IsVariant),3}   uchylony/pominięty {classes.Count(c => c.IsRepealedOrOmitted),3}");
+        Console.WriteLine($"    punkt-wylicz. {classes.Count(c => c.IsEnumerationPoint),3}   cienkie (≤{ChunkClassifier.ThinTokenThreshold} tok) {classes.Count(c => c.IsThin),3}   cienkie+wyliczenie {classes.Count(c => c.IsEnumerationPoint && c.IsThin),3}");
+        Console.WriteLine("  Interpretacja: dużo wariant/nowela/uchylony powyżej linii odcięcia → naprawa strukturalna");
+        Console.WriteLine("  (CIT-3 dedup wariantów). Dużo cienkich punktów aktu bazowego → CIT-4 (degeneracja).");
+    }
+
+    private static string Tag(ChunkKind k) => k switch
+    {
+        ChunkKind.Judgment => "orzeczenie",
+        ChunkKind.RepealedOrOmitted => "uchylony",
+        ChunkKind.AmendmentVariant => "wariant",
+        ChunkKind.AmendmentAct => "nowela",
+        ChunkKind.ThinEnumeration => "cienkie-wyl",
+        ChunkKind.BaseAct => "akt-bazowy",
+        _ => k.ToString(),
+    };
 
     /// <summary>Diagnostyka „co faktycznie jest w top-N": zamiast zgadywać czy konkurenci są trafni,
     /// wypisuje ich rzeczywistą treść — czy to prawdziwe, tylko merytorycznie niewłaściwe akty
