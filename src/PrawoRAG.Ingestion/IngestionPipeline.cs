@@ -94,7 +94,10 @@ public sealed class IngestionPipeline(
         };
 
         doc.Title = norm.Title;
-        doc.DocType = raw.DocType;
+        // Zapisujemy KANONICZNY typ z normalizera (nie surowy selektor): NSA selekcjonuje się po
+        // „nsa-judgment", ale zapisuje jako „judgment" (orzecznictwo). Dla SAOS/ELI norm.DocType ==
+        // raw.DocType, więc to bez zmian dla nich.
+        doc.DocType = norm.DocType;
         doc.SourceUrl = raw.SourceUrl;
         doc.ContentHash = hash;
         // Npgsql akceptuje dla timestamptz tylko offset 0 — źródła bez jawnej strefy (np. ELI) dostają

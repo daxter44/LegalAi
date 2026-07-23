@@ -66,6 +66,7 @@ public static class IngestionServiceCollectionExtensions
         services.AddSingleton<Pdf.IPdfTextExtractor, Pdf.PdfPigTextExtractor>();
         services.AddSingleton<IDocumentNormalizer, JudgmentNormalizer>();
         services.AddSingleton<IDocumentNormalizer, ActNormalizer>();
+        services.AddSingleton<IDocumentNormalizer, Nsa.NsaNormalizer>(); // orzeczenia NSA/WSA (JuDDGES)
         services.AddTransient<IChunker, TokenAwareChunker>();
         services.AddScoped<IngestionPipeline>();
         services.AddScoped<IIngestionPipeline>(sp => sp.GetRequiredService<IngestionPipeline>());
