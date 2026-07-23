@@ -26,10 +26,33 @@ Zmierzone przez dekodowanie znacznika czasu UUIDv7:
 
 **Wniosek: to NIE jest wyścig/nieaktualność danych.** Orzeczenie było w pełni zaindeksowane
 (status `Indexed`, embedding obecny — zweryfikowane wcześniej SQL-em) na ~5 minut przed analizą.
-Mimo to fragment 5 (który dosłownie cytuje ten wyrok: „zob. wyrok Wojewódzkiego Sądu
-Administracyjnego w Poznaniu z dnia 11 lutego 2026 r.") dostał odpowiedź modelu: orzeczenie
-„nie znajduje się w źródłach". Fragment 3 (cytuje `II SA/Gd 971/10` i `I OSK 16/16` opisowo, bez
-sygnatur: „WSA w Gdańsku z 10.03.2011 r. oraz NSA z 8 listopada 2017 r.") — to samo.
+
+**KOREKTA (po otrzymaniu panelu źródeł fragmentu 5 od użytkownika)**: pierwsza wersja tego
+raportu błędnie twierdziła, że fragment 5 też dostał odpowiedź „nie znajduje się w źródłach” dla
+`III SA/Po 154/26`. To nieprawda — panel źródeł fragmentu 5 pokazuje `[6][7][8]` jako TRZY
+faktyczne chunki tego właśnie wyroku (`Wojewódzki Sąd Administracyjny w Poznaniu, III SA/Po
+154/26, 2026-02-11`). Retrieval dla fragmentu 5 **zadziałał** — model poprawnie ocenił treść
+wyroku jako niepotwierdzającą ogólnej reguły, którą przypisuje mu organ (opisuje konkretny stan
+faktyczny „kontenerowego obiektu zapleczowego”, nie ogólną zasadę). To ugruntowana, poprawna
+krytyka na realnie pobranej treści — nie awaria retrievalu.
+
+Rzeczywisty problem „nie znaleziono cytowanego orzecznictwa” dotyczy WYŁĄCZNIE:
+- **Fragment 3** — `II SA/Gd 971/10` i `I OSK 16/16` (oba potwierdzone jako obecne w bazie
+  o tym samym czasie co `III SA/Po 154/26` — wgrane w tym samym przebiegu `process`).
+- **Fragment 10** — `III SA/Kr 660/16` (NIE sprawdzone w tej sesji, czy w ogóle istnieje w
+  JuDDGES/CBOSA — możliwe, że to po prostu jeszcze nie zostało pobrane, inaczej niż pozostałe).
+
+**To ważniejsze ustalenie niż początkowo sądzono**: ten sam dokument (postanowienie gminy
+Kobierzyce), ten sam czas, ten sam korpus — a retrieval znalazł `III SA/Po 154/26` dla fragmentu 5,
+ale nie znalazł `II SA/Gd 971/10`/`I OSK 16/16` dla fragmentu 3. To NIE jest systemowa niemożność
+(„NSA nigdy się nie znajdzie”) — to NIESTABILNOŚĆ zależna od semantycznego dopasowania konkretnego
+zapytania fragmentu do treści wyroku. Fragment 5 opisuje dokładnie ten sam stan faktyczny co
+`III SA/Po 154/26` („kontenerowy obiekt zapleczowy”) — bardzo wyrazisty, rzadki wzorzec
+semantyczny, łatwy do trafienia mimo że NSA to promil korpusu. Fragment 3 formułuje ogólną tezę
+prawną o obowiązku wydania zaświadczenia — mniej wyrazisty semantycznie, łatwo przegrywa z
+ogromną masą podobnych fragmentów k.p.a. z SAOS. To WSPIERA, nie podważa, wcześniejszą diagnozę
+rankingu (pomiar: pozycja 140 dla ogólnego zapytania) — po prostu pokazuje, że wynik zależy od
+tego, jak bardzo wyróżniający się jest KONKRETNY fragment, a nie że problem jest jednolity.
 
 ## [FAKT] Przyczyna: ranking + brak ścieżki po sygnaturze — już zmierzone, już opisane
 
@@ -232,15 +255,11 @@ uznanie uprawnienia organu (możliwości) za obowiązek [2] oraz oparcie rozstrz
 orzeczeniu, które dotyczy innego typu obiektu (kontenera) i nie odnosi się do kwestii przebudowy
 [6], [7], [8].”
 
-*(Uwaga: to jest szczególnie ciekawe — [6][7][8] tu prawdopodobnie NIE są chunkami
-`III SA/Po 154/26` (skoro model gdzie indziej mówi, że to orzeczenie nie jest w źródłach), tylko
-innymi źródłami, na podstawie których model SAMODZIELNIE wywnioskował treść tego wyroku,
-prawdopodobnie z faktu, że w POPRZEDNIEJ turze/dokumencie tej samej sesji użytkownika ten wyrok
-BYŁ omawiany opisowo. Do zweryfikowania: czy to wyciek kontekstu z historii rozmowy, czy model
-poprawnie zacytował fragment TEGO dokumentu analizowanego [postanowienia gminy], które SAMO
-streszcza treść wyroku WSA Poznań — w takim wypadku „nie ustanawia ogólnej reguły” to ocena
-modelu treści przytoczonej W ANALIZOWANYM DOKUMENCIE, nie z korpusu. To rozróżnienie jest
-kluczowe i nie zostało tu rozstrzygnięte.)*
+*(ROZSTRZYGNIĘTE — użytkownik przesłał panel źródeł fragmentu 5: [6][7][8] to TRZY faktyczne
+chunki `III SA/Po 154/26` z korpusu, cytowane dosłownie i poprawnie przypisane. Retrieval
+zadziałał; ocena modelu jest ugruntowana w realnie pobranej treści wyroku, nie w domysłach ani
+w treści analizowanego dokumentu. Zob. korektę w sekcji „[FAKT] Orzeczenia BYŁY w indeksie” wyżej —
+to fragment 3, NIE fragment 5, ma faktyczny problem „nie znaleziono cytowanego orzecznictwa”.)*
 
 ### fragment 6 — BRAK ŹRÓDEŁ
 > Na podstawie ustaleń miejscowego planu zagospodarowania przestrzennego wsi Domasław, położonego
@@ -320,7 +339,11 @@ tego dokumentu.)*
    izolacji ocen per-fragment (patrz `AnalysisRunner.cs:8-17`)?
 4. Czy streszczenie powinno wprost odpowiadać na pytanie użytkownika, czy to sprzeczne z zasadą
    „zero nowych twierdzeń prawnych”?
-5. Fragment 5 — czy [6][7][8] tam użyte to źródła korpusu, czy treść WEWNĄTRZ analizowanego
-   dokumentu (postanowienie SAMO cytuje/streszcza wyrok)? To rozstrzyga, czy ocena modelu
-   „orzeczenie nie ustanawia takiej reguły” jest ugruntowana, czy to model ocenia treść
-   nieobecną w dostarczonym kontekście.
+5. ~~Fragment 5 — czy [6][7][8] tam użyte to źródła korpusu, czy treść WEWNĄTRZ analizowanego
+   dokumentu~~ **ROZSTRZYGNIĘTE**: to prawdziwe źródła korpusu, ocena ugruntowana. Zamiast tego:
+   dlaczego retrieval znalazł `III SA/Po 154/26` dla fragmentu 5, ale nie znalazł
+   `II SA/Gd 971/10`/`I OSK 16/16` dla fragmentu 3 — na tym samym dokumencie, w tym samym
+   momencie, w tym samym korpusie? Czy to czysto semantyczna wyrazistość zapytania (fragment 5
+   opisuje rzadki, konkretny stan faktyczny; fragment 3 formułuje ogólną tezę prawną, gubioną
+   w masie podobnych fragmentów k.p.a.), czy jest w tym coś systematycznego, co dałoby się
+   poprawić bez czekania na naprawę sygnatur (wariant B z dokumentu linkowanego)?
