@@ -328,6 +328,55 @@ obejmują kwestii zasadności wniesienia odwołania.”
 tego samego celowanego fetchu co pozostałe trzy, jeśli użytkownik chce kontynuować weryfikację
 tego dokumentu.)*
 
+## [FAKT + analiza] Czy pełny korpus NSA (~650 tys.) rozwiąże problem fragmentu 3?
+
+Pytanie zadane wprost po korekcie wyżej: skoro wzrost korpusu wspiera diagnozę rankingu, to czy
+dogranie pełnego backfillu NSA sprawi, że przypadki jak fragment 3 „się wyrównają"?
+
+**[FAKT — zweryfikowane w kodzie]** W `HybridRetriever.cs:190-244` istnieje już DOKŁADNIE
+analogiczny mechanizm — „most cytowań” (`CitationBridgeAsync`, diagnoza z 2026-07-17): gdy
+trafione orzeczenia cytują konkretny PRZEPIS (np. „art. 415 k.c.”), most parsuje te cytowania,
+głosuje po niezależnych dokumentach (próg `BridgeMinDocVotes=2`) i dociąga treść przepisu przez
+DOKŁADNE zapytanie po metadanych — nie przez semantic search. Komentarz w kodzie wprost uzasadnia
+to: „przepis rządzący jest nieretrievalny (przegrywa podobieństwo z narracjami orzeczeń)... ale
+trafione orzeczenia SAME cytują normę, na której się opierają — sąd zrobił mapowanie stan
+faktyczny→przepis lepiej niż jakikolwiek embedding”.
+
+**Problem fragmentu 3 jest strukturalnie TEN SAM problem, tylko o jeden poziom wyżej**:
+orzeczenie→orzeczenie zamiast orzeczenie→przepis. Analogicznego mostu dla cytowań judykatury
+**nie ma** — potwierdzone: `grep` po `CitationBridge`/`Bridge` w całym `src/` nie znajduje nic
+poza mostem przepisów.
+
+**Odpowiedź: NIE, samo dogranie korpusu tego nie naprawi — i częściowo może pogorszyć.**
+
+- Wzrost wolumenu NSA pomaga tam, gdzie liczy się REPREZENTACJA TEMATYCZNA (więcej dokumentów
+  administracyjnych = większa szansa, że jakikolwiek trafny fragment z tej domeny wejdzie w
+  `TopK`). To pomogłoby np. fragmentowi 9 (ocena zgodności z planem miejscowym w ogóle, gdyby
+  plan był w korpusie).
+- Fragment 3 to NIE problem reprezentacji tematycznej — to problem **znalezienia JEDNEGO
+  KONKRETNEGO dokumentu** wśród podobnych. Semantic search nie „koncentruje się” na właściwym
+  dokumencie wraz ze wzrostem wolumenu podobnej treści w tej samej domenie — WIĘCEJ NSA to
+  WIĘCEJ konkurentów o te same sloty `TopK` dla tego samego ogólnego zapytania k.p.a., nie więcej
+  szans na trafienie w TEN wyrok. Możliwe, że subiektywnie się pogorszy.
+- Dodatkowa komplikacja: cytat we fragmencie 3 to „WSA w Gdańsku z 10.03.2011 r. oraz NSA z 8
+  listopada 2017 r.” — BEZ sygnatury. Nawet naprawiona ścieżka po sygnaturze (Wariant B z
+  [PROBLEM-WYSZUKIWANIE-PO-SYGNATURZE.md](PROBLEM-WYSZUKIWANIE-PO-SYGNATURZE.md)) by tu nie
+  pomogła — nie ma czego szukać dokładnym dopasowaniem tekstowym.
+
+**Kierunek naprawy (do oceny, nie zaimplementowany)**: mechanizm równoległy do `CitationBridge`,
+tylko dla cytowań orzeczenie→orzeczenie. Dwa warianty wejścia:
+1. Cytat z sygnaturą → dokładne dopasowanie po `caseNumber` (to samo, czego brakuje ogólnie —
+   Wariant B z dokumentu o sygnaturach, tu użyty punktowo zamiast generycznie).
+2. Cytat WYŁĄCZNIE opisowy (sąd + data, bez sygnatury, jak fragment 3) → dopasowanie po
+   `CourtType`/`court` + `JudgmentDate` (dokładna data + zgodność sądu to silny, tani filtr —
+   `JudgmentDate` już jest kolumną indeksowaną w `documents`). Nie wymaga NLP-owego parsowania
+   nazwisk stron ani innych kruchych heurystyk — sama data w połączeniu z sądem prawdopodobnie
+   wystarczająco zawęża wynik (w danym dniu dany sąd wydaje ograniczoną liczbę wyroków).
+
+To NIE jest to samo zadanie, co ranking dla treściowych zapytań — to zadanie WERYFIKACJI CYTATU
+(czy przywołane orzeczenie faktycznie mówi to, co twierdzi autor pisma), z natury wymagające
+dokładnego dotarcia do TEGO dokumentu, nie „czegoś podobnego”.
+
 ## Otwarte pytania do przeglądu
 
 1. Czy naprawa retrievalu po sygnaturze (wariant B z dokumentu linkowanego) powinna wejść PRZED
