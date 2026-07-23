@@ -55,11 +55,39 @@ obejmuje sądownictwa administracyjnego (NSA + 16 WSA), a to domena o dużej war
 - Wąskim gardłem będzie (jak przy SAOS/ISAP) CPU-bound preprocessing, nie GPU — planować
   równoległość przetwarzania wstępnego.
 
+## Przełom: 2,39 mln to NIE liczba wyroków (ustalenie 2026-07-23)
+
+CBOSA raportuje **2 393 829 „orzeczeń"**, ale konkurent lexedit.ai ma w swoim produkcie tylko
+**648 412** (159 tys. NSA + 489 tys. WSA; 518 tys. prawomocnych + 106 tys. nieprawomocnych + ~24 tys.
+bez statusu). Rozjazd ~3,7× wyjaśnia **filtr rodzaju orzeczenia** — potwierdzony z formularza
+wyszukiwania CBOSA (pole „Rodzaj orzeczenia": **wyrok / postanowienie / uchwała**) i z pól datasetu
+JuDDGES (`judgment_type` = złożony string „Wyrok NSA", „Wyrok WSA w Opolu", „Postanowienie…";
+`finality` = „orzeczenie prawomocne/nieprawomocne"):
+
+- **2,39 mln = wyroki + postanowienia + uchwały.** Postanowienia (proceduralne: prawo pomocy,
+  wstrzymanie wykonania, odrzucenie/umorzenie skargi, zawieszenie) DOMINUJĄ liczebnie, a mają
+  znikomą wartość researchową — to makro-odpowiednik „zdegenerowanych chunków", które już dziś
+  odsiewamy.
+- **648 tys. ≈ same WYROKI (+ nieliczne uchwały)** — to co lexedit uznał za wartościowe. Filtr:
+  `judgment_type LIKE 'Wyrok%'` (ew. + `'Uchwała%'`). Zachowali OBIE prawomocności (nieprawomocny
+  wyrok bywa samą sentencją — uzasadnienie dochodzi później; delta musi aktualizować, jak w NSA).
+- Najstarszy 2001-02 — CBOSA oficjalnie od 2004, ale zawiera „wybrane wcześniejsze orzeczenia NSA";
+  lexedit ich nie odcina progiem daty. My też nie musimy.
+
+**To rozwiązuje jednocześnie jakość I skalę.** Rewizja szacunku: ~650 tys. wyroków × ~12,7 chunka
+(z naszego 7,6 mln/600 tys.) ≈ **~8,3 mln chunków ≈ ~20 GB** — TEN SAM rząd co obecny korpus
+(7,6 mln/18 GB), mieści się na 3060 bez kryzysu indeksu. Problem B (152/70 GB indeksu > 32 GB RAM)
+**w dużej mierze znika** po odsianiu postanowień. Filtr wyroków to nie kompromis — to zarazem
+filtr jakości i rozwiązanie skali. (Dokładnego udziału wyroków NIE zmierzyłem — API `/filter` HF
+odrzuca zapytania dla tego datasetu; 648 tys. to liczba z produktu lexedit, nasza replikacja
+policzy własny udział przy ingestii.)
+
 ## Wymaganie biznesowe (właściciel, 2026-07-22)
 
-**Produkt wymaga PEŁNEJ bazy sądownictwa administracyjnego** — podzbiór może być tylko etapem
-przejściowym, nie stanem docelowym. Warianty niżej czytać jako KOLEJNOŚĆ dochodzenia do całości,
-nie jako wybór zakresu.
+**Produkt wymaga PEŁNEJ bazy sądownictwa administracyjnego** — w praktyce = **wszystkie WYROKI**
+(NSA+WSA), nie postanowienia proceduralne. „Pełna" = pełna względem wartościowego orzecznictwa,
+zgodnie z tym, co robi lexedit; postanowienia można dołożyć później, jeśli kiedyś okażą się
+potrzebne (osobny, dużo większy klocek).
 
 ## Droga do pełnej bazy — dwie ścieżki (mogą iść RAZEM)
 
