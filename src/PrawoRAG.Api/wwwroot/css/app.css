@@ -210,3 +210,9 @@ body {
     font-size: var(--fs-12); background: var(--c-accent-weak); color: var(--c-text);
     border-radius: var(--radius); padding: .05rem .4rem;
 }
+
+/* Wyszukiwarka (retrieval-only) — lista wyników pogrupowana po dokumencie */
+.search { width: 100%; max-width: 860px; display: flex; flex-direction: column; gap: var(--s-3); }
+.search-intro { display: flex; flex-direction: column; gap: var(--s-1); }
+.search-count { font-size: var(--fs-13); color: var(--c-text-muted); margin: 0; }
+.search-hit { margin: 0; }

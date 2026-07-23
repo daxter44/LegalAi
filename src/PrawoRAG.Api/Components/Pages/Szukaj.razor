@@ -1,0 +1,131 @@
+@page "/szukaj"
+@rendermode InteractiveServer
+@using PrawoRAG.Domain.Retrieval
+@inject IRetriever Retriever
+@inject RateGuard RateGuard
+@inject ICurrentUser CurrentUser
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthState
+@inject Microsoft.Extensions.Options.IOptions<RetrievalOptions> Options
+
+<h1 class="sr-only">Wyszukiwarka źródeł</h1>
+
+<div class="search">
+    <div class="search-intro">
+        <p class="empty-title">Wyszukiwarka orzeczeń i przepisów</p>
+        <p class="empty-hint">Zwraca listę źródeł z korpusu — bez odpowiedzi modelu, bez odmów.
+            Podaj słowa, frazę albo sygnaturę (np. „III SA/Po 154/26"). Wynik posortowany po trafności,
+            z klikalnym oryginałem. To wyszukiwarka, nie porada.</p>
+    </div>
+
+    <form class="chat-input" @onsubmit="Run" @onsubmit:preventDefault>
+        <textarea @bind="_query" @bind:event="oninput" @onkeydown="OnKeyDown" rows="2" disabled="@_busy"
+                  placeholder="Szukaj w orzeczeniach i przepisach… (Enter szuka)" aria-label="Zapytanie"></textarea>
+        <button type="submit" class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_query))">
+            @(_busy ? "…" : "Szukaj")
+        </button>
+    </form>
+
+    @if (_notice is not null)
+    {
+        <div class="banner banner-warn" role="status">@_notice</div>
+    }
+
+    @if (_ran && !_busy)
+    {
+        @if (_hits.Count == 0)
+        {
+            <div class="banner" role="status">Brak źródeł dla tego zapytania. Spróbuj innych słów lub sygnatury.</div>
+        }
+        else
+        {
+            <p class="search-count">Znaleziono @_hits.Count dokument@(Suffix(_hits.Count)).</p>
+            @foreach (var h in _hits)
+            {
+                <div class="source-card search-hit">
+                    <div class="source-head">
+                        <span class="source-label">@(string.IsNullOrWhiteSpace(h.Locator) ? h.Title : h.Locator)</span>
+                        @if (h.FragmentCount > 1)
+                        {
+                            <span class="badge">@h.FragmentCount pasujących fragmentów</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(h.Url))
+                        {
+                            <a class="source-link" href="@h.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
+                        }
+                    </div>
+                    @if (h.LegalBases is { Count: > 0 })
+                    {
+                        <div class="legal-bases" title="Podstawy prawne, na których oparło się to orzeczenie">
+                            <span class="legal-bases-label">Podstawa prawna:</span>
+                            @foreach (var b in h.LegalBases)
+                            {
+                                <span class="legal-basis-chip">@b</span>
+                            }
+                        </div>
+                    }
+                    <blockquote class="source-snippet">@h.Snippet</blockquote>
+                </div>
+            }
+        }
+    }
+</div>
+
+@code {
+    private const int MaxQueryLen = 4000;
+    private string _query = "";
+    private string? _notice;
+    private bool _busy;
+    private bool _ran;
+    private IReadOnlyList<SearchHit> _hits = [];
+    private string _userId = "demo@local";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Tożsamość jak w czacie: AuthenticationState (niezawodna w obwodzie), nie IHttpContextAccessor.
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name } ? name : CurrentUser.UserId;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey) { await Run(); }
+    }
+
+    private async Task Run()
+    {
+        var q = _query.Trim();
+        if (q.Length == 0 || _busy) return;
+        _notice = null;
+        if (q.Length > MaxQueryLen) { _notice = $"Zapytanie za długie (limit {MaxQueryLen} znaków)."; return; }
+        // Bez LLM → bez CostGuard; RateGuard chroni przed nadużyciem ścieżki interaktywnej.
+        if (!RateGuard.TryAcquire(_userId)) { _notice = "Za dużo zapytań w krótkim czasie — spróbuj za chwilę."; return; }
+
+        _busy = true;
+        try
+        {
+            var o = Options.Value;
+            // Retrieval-only: NIE stosujemy bramki abstynencji — wyszukiwarka zawsze pokazuje ranking.
+            var result = await Retriever.RetrieveAsync(new RetrievalQuery
+            {
+                Text = q,
+                TopK = o.SearchTopK,
+                CandidatesPerPath = o.CandidatesPerPath,
+                MinChunkTokens = o.MinChunkTokens,
+                CitationBridgeArticles = 0, // most cytowań to kotwica pod odpowiedź LLM; w czystym szukaniu zbędny
+            }, CancellationToken.None);
+
+            _hits = SearchGrouping.Group(result.Chunks);
+            _ran = true;
+        }
+        catch (Exception e)
+        {
+            _notice = $"Błąd wyszukiwania: {e.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string Suffix(int n) => n == 1 ? "" : "y";
+}

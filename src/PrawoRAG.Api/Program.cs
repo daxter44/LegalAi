@@ -351,6 +351,11 @@ public sealed class RetrievalOptions
     /// <summary>Minimalna liczba tokenów chunka w retrievalu (odsiew zdegenerowanych mini-chunków).</summary>
     public int MinChunkTokens { get; set; } = 20;
 
+    /// <summary>Ile fragmentów pobiera strona „Wyszukiwarka" (retrieval-only, bez LLM). Większe niż
+    /// czatowe TopK=8, bo wyniki grupujemy po dokumencie — chcemy pokryć kilkanaście–kilkadziesiąt
+    /// dokumentów. Strojenie bez redeployu.</summary>
+    public int SearchTopK { get; set; } = 25;
+
     /// <summary>Margines sygnału przy follow-upach: surowe dopytanie musi pobić wariant kontekstowy
     /// o tyle, żeby wygrać (różnice rzędu 1e-6 to szum — patrz <see cref="FollowUpQuery"/>).</summary>
     public double FollowUpSignalMargin { get; set; } = FollowUpQuery.DefaultSignalMargin;
