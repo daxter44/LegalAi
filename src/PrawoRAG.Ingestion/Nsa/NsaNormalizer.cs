@@ -59,7 +59,7 @@ public sealed class NsaNormalizer : IDocumentNormalizer
             ["keywords"] = StrArray(p, "keywords"),
             ["caseTypeDescription"] = StrArray(p, "case_type_description"),
             ["challengedAuthority"] = Str(p, "challenged_authority"),
-            ["referencedRegulations"] = StrArray(p, "extracted_legal_bases"),
+            ["referencedRegulations"] = LegalBases(p),
         };
 
         return new NormalizedDocument
@@ -140,6 +140,60 @@ public sealed class NsaNormalizer : IDocumentNormalizer
             return d;
         issues.Add($"Niezrozumiała data orzeczenia: {raw}");
         return null;
+    }
+
+    /// <summary>
+    /// Podstawy prawne z <c>extracted_legal_bases</c>. UWAGA na kształt: JuDDGES trzyma OBIEKTY
+    /// <c>{link, article, journal, law}</c> — inaczej niż SAOS (<c>{journalTitle, journalYear, journalNo,
+    /// journalEntry, text}</c>). Zachowujemy pola źródłowe i dokładamy <c>text</c> (czytelny opis
+    /// „ustawa (dziennik — artykuły)"), żeby konsument metadanych miał JEDNO wspólne pole niezależnie
+    /// od źródła. Wcześniej szło to przez <see cref="StrArray"/>, które szuka wyłącznie pola „text" —
+    /// dla NSA dawało zawsze pustą listę (zgubione przepisy przy każdym orzeczeniu).
+    /// </summary>
+    private static List<Dictionary<string, object?>> LegalBases(JsonElement p)
+    {
+        var list = new List<Dictionary<string, object?>>();
+        if (p.ValueKind != JsonValueKind.Object ||
+            !p.TryGetProperty("extracted_legal_bases", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return list;
+
+        foreach (var el in arr.EnumerateArray())
+        {
+            // Wariant zdegenerowany (sam tekst zamiast obiektu) — nie gubimy go.
+            if (el.ValueKind == JsonValueKind.String)
+            {
+                if (el.GetString() is { Length: > 0 } s) list.Add(new Dictionary<string, object?> { ["text"] = s });
+                continue;
+            }
+            if (el.ValueKind != JsonValueKind.Object) continue;
+
+            var law = Str(el, "law");
+            var journal = Str(el, "journal");
+            var article = Str(el, "article");
+            // Gotowe „text" (gdy źródło je poda) ma pierwszeństwo przed składanym z pól.
+            var text = Str(el, "text") ?? ComposeText(law, journal, article);
+            if (text is null && Str(el, "link") is null) continue; // pusty wpis — pomijamy
+
+            list.Add(new Dictionary<string, object?>
+            {
+                ["law"] = law,
+                ["journal"] = journal,
+                ["article"] = article,
+                ["link"] = Str(el, "link"),
+                ["text"] = text,
+            });
+        }
+        return list;
+    }
+
+    /// <summary>„Ustawa … (Dz.U. 2023 poz 977 — art. 14 ust. 8)" — parytet czytelności z SAOS.</summary>
+    private static string? ComposeText(string? law, string? journal, string? article)
+    {
+        var head = law ?? journal;
+        if (string.IsNullOrWhiteSpace(head)) return null;
+        var detail = string.Join(" — ", new[] { law is null ? null : journal, article }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+        return detail.Length > 0 ? $"{head} ({detail})" : head;
     }
 
     // --- czytniki SourcePayload (tolerancyjne: brak pola → null/[]) ---

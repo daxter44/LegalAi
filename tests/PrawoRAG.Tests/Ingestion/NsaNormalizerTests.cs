@@ -50,8 +50,12 @@ public class NsaNormalizerTests
         Assert.Equal("WSA", norm.TypedMetadata["courtType"]);
         Assert.Equal(true, norm.TypedMetadata["prawomocne"]);
         Assert.Contains("Wyrok WSA w Opolu", norm.Title);
-        Assert.Contains("art. 52 ustawy o Policji", (string[])norm.TypedMetadata["referencedRegulations"]!);
+        Assert.Contains(Bases(norm), b => (b["text"] as string) == "art. 52 ustawy o Policji");
     }
+
+    /// <summary>Podstawy prawne jako lista obiektów (kształt metadanych — nie płaskie stringi).</summary>
+    private static List<Dictionary<string, object?>> Bases(PrawoRAG.Domain.Documents.NormalizedDocument norm) =>
+        (List<Dictionary<string, object?>>)norm.TypedMetadata["referencedRegulations"]!;
 
     [Fact]
     public void Nsa_court_type_detected()
@@ -108,8 +112,8 @@ public class NsaNormalizerTests
         Assert.Equal(false, norm.TypedMetadata["prawomocne"]);
     }
 
-    [Fact] // extracted_legal_bases jako lista OBIEKTÓW {text:…} — wyłuskanie pola tekstowego
-    public void Legal_bases_as_objects_are_flattened()
+    [Fact] // wariant zgodnościowy: obiekt z samym polem „text"
+    public void Legal_bases_as_text_objects_are_kept()
     {
         var norm = new NsaNormalizer().Normalize(Raw("Treść.", new
         {
@@ -117,6 +121,43 @@ public class NsaNormalizerTests
             finality = "orzeczenie prawomocne", judgment_date = "2005-10-13",
             extracted_legal_bases = new[] { new { text = "art. 145 § 1 pkt 1 ppsa" } },
         }));
-        Assert.Contains("art. 145 § 1 pkt 1 ppsa", (string[])norm.TypedMetadata["referencedRegulations"]!);
+        Assert.Contains(Bases(norm), b => (b["text"] as string) == "art. 145 § 1 pkt 1 ppsa");
+    }
+
+    /// <summary>
+    /// REGRESJA: realny kształt `extracted_legal_bases` w JuDDGES to obiekty {link, article, journal,
+    /// law} — BEZ pola „text". Wcześniejsze czytanie przez StrArray (szuka wyłącznie „text") dawało
+    /// pustą listę przy KAŻDYM orzeczeniu — 300/300 dokumentów smoke'a wylądowało bez przepisów.
+    /// Test pilnuje, że pola źródłowe są zachowane i że powstaje wspólne, czytelne „text".
+    /// </summary>
+    [Fact]
+    public void Legal_bases_in_real_juddges_shape_are_preserved()
+    {
+        var norm = new NsaNormalizer().Normalize(Raw("Treść.", new
+        {
+            docket_number = "IV SA/Po 655/24", court_name = "Wojewódzki Sąd Administracyjny w Poznaniu",
+            judgment_type = "Wyrok WSA w Poznaniu", finality = "orzeczenie prawomocne",
+            judgment_date = "2024-10-02",
+            extracted_legal_bases = new[]
+            {
+                new
+                {
+                    link = "http://isap.sejm.gov.pl/DetailsServlet?id=WDU20230000977",
+                    article = "art. 14 ust. 8, art. 28 ust. 1",
+                    journal = "Dz.U. 2023 poz 977",
+                    law = "Ustawa z dnia 27 marca 2003 r. o planowaniu i zagospodarowaniu przestrzennym (t. j.)",
+                },
+            },
+        }));
+
+        var b = Assert.Single(Bases(norm));
+        Assert.Equal("Dz.U. 2023 poz 977", b["journal"]);
+        Assert.Equal("art. 14 ust. 8, art. 28 ust. 1", b["article"]);
+        Assert.Equal("http://isap.sejm.gov.pl/DetailsServlet?id=WDU20230000977", b["link"]);
+        Assert.Contains("o planowaniu i zagospodarowaniu przestrzennym", (string)b["law"]!);
+        // Wspólne pole „text" (parytet z SAOS): ustawa + dziennik + artykuły w jednym łańcuchu.
+        var text = (string)b["text"]!;
+        Assert.Contains("Dz.U. 2023 poz 977", text);
+        Assert.Contains("art. 14 ust. 8", text);
     }
 }
