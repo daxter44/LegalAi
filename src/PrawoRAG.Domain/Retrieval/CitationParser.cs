@@ -23,6 +23,26 @@ public static class CitationParser
     // Fraza aktu: „Kodeksu wykroczeń", „kodeks postępowania cywilnego" (kodeks + 1-2 słowa).
     private static readonly Regex KodeksRe =
         new(@"kodeks\w*(?:\s+\p{L}+){1,2}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // Nazwa ustawy podana wprost — KORPUSOWO, bez listy: wyłuskujemy frazę, a rozpoznaniem na konkretny
+    // akt zajmuje się fuzzy resolver (pg_trgm do REALNYCH tytułów w bazie). Nowa ustawa działa od razu po
+    // zaindeksowaniu, zero dopisywania. Wysoka precyzja: „ustawa … o …" i „ordynacja …" to niemal zawsze
+    // odwołanie do aktu (inaczej niż samo „prawo", które bywa „prawo do obrony" → świadomie pominięte,
+    // bo fałszywy inject; wymaga pomiaru progu trigramów na korpusie). Fraza cięta na interpunkcji/„art.",
+    // żeby nie połknąć reszty zdania; długość zdroworozsądkowo ograniczona (fuzzy jest tolerancyjny).
+    // „ustaw(a|y|ie|ę|ą|…) … o …" — odmiana RZECZOWNIKA „ustawa" (nie „ustawodawca"/„ustawstwo") + „o"
+    // wprowadzające nazwę. „o" jest wymagane, więc „art. 5 tej ustawy" (bez „o") NIE jest aktem.
+    private static readonly Regex UstawaRe =
+        new(@"\bustaw(?:a|y|ie|ę|ą|om|ami|ach)?\b[^.?!,;\n]*?\bo\b[^.?!,;\n]*", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex OrdynacjaRe =
+        new(@"\bordynacj\w*(?:\s+\p{L}+){1,2}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ArtCutRe =
+        new(@"\bart(?:yku\w*|\.)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>Maks. długość wyłuskanej nazwy aktu (znaki) — dłuższa fraza to zwykle złapane pół zdania,
+    /// a i tak trafia do tolerancyjnego fuzzy-matchu.</summary>
+    private const int MaxActHintChars = 80;
+
     private static readonly Regex Ws = new(@"\s+", RegexOptions.Compiled);
 
     // Skróty kodeksów — litery mogą być rozdzielone kropką/spacją („k.p.c.", „KPC", „k. w."). Dłuższe pierwsze.
@@ -64,6 +84,19 @@ public static class CitationParser
         if (k.Success) return Ws.Replace(k.Value, " ").Trim();
         foreach (var (norm, re) in Abbrevs)
             if (re.IsMatch(text)) return norm;
+        // Nazwa ustawy/ordynacji wprost (korpusowo → fuzzy resolver). Po skrótach, żeby „art. 5 KC"
+        // nadal dawało „KC", nie próbę łapania „ustawy".
+        if (UstawaRe.Match(text) is { Success: true } u) return Clean(u.Value);
+        if (OrdynacjaRe.Match(text) is { Success: true } o) return Clean(o.Value);
         return null;
+    }
+
+    /// <summary>Normalizuje wyłuskaną nazwę aktu: obcina od „art." (gdyby fraza połknęła kolejny cytat),
+    /// zwija białe znaki, przycina do <see cref="MaxActHintChars"/>.</summary>
+    private static string Clean(string raw)
+    {
+        var cut = ArtCutRe.Match(raw) is { Success: true, Index: > 0 } a ? raw[..a.Index] : raw;
+        var norm = Ws.Replace(cut, " ").Trim();
+        return norm.Length > MaxActHintChars ? norm[..MaxActHintChars].Trim() : norm;
     }
 }

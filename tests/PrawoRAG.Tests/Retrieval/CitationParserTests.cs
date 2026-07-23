@@ -52,6 +52,30 @@ public class CitationParserTests
     public void Abbrev_boundaries_are_respected()
     {
         Assert.Equal("KPC", CitationParser.Parse("art. 1 kpc")[0].ActHint);       // nie „KP"
-        Assert.Null(CitationParser.Parse("art. 5 tej ustawy")[0].ActHint);        // brak skrótu/frazy
+        Assert.Null(CitationParser.Parse("art. 5 tej ustawy")[0].ActHint);        // „ustawy" bez „o" → nie akt
     }
+
+    // CIT-1: nazwa ustawy wprost (korpusowo → fuzzy resolver), bez listy skrótów. Realny przypadek usera.
+    [Theory]
+    [InlineData("art. 1a USTAWA O PODATKACH I OPŁATACH LOKALNYCH ?", "podatkach i opłatach lokalnych")]
+    [InlineData("co mówi art. 3 ustawy o dostępie do informacji publicznej", "dostępie do informacji publicznej")]
+    [InlineData("art. 145 § 1 ordynacji podatkowej", "ordynacj")]
+    public void Recognizes_named_act(string q, string hintContains)
+        => Assert.Contains(hintContains, CitationParser.Parse(q)[0].ActHint, StringComparison.OrdinalIgnoreCase);
+
+    [Fact] // fraza nazwy aktu nie połyka reszty zdania — cięcie na interpunkcji (przecinek)
+    public void Named_act_hint_is_bounded()
+    {
+        var hint = CitationParser.Parse("art. 1 ustawy o VAT, a nie inne regulacje")[0].ActHint!;
+        Assert.Contains("VAT", hint, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("regulacje", hint, StringComparison.OrdinalIgnoreCase); // ucięte na przecinku
+    }
+
+    [Fact] // „ustawodawca" to nie „ustawa" — brak fałszywego aktu
+    public void Ustawodawca_is_not_an_act()
+        => Assert.Null(CitationParser.Parse("co ustawodawca mówi o karze w art. 5")[0].ActHint);
+
+    [Fact] // kodeks/skrót mają pierwszeństwo przed nazwą ustawy (bez regresji istniejącej ścieżki)
+    public void Kodeks_still_wins()
+        => Assert.Contains("cywilnego", CitationParser.Parse("art. 415 kodeksu cywilnego")[0].ActHint!);
 }
