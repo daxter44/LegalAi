@@ -29,6 +29,15 @@ public sealed record LlmRequest
     /// unijny). Null = wołający nie jest zainteresowany (Eval, testy) — zero kosztu.
     /// </summary>
     public Action<LlmUsage>? OnUsage { get; init; }
+
+    /// <summary>
+    /// Wywoływany RAZ na końcu strumienia z „rozumowaniem" (thinking/CoT) modelu, jeśli je wydzielono
+    /// (Gemini/Gemma flaga <c>google.thought</c> albo tagi <c>&lt;think&gt;</c>). Strumień
+    /// <see cref="ILlmProvider.StreamCompletionAsync"/> emituje WYŁĄCZNIE treść widoczną — rozumowanie
+    /// idzie tędy, więc nie zaśmieca odpowiedzi, walidacji cytatów ani parsowania werdyktu analizy.
+    /// Null / brak rozumowania → nie wołany (Claude/Bielik: zero zmian).
+    /// </summary>
+    public Action<string>? OnReasoning { get; init; }
 }
 
 /// <summary>

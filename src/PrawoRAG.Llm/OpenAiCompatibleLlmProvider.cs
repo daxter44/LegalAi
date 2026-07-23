@@ -64,6 +64,14 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
         await using var stream = await resp.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
 
+        // Diagnostyka: zrzut SUROWYCH linii `data:` ZANIM cokolwiek sparsujemy (PRAWORAG_DUMP_RESPONSE).
+        // Bez tego diagnoza formatu thinking to zgadywanie na ślepo (patrz PLAN-OBSLUGA-THINKING-LLM.md).
+        var dumpResp = Environment.GetEnvironmentVariable("PRAWORAG_DUMP_RESPONSE") is { Length: > 0 } drp ? drp : null;
+        if (dumpResp is not null)
+            try { await File.AppendAllTextAsync(dumpResp, $"\n\n########## RESP {DateTime.Now:HH:mm:ss} ##########\n", ct); } catch { }
+
+        // Wydziela „rozumowanie" (Gemini/Gemma) z widocznej treści — emitujemy tylko widoczne delty.
+        var splitter = new ReasoningSplitter();
         LlmUsage? usage = null;
         var outputChars = 0;
         string? line;
@@ -73,8 +81,11 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
             var json = line["data:".Length..].Trim();
             if (json.Length == 0) continue;
             if (json == "[DONE]") break;
+            if (dumpResp is not null)
+                try { await File.AppendAllTextAsync(dumpResp, json + "\n", ct); } catch { }
 
             string? delta = null;
+            var isThought = false;
             using (var doc = JsonDocument.Parse(json))
             {
                 if (doc.RootElement.TryGetProperty("choices", out var choices) &&
@@ -82,11 +93,16 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
                     choices.GetArrayLength() > 0)
                 {
                     var choice = choices[0];
-                    if (choice.TryGetProperty("delta", out var d) &&
-                        d.TryGetProperty("content", out var content) &&
-                        content.ValueKind == JsonValueKind.String)
+                    if (choice.TryGetProperty("delta", out var d))
                     {
-                        delta = content.GetString();
+                        if (d.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)
+                            delta = content.GetString();
+                        // Flaga Google: delta.extra_content.google.thought=true ⇒ ta delta to rozumowanie.
+                        if (d.TryGetProperty("extra_content", out var ec) && ec.ValueKind == JsonValueKind.Object &&
+                            ec.TryGetProperty("google", out var g) && g.ValueKind == JsonValueKind.Object &&
+                            g.TryGetProperty("thought", out var th) &&
+                            (th.ValueKind == JsonValueKind.True || (th.ValueKind == JsonValueKind.String && th.GetString() == "true")))
+                            isThought = true;
                     }
                 }
 
@@ -99,8 +115,18 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
                         Estimated: false);
                 }
             }
-            if (!string.IsNullOrEmpty(delta)) { outputChars += delta.Length; yield return delta; }
+
+            if (delta is not null || isThought)
+            {
+                var visible = splitter.Push(delta, isThought);
+                if (visible.Length > 0) { outputChars += visible.Length; yield return visible; }
+            }
         }
+        var tail = splitter.Finish();
+        if (tail.Length > 0) { outputChars += tail.Length; yield return tail; }
+
+        // Rozumowanie (jeśli model „myślał") — raz, na końcu, jak OnUsage.
+        if (splitter.HasReasoning) request.OnReasoning?.Invoke(splitter.Reasoning);
 
         // Serwer bez wsparcia stream_options → jawny szacunek ze znaków (~4 znaki/token), nigdy udawany pomiar.
         request.OnUsage?.Invoke(usage ?? new LlmUsage(

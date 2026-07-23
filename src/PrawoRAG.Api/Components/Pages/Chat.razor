@@ -92,6 +92,15 @@
                         </div>
                     }
 
+                    @if (!string.IsNullOrEmpty(ex.Reasoning))
+                    {
+                        <details class="sources reasoning">
+                            <summary>🧠 Rozumowanie modelu (@(ex.Reasoning.Length) zn.)</summary>
+                            <div class="reasoning-body">@ex.Reasoning</div>
+                            <p class="empty-hint">To wewnętrzny tok modelu — pomocniczy, NIE część odpowiedzi ani źródło. Rozstrzygają teza i cytowane źródła.</p>
+                        </details>
+                    }
+
                     @if (ex.DocFragments.Count > 0 && !IsRefusal(ex))
                     {
                         <details class="sources" open>
@@ -431,6 +440,7 @@
                     case SourcesEvent s: ex.Sources = s.Sources; break;
                     case DocSourcesEvent d: ex.DocFileName = d.FileName; ex.DocFragments = d.Fragments; break;
                     case TokenEvent t: ex.Answer += t.Text; break;
+                    case ReasoningEvent r: ex.Reasoning = r.Text; break;
                     case AbstainEvent a: ex.Abstained = true; ex.AbstainMessage = a.Message; break;
                     case DoneEvent d: ex.Done = true; ex.Check = d.Check; ex.Model = d.Model; ex.Usage = d.Usage; break;
                     case ChatErrorEvent err: ex.Error = err.Message; break;
@@ -488,6 +498,10 @@
 
         public required string Question { get; init; }
         public string Answer { get; set; } = "";
+
+        /// <summary>„Rozumowanie" modelu (thinking) wydzielone ze strumienia — tylko in-memory (nie
+        /// persystowane; rozmowa z historii go nie ma). Puste = model nie „myślał".</summary>
+        public string Reasoning { get; set; } = "";
         public IReadOnlyList<ChatSource> Sources { get; set; } = [];
 
         /// <summary>Fragmenty załącznika użyte w tej turze (przestrzeń [Dk]); tylko in-memory —
