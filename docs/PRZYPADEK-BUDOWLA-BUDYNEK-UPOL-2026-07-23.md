@@ -88,6 +88,62 @@ BM25 znalazł ten chunk (pozycja #30 z 50 kandydatów sparse) — to zadziałał
 gęstym (który go nie widział wcale, dense rank #533) połączony ranking spycha go na **#60** —
 **28 miejsc za progiem** `TopK×4=32`, na którym pula jest przycinana przed dedupem/rerankerem.
 
+## [FAKT — zmierzone `Eval__ProbeDumpTop=true`] Co faktycznie zajmuje top-40 dense dla tego pytania
+
+Pytanie: „a Art. 1a USTAWA O PODATKACH I OPŁATACH LOKALNYCH ?". Poniżej PEŁNA lista 40 pozycji
+zwróconych przez sondę (tytuł aktu + oznaczenie jednostki + podgląd treści), bez selekcji.
+
+**Zliczenia (policzone bezpośrednio z tych 40 pozycji, bez interpretacji):**
+
+| kategoria | liczba / 40 | pozycje |
+|---|---|---|
+| DocType = `act` | 40/40 | wszystkie |
+| DocType = orzeczenie (judgment) | 0/40 | — |
+| Oznaczone dosłownie „(wariant N/M)" w etykiecie jednostki | 9/40 | #13, #15, #18, #19, #22, #23, #27, #28, #38 |
+| Oznaczone „(pominięty)" lub „(uchylony)" | 3/40 | #2, #5, #29 |
+| Podgląd treści = pojedynczy punkt listy zaczynający się od cyfry+nawiasu (np. „1) zapłaty,") | 15/40 | #8, #9, #12, #13, #15, #18, #19, #26, #27, #28, #31, #32, #33, #37, #38 |
+| Dotyczące bezpośrednio `DU/1991/31` (u.p.o.l.) lub jego nowelizacji „o zmianie ustawy o podatkach i opłatach lokalnych" | 4/40 | #2, #6, #21, #34 |
+| Z tych 4 — zawierające art. 1a (szukaną jednostkę) | 0/40 | — |
+
+**Przykłady dosłowne (kopiowane z wyjścia sondy):**
+
+- `#2 [act] Ustawa z dnia 12 stycznia 1991 r. o podatkach i opłatac… Art. 22 — o podatkach i opłatach lokalnych, Art. 22 (pominięty)`
+  — ten sam akt co szukany (u.p.o.l.), ale inny artykuł, oznaczony jako pominięty; ranga #2 w dense.
+- `#5 [act] Ustawa z dnia 27 sierpnia 2009 r. o finansach publiczny… Art. 112a — o finansach publicznych, Art. 112a (uchylony) Art. 112a1. (uchylony)`
+- `#12 [act] Ustawa z dnia 12 września 2002 r. o zmianie ustawy - Or… Art. 59 § 1 pkt 1 — 1) zapłaty,`
+- `#13 [act] Ustawa z dnia 11 kwietnia 2001 r. o zmianie ustawy - Or… Art. 1 § 2 pkt 1 (wariant 1/2) — 1) ustalająca wysokość zobowiąza…`
+- `#18 [act] Ustawa z dnia 12 września 2002 r. o zmianie ustawy - Or… Art. 1 § 1 pkt 1 (wariant 23/32) — 1) organu podatkowego wyższe…`
+- `#21 [act] Ustawa z dnia 12 stycznia 1991 r. o podatkach i opłatac… Art. 23 — Traci moc ustawa z dnia 14 marca 1985 r. o podatkach i opłatach lokalnych (Dz. U. poz. 50, z 1988 …`
+- `#34 [act] Ustawa z dnia 30 października 2002 r. o zmianie ustawy … Art. 1b — Ulgi i zwolnienia podatkowe w zak…`
+
+**Pełna lista 40 pozycji (tytuł skrócony + jednostka), w kolejności dense:**
+
+```
+#1  CIT (1992), Art. 1a                         #21 u.p.o.l. (1991), Art. 23 (Traci moc...)
+#2  u.p.o.l. (1991), Art. 22 (pominięty)         #22 planowanie i zagosp. przestrz., Art. 67c (wariant 1/2)
+#3  PIT (1991), Art. 31a                         #23 nowela Ordynacja podatkowa (2026), Art. 1 § 1 (wariant 2/2)
+#4  o KAS (2016), Art. 49aaa                     #24 nowela CIT/pod. instytucji fin. (2025), Art. 1
+#5  o finansach publ. (2009), Art. 112a (uchylony) #25 CIT (1992), Art. 11c
+#6  nowela u.p.o.l. (2002), Art. 1c              #26 nowela Ordynacja podatkowa (2001), Art. 35 § 2 pkt 1
+#7  CIT (1992), Art. 17a                         #27 nowela Ordynacja podatkowa (2002), Art. 1 § 2 pkt 1 (wariant 25/33)
+#8  nowela Ordynacja podatkowa (2015), Art. 1 § 1a pkt 1  #28 nowela Ordynacja podatkowa (2002), Art. 1 § 2 pkt 1 (wariant 6/33)
+#9  nowela Ordynacja podatkowa (2008), Art. 1 § 4 pkt 1   #29 o regionalnych izbach obrach. (1992), Art. 28 (pominięty)
+#10 CIT (1992), Art. 4a                          #30 nowela KAS/VAT (2025), Art. 1
+#11 CIT (1992), Art. 15a                         #31 nowela Ordynacja podatkowa (2002), Art. 59 § 2 pkt 1
+#12 nowela Ordynacja podatkowa (2002), Art. 59 § 1 pkt 1  #32 nowela Kodeks karny skarbowy (2005), Art. 1 § 39 pkt 1
+#13 nowela Ordynacja podatkowa (2001), Art. 1 § 2 pkt 1 (wariant 1/2) #33 nowela Kodeks karny (2022), Art. 1 § 1 pkt 1
+#14 CIT (1992), Art. 11q                         #34 nowela u.p.o.l. (2002), Art. 1b
+#15 nowela Ordynacja podatkowa (2002), Art. 1 § 1 pkt 1 (wariant 8/32) #35 nowela planowania przestrz. (2026), Art. 1
+#16 PIT (1991), Art. 23a                         #36 CIT (1992), Art. 18db
+#17 PIT (1991), Art. 10                          #37 nowela Ordynacja podatkowa (2002), Art. 103 § 1 pkt 4
+#18 nowela Ordynacja podatkowa (2002), Art. 1 § 1 pkt 1 (wariant 23/32) #38 nowela Ordynacja podatkowa (2002), Art. 1 § 1 pkt 1 (wariant 16/32)
+#19 nowela Ordynacja podatkowa (2002), Art. 1 § 1 pkt 1 (wariant 5/32) #39 PIT (1991), Art. 26ea
+#20 nowela Ordynacja podatkowa (2026), Art. 18   #40 o zasadach ewidencji podatników (1995), Art. 15aa
+```
+
+Chunk z faktyczną definicją budynku/budowli (art. 1a u.p.o.l., cel sondy) NIE występuje w tej
+liście 40 pozycji — jego zmierzona dokładna ranga to #533 (sekcja wyżej).
+
 Pozostałe dwa chunki art. 1a (dalsze ustępy — „kondygnacja", odesłania do Dziennika UE) mają dense
 rank w dziesiątkach/setkach tysięcy i zero dopasowania BM25 — to inne podtematy tego samego
 artykułu, ich niska pozycja wygląda na POPRAWNĄ (nie dotyczą wprost pytania), nie na błąd.
@@ -100,8 +156,9 @@ naprawa. Ten dokument świadomie NIE proponuje takiej zmiany z tego samego powod
 
 ## Otwarte pytania (nie zbadane w tej sesji)
 
-1. Co dokładnie zajmuje pozycje #1-59 w fuzji RRF dla tego pytania — realna konkurencyjna treść,
-   czy szum? (`Eval__ProbeDumpTop=true` pozwala to zobaczyć, jak w JAK-3 wcześniej.)
+1. ~~Co dokładnie zajmuje pozycje #1-59 w fuzji RRF dla tego pytania~~ — **ZMIERZONE** (sekcja
+   „Co faktycznie zajmuje top-40 dense" wyżej, dla top-40 dense; pozostaje niezbadane, czy pozycje
+   41-59 w fuzji RRF wyglądają podobnie, czy inaczej — dump objął tylko pierwsze 40).
 2. Jaki odsetek pytań o konkretny artykuł konkretnej (nie-kodeksowej) ustawy cierpi na ten sam brak
    rozpoznania w `ActHint()` — pojedynczy zmierzony przypadek nie mówi nic o skali.
 3. Czy naprawa `ActHint()` (rozszerzenie o pełne nazwy ustaw) powinna być słownikiem popularnych
