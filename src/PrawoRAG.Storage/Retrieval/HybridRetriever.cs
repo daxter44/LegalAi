@@ -185,6 +185,11 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // w tekście chunka tylko przypadkiem). DOKŁADA, nie usuwa; brak sygnatury → zero kosztu.
         var signature = await SignatureAsync(query, ct);
 
+        // Lane odwołania do aktu: pytanie zawiera numer Dziennika Ustaw („Dz.U. 2025 poz. 1815"
+        // albo bezpośrednio ELI „DU/2025/1815") → pobierz DOKŁADNIE ten akt. Sam poziom co sygnatura
+        // orzeczenia (identyfikator dokumentu, nie zapytanie semantyczne) — bez re-embeddingu.
+        var actReference = await ActReferenceAsync(query, ct);
+
         // QU-3: retrieval strukturalny — gdy pytanie zawiera cytat („art. 94 KW"), pobierz DOKŁADNIE ten
         // artykuł po metadanych i wstaw na górę (gwarantowane sloty). DOKŁADA, nigdy nie usuwa semantycznych;
         // brak rozpoznania aktu → zachowanie jak dziś (zero regresji).
@@ -195,8 +200,8 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // kotwica na początku listy źródeł). Sygnał abstynencji liczony wyżej — most go NIE dotyka
         // (tylko dokłada źródła; nie może zamienić odmowy w odpowiedź).
         var bridge = await CitationBridgeAsync(query, deduped, ct);
-        // Kolejność slotów: SYGNATURA (najbardziej konkretny ask) → cytat strukturalny → most → semantyka.
-        var final = signature.Concat(structural).Concat(bridge).Concat(ranked)
+        // Kolejność slotów: SYGNATURA/AKT (najbardziej konkretny ask) → cytat strukturalny → most → semantyka.
+        var final = signature.Concat(actReference).Concat(structural).Concat(bridge).Concat(ranked)
             .GroupBy(c => c.ChunkId).Select(g => g.First()) // dedup; wcześniejsze tory wygrywają slot
             .Take(query.TopK)
             .ToList();
@@ -311,6 +316,49 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
                 .Where(x => x.Document!.CaseNumber == key)
                 .OrderBy(x => x.Document!.ExternalId).ThenBy(x => x.ChunkIndex)
                 .Take(SignatureChunksPerDoc)
+                .ToListAsync(ct);
+
+            foreach (var h in hits)
+            {
+                if (!seen.Add(h.Id)) continue;
+                result.Add(new RetrievedChunk
+                {
+                    ChunkId = h.Id, DocumentId = h.DocumentId, Text = h.Text, Section = h.Section,
+                    Source = h.Document!.Source, DocType = h.Document.DocType, Title = h.Document.Title,
+                    SourceUrl = h.Document.SourceUrl, Locator = Deserialize(h.Locator),
+                    LegalBases = LegalBasesDisplay(h.Document.TypedMetadata),
+                    Score = double.MaxValue, Similarity = null, // trafienie dokładne — zawsze na górę
+                });
+            }
+        }
+        return result;
+    }
+
+    /// <summary>Ile chunków aktu dociąga lane odwołania do Dziennika Ustaw — początek dokumentu
+    /// (tytuł + pierwsze artykuły) po ChunkIndex; wystarcza, żeby model potwierdził że to WŁAŚCIWY
+    /// akt i zacytował z niego, bez zalewania promptu całą treścią (akty bywają dłuższe niż orzeczenia).</summary>
+    private const int ActReferenceChunksPerDoc = 15;
+
+    /// <summary>
+    /// Lane odwołania do aktu: pytanie zawiera numer Dziennika Ustaw („Dz.U. 2025 poz. 1815" albo
+    /// bezpośrednio ELI „DU/2025/1815") → pobierz DOKŁADNIE ten akt po <c>documents.ExternalId</c>
+    /// (naturalny klucz ingestii ELI, już indeksowany — <c>IX_documents_Source_ExternalId</c> — bez
+    /// backfillu, bez re-embeddingu; ten sam wzorzec co <see cref="SignatureAsync"/> dla orzeczeń).
+    /// Brak odwołania w pytaniu → pusto (zero kosztu).
+    /// </summary>
+    private async Task<List<RetrievedChunk>> ActReferenceAsync(RetrievalQuery query, CancellationToken ct)
+    {
+        var keys = ActEliKey.Detect(query.Text);
+        if (keys.Count == 0) return [];
+
+        var result = new List<RetrievedChunk>();
+        var seen = new HashSet<Guid>();
+        foreach (var key in keys.Take(3))
+        {
+            var hits = await db.Chunks.Include(x => x.Document)
+                .Where(x => x.Document!.Source == "ELI" && x.Document.ExternalId == key)
+                .OrderBy(x => x.ChunkIndex)
+                .Take(ActReferenceChunksPerDoc)
                 .ToListAsync(ct);
 
             foreach (var h in hits)
