@@ -43,7 +43,9 @@ public sealed class ChatService(
         if (history.Count > 0)
         {
             var ctxText = FollowUpQuery.Contextualize(history, question);
-            var ctxQuery = Query(ctxText);
+            // Tory DOKŁADNE dostają TYLKO pytania użytkownika (bez foldu z odpowiedzi) — sygnatura/numer
+            // DzU/cytat z ODPOWIEDZI systemu nie może udawać jawnego asku (bug: kotwice wyroków zalewały TopK).
+            var ctxQuery = Query(ctxText) with { ExactMatchText = FollowUpQuery.ContextualizeForExactMatch(history, question) };
             var ctxResult = await retriever.RetrieveAsync(ctxQuery, ct);
             if (FollowUpQuery.PickContextual(result.MaxSimilarity, ctxResult.MaxSimilarity, o.FollowUpSignalMargin))
                 (query, result) = (ctxQuery, ctxResult);

@@ -144,4 +144,43 @@ public class FollowUpQueryTests
 
         Assert.StartsWith("pierwsze drugie", result); // rdzeń (pytania) prowadzi, fold za nim
     }
+
+    // --- ContextualizeForExactMatch: tekst dla torów DOKŁADNYCH = TYLKO pytania usera, bez foldu ---
+
+    [Fact] // rdzeń bugu: kotwica wyroku z ODPOWIEDZI systemu nie może zasilać exact-match (sygnatura/DzU)
+    public void ExactMatch_text_excludes_answer_anchors_and_citations()
+    {
+        var history = new[]
+        {
+            new ChatTurn(
+                "jak kwalifikować obiekty do podatku od nieruchomości?",
+                "Zgodnie z orzecznictwem [2] art. 1a decyduje przeznaczenie.",
+                new[] { "Wojewódzki Sąd Administracyjny w Poznaniu, I SA/Po 594/17" }),
+        };
+        var q = "a Art. 1a USTAWA O PODATKACH I OPŁATACH LOKALNYCH ?";
+
+        var exact = FollowUpQuery.ContextualizeForExactMatch(history, q);
+        var semantic = FollowUpQuery.Contextualize(history, q);
+
+        // Exact-match NIE widzi sygnatury wyroku (była tylko w kotwicy odpowiedzi) — bug naprawiony.
+        Assert.DoesNotContain("I SA/Po 594/17", exact);
+        // ...ale wariant semantyczny DALEJ ją niesie (recall pod anaforę bez zmian).
+        Assert.Contains("I SA/Po 594/17", semantic);
+        // Bieżące pytanie usera (z jego cytatem) jest w tekście exact-match — tor strukturalny odpali.
+        Assert.Contains("Art. 1a", exact);
+    }
+
+    [Fact] // sygnatura/cytat, który user SAM wpisał w poprzednim pytaniu, ZOSTAJE (follow-up dalej działa)
+    public void ExactMatch_text_keeps_signature_from_user_question()
+    {
+        var history = new[] { new ChatTurn("streść wyrok I SA/Po 594/17", "To orzeczenie dotyczy...") };
+        var exact = FollowUpQuery.ContextualizeForExactMatch(history, "a co z kosztami?");
+
+        Assert.Contains("I SA/Po 594/17", exact); // z PYTANIA usera, nie z odpowiedzi → zostaje
+        Assert.Contains("a co z kosztami?", exact);
+    }
+
+    [Fact]
+    public void ExactMatch_text_empty_history_is_question_only()
+        => Assert.Equal("dopytanie", FollowUpQuery.ContextualizeForExactMatch(Array.Empty<ChatTurn>(), "dopytanie"));
 }

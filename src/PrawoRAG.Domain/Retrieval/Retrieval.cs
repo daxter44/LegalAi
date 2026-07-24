@@ -7,6 +7,22 @@ public sealed record RetrievalQuery
 {
     public required string Text { get; init; }
 
+    /// <summary>
+    /// Tekst dla torów DOKŁADNYCH (sygnatura orzeczenia, numer Dziennika Ustaw, cytat artykułu) —
+    /// gdy różni się od <see cref="Text"/>. Null = użyj <see cref="Text"/> (domyślne, zero zmian dla
+    /// zapytań bez follow-upu). Rozdzielenie istnieje, bo przy dopytaniach <see cref="Text"/> niesie
+    /// fold z POPRZEDNIEJ ODPOWIEDZI (kotwice źródeł, cytaty, fragment) — wzbogacenie SEMANTYCZNE pod
+    /// anaforę. Ale sygnatura/numer/artykuł wyłuskany z ODPOWIEDZI systemu to źródło, którego user nie
+    /// wpisał — nie może wyzwalać exact-match (bug: kotwice trafionych wyroków zalewały cały TopK
+    /// „dokładnym" trafieniem w orzeczenie, o które nikt nie pytał). Tor gęsty/BM25 dalej czyta pełny
+    /// <see cref="Text"/>; tory dokładne — <see cref="EffectiveExactMatchText"/>.
+    /// </summary>
+    public string? ExactMatchText { get; init; }
+
+    /// <summary>Tekst faktycznie zasilający tory dokładne: <see cref="ExactMatchText"/> jeśli podany,
+    /// inaczej <see cref="Text"/> (kompatybilność wsteczna — /api/search, testy, pytania bez historii).</summary>
+    public string EffectiveExactMatchText => ExactMatchText ?? Text;
+
     /// <summary>Liczba finalnych kandydatów po fuzji RRF (kontekst dla LLM).</summary>
     public int TopK { get; init; } = 8;
 

@@ -200,8 +200,18 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // kotwica na początku listy źródeł). Sygnał abstynencji liczony wyżej — most go NIE dotyka
         // (tylko dokłada źródła; nie może zamienić odmowy w odpowiedź).
         var bridge = await CitationBridgeAsync(query, deduped, ct);
+
+        // Cap dominacji jednego dokumentu w torach DOKŁADNYCH: sygnatura/akt/cytat dociągają po
+        // kilkanaście chunków JEDNEGO dokumentu ze Score=MaxValue — przy TopK=8 jedno trafienie zjadało
+        // cały budżet (obserwacja użytkownika: „8 źródeł, same wyroki, zero ustawy"). Rezerwujemy kilka
+        // slotów, żeby kontekst (semantyka, most cytowań) zawsze wszedł. Dedup po ChunkId PRZED capem,
+        // żeby limit liczył realne chunki, nie duplikaty z nakładających się torów.
+        var exact = ExactMatchCap.LimitPerDocument(
+            signature.Concat(actReference).Concat(structural).GroupBy(c => c.ChunkId).Select(g => g.First()),
+            ExactMatchCap.MaxPerDocument(query.TopK));
+
         // Kolejność slotów: SYGNATURA/AKT (najbardziej konkretny ask) → cytat strukturalny → most → semantyka.
-        var final = signature.Concat(actReference).Concat(structural).Concat(bridge).Concat(ranked)
+        var final = exact.Concat(bridge).Concat(ranked)
             .GroupBy(c => c.ChunkId).Select(g => g.First()) // dedup; wcześniejsze tory wygrywają slot
             .Take(query.TopK)
             .ToList();
@@ -305,7 +315,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     /// </summary>
     private async Task<List<RetrievedChunk>> SignatureAsync(RetrievalQuery query, CancellationToken ct)
     {
-        var keys = CaseNumberKey.Detect(query.Text);
+        var keys = CaseNumberKey.Detect(query.EffectiveExactMatchText);
         if (keys.Count == 0) return [];
 
         var result = new List<RetrievedChunk>();
@@ -348,7 +358,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     /// </summary>
     private async Task<List<RetrievedChunk>> ActReferenceAsync(RetrievalQuery query, CancellationToken ct)
     {
-        var keys = ActEliKey.Detect(query.Text);
+        var keys = ActEliKey.Detect(query.EffectiveExactMatchText);
         if (keys.Count == 0) return [];
 
         var result = new List<RetrievedChunk>();
@@ -400,7 +410,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     /// <c>MinChunkTokens</c> (P5 — krótki § nie może wypaść) i pobiera CAŁY artykuł (P3).</summary>
     private async Task<List<RetrievedChunk>> StructuralAsync(RetrievalQuery query, CancellationToken ct)
     {
-        var cites = CitationParser.Parse(query.Text);
+        var cites = CitationParser.Parse(query.EffectiveExactMatchText);
         if (cites.Count == 0) return [];
 
         var result = new List<RetrievedChunk>();

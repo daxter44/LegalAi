@@ -260,8 +260,11 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         var result = await retriever.RetrieveAsync(q, ct);
         if (history.Count > 0)
         {
-            var ctxText = FollowUpQuery.Contextualize(history.Select(t => t.Question).ToList(), req.Question);
-            var ctxQuery = ToQuery(ctxText, req.Filters, o.TopK, o);
+            var ctxText = FollowUpQuery.Contextualize(history, req.Question);
+            // Tory dokładne (sygnatura/DzU/cytat) tylko z pytań użytkownika — parytet z ChatService/UI:
+            // fold z odpowiedzi (kotwice źródeł) nie może udawać jawnego asku o konkretny dokument.
+            var ctxQuery = (ToQuery(ctxText, req.Filters, o.TopK, o)
+                with { ExactMatchText = FollowUpQuery.ContextualizeForExactMatch(history, req.Question) });
             var ctxResult = await retriever.RetrieveAsync(ctxQuery, ct);
             if (FollowUpQuery.PickContextual(result.MaxSimilarity, ctxResult.MaxSimilarity, o.FollowUpSignalMargin))
                 (q, result) = (ctxQuery, ctxResult);

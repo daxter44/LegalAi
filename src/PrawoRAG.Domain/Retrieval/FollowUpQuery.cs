@@ -83,6 +83,18 @@ public static class FollowUpQuery
             .Where(s => !string.IsNullOrWhiteSpace(s)));
     }
 
+    /// <summary>
+    /// Tekst dla torów DOKŁADNYCH (sygnatura/numer DzU/cytat artykułu): TYLKO pytania użytkownika
+    /// (poprzednie + bieżące) — rdzeń z <see cref="Contextualize(IReadOnlyList{string}, string)"/>, BEZ
+    /// foldu z odpowiedzi (kotwice źródeł, cytaty, fragment). Sygnatura/numer/artykuł wyłuskany z
+    /// ODPOWIEDZI systemu to źródło, którego user nie wpisał — nie może wyzwalać exact-match. Sygnatura
+    /// czy cytat, który user SAM wpisał w którejś turze, jest w pytaniach → tu ZOSTAJE (follow-up
+    /// „streść wyrok X" → „a co z kosztami?" dalej działa). Fold z odpowiedzi zostaje wyłącznie w
+    /// wariancie semantycznym (<see cref="Contextualize(IReadOnlyList{ChatTurn}, string)"/>).
+    /// </summary>
+    public static string ContextualizeForExactMatch(IReadOnlyList<ChatTurn> history, string question)
+        => Contextualize(history.Select(t => t.Question).ToList(), question);
+
     /// <summary>Cytaty z odpowiedzi zrekonstruowane w formie rozpoznawanej przez tor strukturalny
     /// (<c>art. N [§ p] Skrót</c>) — ten sam <see cref="CitationParser"/>, którego używa retriever.</summary>
     private static IEnumerable<string> ExtractCitationTokens(string answer) =>
