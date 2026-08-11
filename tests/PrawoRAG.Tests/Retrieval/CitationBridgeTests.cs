@@ -187,4 +187,47 @@ public class CitationBridgeTests
         Assert.Equal(without.MaxSimilarity, with.MaxSimilarity, 10);                // …a bramka bez zmian
         await CleanAsync(src);
     }
+
+    [Fact] // M6: kandydat oceniony nisko przez cross-encoder NIE GŁOSUJE → 1 realny głos < próg 2
+    public async Task Irrelevant_candidates_do_not_vote_in_bridge()
+    {
+        const string src = "TEST-MOST-6";
+        await CleanAllAsync();
+        await SeedAsync(src, "kc", DocTypes.Act, "Kodeks cywilny (testowy Mostako6)",
+            "Treść przepisu testowego mostu. Mostakoszescprzepis.", articleNo: "9997");
+        await SeedAsync(src, "j1", DocTypes.Judgment, "SO w Testowie I C 11/24",
+            "Mostako6 Mostakoistotny wywód na temat pytania; podstawą jest art. 9997 k.c. i wina sprawcy.");
+        await SeedAsync(src, "j2", DocTypes.Judgment, "SR w Testowie I C 12/24",
+            "Mostako6 zupełnie inny wątek o wiarygodności świadka; sąd wspomniał art. 9997 k.c. na marginesie.");
+
+        await using var db = NewDb();
+        // Tylko j1 jest istotny dla pytania — j2 dostaje niski score i traci prawo głosu.
+        var reranker = new FakeReranker("Mostakoistotny");
+        var res = await new HybridRetriever(db, Emb, reranker).RetrieveAsync(
+            new RetrievalQuery { Text = "Mostako6", MinChunkTokens = 0 }, default);
+
+        Assert.DoesNotContain(res.Chunks, c => c.Text.Contains("Mostakoszescprzepis") && c.Score == double.MaxValue);
+        await CleanAsync(src);
+    }
+
+    [Fact] // M7: gdy głosują kandydaci ISTOTNI, most dalej dociąga przepis — feature nie gaśnie po cichu
+    public async Task Bridge_still_fires_when_relevant_candidates_vote()
+    {
+        const string src = "TEST-MOST-7";
+        await CleanAllAsync();
+        await SeedAsync(src, "kc", DocTypes.Act, "Kodeks cywilny (testowy Mostako7)",
+            "Mostakosiodmy kto z winy swej wyrządził drugiemu szkodę. Mostakosiodmyprzepis.", articleNo: "9997");
+        await SeedAsync(src, "j1", DocTypes.Judgment, "SO w Testowie I C 13/24",
+            "Mostako7 Mostakosiodmy wichura przewróciła drzewo; podstawą jest art. 9997 k.c. i wina właściciela.");
+        await SeedAsync(src, "j2", DocTypes.Judgment, "SR w Testowie I C 14/24",
+            "Mostako7 Mostakosiodmy topola runęła na altankę; sąd rozważał przesłanki z art. 9997 k.c.");
+
+        await using var db = NewDb();
+        var reranker = new FakeReranker("Mostakosiodmy");   // OBA orzeczenia istotne → 2 głosy
+        var res = await new HybridRetriever(db, Emb, reranker).RetrieveAsync(
+            new RetrievalQuery { Text = "Mostako7", MinChunkTokens = 0 }, default);
+
+        Assert.Contains(res.Chunks, c => c.Text.Contains("Mostakosiodmyprzepis") && c.Score == double.MaxValue);
+        await CleanAsync(src);
+    }
 }

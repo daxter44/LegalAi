@@ -195,12 +195,6 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // brak rozpoznania aktu → zachowanie jak dziś (zero regresji).
         var structural = await StructuralAsync(query, ct);
 
-        // Most cytowań: przepis rządzący dociągnięty z cytowań w trafionych orzeczeniach.
-        // Sloty PO strukturalnych (jawny cytat użytkownika wygrywa), PRZED semantycznymi (norma jako
-        // kotwica na początku listy źródeł). Sygnał abstynencji liczony wyżej — most go NIE dotyka
-        // (tylko dokłada źródła; nie może zamienić odmowy w odpowiedź).
-        var bridge = await CitationBridgeAsync(query, deduped, ct);
-
         // Cap dominacji jednego dokumentu w torach DOKŁADNYCH: sygnatura/akt/cytat dociągają po
         // kilkanaście chunków JEDNEGO dokumentu ze Score=MaxValue — przy TopK=8 jedno trafienie zjadało
         // cały budżet (obserwacja użytkownika: „8 źródeł, same wyroki, zero ustawy"). Rezerwujemy kilka
@@ -209,6 +203,36 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         var exact = ExactMatchCap.LimitPerDocument(
             signature.Concat(actReference).Concat(structural).GroupBy(c => c.ChunkId).Select(g => g.First()),
             ExactMatchCap.MaxPerDocument(query.TopK));
+
+        // Most cytowań: przepis rządzący dociągnięty z cytowań w trafionych orzeczeniach. Głosują TYLKO
+        // kandydaci istotni wg cross-encodera (BridgeVoterScoreFraction topu). Bez rerankera — wszyscy.
+        var voterFloor = rerankTop * BridgeVoterScoreFraction;
+        var voters = voterFloor is { } floor
+            ? ranked.Where(c => c.RerankScore >= floor).ToList()
+            : ranked;
+        var bridge = await CitationBridgeAsync(query, voters, ct);
+
+        // Most NIE dostaje już gwarantowanego slotu przed semantyką: dociągnięty przepis przechodzi przez
+        // tego samego sędziego co reszta i wchodzi tam, gdzie zasłużył. Wcześniej wstrzykiwał się na
+        // wierzch z pominięciem rerankera, więc jeden fałszywy zwycięzca głosowania zajmował sloty [1..3].
+        // Drugie wywołanie cross-encodera dotyczy garstki pasaży (≤ CitationBridgeArticles ×
+        // BridgeChunksPerArticle) i tylko gdy most cokolwiek zwrócił.
+        if (reranker is not null && bridge.Count > 0)
+        {
+            var bridgeScores = await reranker.RerankAsync(
+                query.EffectiveRerankText, bridge.Select(c => c.Text).ToList(), ct);
+            var byIndex = bridgeScores.ToDictionary(x => x.Index, x => x.Score);
+            // Most PRZED `ranked` w konkatenacji: gdy ten sam chunk przyszedł oboma torami, ma zostać
+            // wersja mostu (Score=double.MaxValue — po tym markerze testy i diagnostyka poznają, że to
+            // most dociągnął przepis, a nie tor gęsty). Dopiero po dedupie sortujemy po sędzim.
+            ranked = bridge
+                .Select((c, i) => c with { RerankScore = byIndex.GetValueOrDefault(i) })
+                .Concat(ranked)
+                .GroupBy(c => c.ChunkId).Select(g => g.First())
+                .OrderByDescending(c => c.RerankScore ?? double.MinValue)
+                .ToList();
+            bridge = [];   // most jest już wtopiony w `ranked` — nie dokładać go drugi raz
+        }
 
         // Kolejność slotów: SYGNATURA/AKT (najbardziej konkretny ask) → cytat strukturalny → most → semantyka.
         var final = exact.Concat(bridge).Concat(ranked)
@@ -225,6 +249,17 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     /// (model ugruntuje się na nim) przewyższa koszt braku. Próg 2 na danych sondy przepuszcza
     /// wyłącznie normę właściwą (art. 415: 3 dokumenty; cała reszta po 1).</summary>
     private const int BridgeMinDocVotes = 2;
+
+    /// <summary>
+    /// Jaką część score'u NAJLEPSZEGO kandydata musi mieć pasaż, żeby głosować w moście cytowań.
+    /// Dziś głosowali wszyscy po fuzji RRF — także pasaże ocenione na 0,17, które przegłosowały
+    /// KK art. 64 (recydywa) w pytaniu o zgłoszenie wycieku danych (pomiar 2026-08-11). Próg jest
+    /// WZGLĘDNY (ułamek topu), nie absolutny, z tego samego powodu, dla którego bramka abstynencji
+    /// nie stoi na score rerankera: przy śmieciowej puli cross-encoder klastruje ~0,99 i absolutna
+    /// liczba nic nie znaczy. Przy takiej puli próg względny nikogo nie odcina — degradacja do
+    /// dzisiejszego zachowania, zamiast losowego cięcia. Bez rerankera głosują wszyscy, jak dotąd.
+    /// </summary>
+    private const double BridgeVoterScoreFraction = 0.5;
 
     /// <summary>Ile chunków jednego artykułu most może dołożyć (przepisy to zwykle 1–3 chunki;
     /// limit chroni budżet promptu przed artykułami-tasiemcami).</summary>
