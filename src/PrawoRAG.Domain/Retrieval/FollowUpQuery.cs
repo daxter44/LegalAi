@@ -148,6 +148,6 @@ public static class FollowUpQuery
     public static bool PickContextual(
         RetrievalResult raw, RetrievalResult contextual, double cosineMargin, double rerankMargin)
         => raw.RerankTopScore is { } rawRerank && contextual.RerankTopScore is { } ctxRerank
-            ? rawRerank <= ctxRerank + rerankMargin
+            ? PickContextual(rawRerank, ctxRerank, rerankMargin)
             : PickContextual(raw.MaxSimilarity, contextual.MaxSimilarity, cosineMargin);
 }
