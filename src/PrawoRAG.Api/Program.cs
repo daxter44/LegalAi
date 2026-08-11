@@ -252,23 +252,11 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
             .Select(t => new ChatTurn(t.Question, t.Answer, t.SourceAnchors))
             .ToList();
 
-        // Follow-upy (parytet z UI/ChatService): retrieval 2x — samo pytanie vs pytanie + poprzednie
-        // pytania użytkownika. Wybór ASYMETRYCZNY z marginesem (FollowUpQuery.PickContextual): różnice
-        // sygnału bywają szumem rzędu 1e-6, a koszt fałszywego surowego (śmieciowe źródła) >> koszt
-        // fałszywego kontekstowego. Sekwencyjnie (scoped DbContext nie jest thread-safe).
-        var q = ToQuery(req.Question, req.Filters, o.TopK, o);
-        var result = await retriever.RetrieveAsync(q, ct);
-        if (history.Count > 0)
-        {
-            var ctxText = FollowUpQuery.Contextualize(history, req.Question);
-            // Tory dokładne (sygnatura/DzU/cytat) tylko z pytań użytkownika — parytet z ChatService/UI:
-            // fold z odpowiedzi (kotwice źródeł) nie może udawać jawnego asku o konkretny dokument.
-            var ctxQuery = (ToQuery(ctxText, req.Filters, o.TopK, o)
-                with { ExactMatchText = FollowUpQuery.ContextualizeForExactMatch(history, req.Question) });
-            var ctxResult = await retriever.RetrieveAsync(ctxQuery, ct);
-            if (FollowUpQuery.PickContextual(result.MaxSimilarity, ctxResult.MaxSimilarity, o.FollowUpSignalMargin))
-                (q, result) = (ctxQuery, ctxResult);
-        }
+        // Follow-upy: podwójny retrieval + wybór wariantu — wspólny FollowUpSelector (parytet z UI/evalem).
+        var selection = await FollowUpSelector.SelectAsync(
+            retriever, text => ToQuery(text, req.Filters, o.TopK, o), req.Question, history,
+            o.FollowUpSignalMargin, o.RerankSignalMargin, ct);
+        var (q, result) = (selection.Query, selection.Result);
 
         // BRAMKA ABSTYNENCJI — rdzeń wartości: brak pokrycia → nie generujemy.
         if (AbstentionPolicy.ShouldAbstain(result, o.AbstentionThreshold))
@@ -363,6 +351,11 @@ public sealed class RetrievalOptions
     /// <summary>Margines sygnału przy follow-upach: surowe dopytanie musi pobić wariant kontekstowy
     /// o tyle, żeby wygrać (różnice rzędu 1e-6 to szum — patrz <see cref="FollowUpQuery"/>).</summary>
     public double FollowUpSignalMargin { get; set; } = FollowUpQuery.DefaultSignalMargin;
+
+    /// <summary>Margines sygnału przy follow-upach na skali cross-encodera (używany, gdy
+    /// Reranker:Enabled=true i OBA warianty mają score). Inna skala niż
+    /// <see cref="FollowUpSignalMargin"/> — patrz <see cref="FollowUpQuery.DefaultRerankSignalMargin"/>.</summary>
+    public double RerankSignalMargin { get; set; } = FollowUpQuery.DefaultRerankSignalMargin;
 }
 
 /// <summary>Przełączniki diagnostyczne (domyślnie wszystko wyłączone — zero śladu w UI/SSE).</summary>

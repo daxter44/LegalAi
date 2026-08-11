@@ -46,6 +46,8 @@ public static class RefusalEvalRunner
         var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
         var minChunkTokens = cfg.GetValue<int?>("Retrieval:MinChunkTokens") ?? 20;
         var margin = cfg.GetValue<double?>("Retrieval:FollowUpSignalMargin") ?? FollowUpQuery.DefaultSignalMargin;
+        var rerankMargin = cfg.GetValue<double?>("Retrieval:RerankSignalMargin")
+                           ?? FollowUpQuery.DefaultRerankSignalMargin;
         var setPath = SetPath(cfg);
 
         // ZAMROŻONY ZESTAW (metryka musi być porównywalna między biegami — feedback właściciela:
@@ -92,7 +94,7 @@ public static class RefusalEvalRunner
         {
             var item = items[i];
             using var scope = services.CreateScope();
-            var r = await ReplayAsync(scope.ServiceProvider, item, generate, topK, threshold, minChunkTokens, margin, ct);
+            var r = await ReplayAsync(scope.ServiceProvider, item, generate, topK, threshold, minChunkTokens, margin, rerankMargin, ct);
             results.Add(r);
 
             Console.WriteLine($"[{i + 1,3}/{items.Count}] BYŁO={r.Baseline,-16} JEST={r.Outcome,-16} " +
@@ -144,26 +146,20 @@ public static class RefusalEvalRunner
         return limit > 0 ? deduped.Take(limit).ToList() : deduped;
     }
 
-    /// <summary>Odtworzenie logiki ChatService (podwójny retrieval z marginesem → bramka → augmenter →
-    /// OrderForGrounding → prompt → LLM) — bez zależności Eval→Api; rozjazd z ChatService = rozjazd metryki,
-    /// więc zmiany tam muszą lądować i tu (parytet jak /api/chat ↔ UI).</summary>
+    /// <summary>Odtworzenie logiki ChatService (FollowUpSelector → bramka → augmenter → OrderForGrounding
+    /// → prompt → LLM). Wybór wariantu follow-upu jest WSPÓŁDZIELONY z produkcją (FollowUpSelector) —
+    /// wcześniej ten runner miał własną, uboższą kopię (bez foldu i bez ExactMatchText), więc metryka
+    /// mierzyła inny pipeline niż czat.</summary>
     private static async Task<ReplayResult> ReplayAsync(
         IServiceProvider sp, ReplayItem item, bool generate,
-        int topK, double threshold, int minChunkTokens, double margin, CancellationToken ct)
+        int topK, double threshold, int minChunkTokens, double margin, double rerankMargin, CancellationToken ct)
     {
         var retriever = sp.GetRequiredService<IRetriever>();
         RetrievalQuery Query(string text) => new() { Text = text, TopK = topK, MinChunkTokens = minChunkTokens };
 
-        var query = Query(item.Question);
-        var result = await retriever.RetrieveAsync(query, ct);
-        if (item.History.Count > 0)
-        {
-            var ctxText = FollowUpQuery.Contextualize(item.History.Select(t => t.Question).ToList(), item.Question);
-            var ctxQuery = Query(ctxText);
-            var ctxResult = await retriever.RetrieveAsync(ctxQuery, ct);
-            if (FollowUpQuery.PickContextual(result.MaxSimilarity, ctxResult.MaxSimilarity, margin))
-                (query, result) = (ctxQuery, ctxResult);
-        }
+        var selection = await FollowUpSelector.SelectAsync(
+            retriever, Query, item.Question, item.History, margin, rerankMargin, ct);
+        var (query, result) = (selection.Query, selection.Result);
 
         if (AbstentionPolicy.ShouldAbstain(result, threshold))
             return new ReplayResult(item.Question, item.Baseline, "odmowa-progu", result.MaxSimilarity,

@@ -32,24 +32,12 @@ public sealed class ChatService(
             MinChunkTokens = o.MinChunkTokens,
         };
 
-        // Follow-upy: dopytanie („a co z § 2?") samo embeduje się bezwartościowo. Retrieval liczony 2x —
-        // (a) samo pytanie, (b) pytanie + poprzednie pytania użytkownika sklejone. Wybór ASYMETRYCZNY
-        // z marginesem (FollowUpQuery.PickContextual): różnice sygnału bywają szumem rzędu 1e-6, a koszt
-        // fałszywego surowego (śmieciowe źródła) >> koszt fałszywego kontekstowego. SEKWENCYJNIE (wspólny
-        // scoped DbContext nie jest thread-safe). Sklejony tekst niesie cytaty z historii („art. 367 KPC")
-        // → retrieval strukturalny (QU) i augmenter działają na follow-upach.
-        var query = Query(question);
-        var result = await retriever.RetrieveAsync(query, ct);
-        if (history.Count > 0)
-        {
-            var ctxText = FollowUpQuery.Contextualize(history, question);
-            // Tory DOKŁADNE dostają TYLKO pytania użytkownika (bez foldu z odpowiedzi) — sygnatura/numer
-            // DzU/cytat z ODPOWIEDZI systemu nie może udawać jawnego asku (bug: kotwice wyroków zalewały TopK).
-            var ctxQuery = Query(ctxText) with { ExactMatchText = FollowUpQuery.ContextualizeForExactMatch(history, question) };
-            var ctxResult = await retriever.RetrieveAsync(ctxQuery, ct);
-            if (FollowUpQuery.PickContextual(result.MaxSimilarity, ctxResult.MaxSimilarity, o.FollowUpSignalMargin))
-                (query, result) = (ctxQuery, ctxResult);
-        }
+        // Follow-upy: dopytanie („a co z § 2?") samo embeduje się bezwartościowo, więc retrieval liczony
+        // 2x (surowy vs kontekstowy) i wybór wariantu — CAŁOŚĆ w FollowUpSelector, wspólnym dla /api/chat,
+        // tego serwisu i evalu. Nie kopiować tej logiki z powrotem: rozjazd kopii = rozjazd metryki.
+        var selection = await FollowUpSelector.SelectAsync(
+            retriever, Query, question, history, o.FollowUpSignalMargin, o.RerankSignalMargin, ct);
+        var (query, result) = (selection.Query, selection.Result);
 
         // BRAMKA ABSTYNENCJI — brak pokrycia w źródłach → nie generujemy.
         if (AbstentionPolicy.ShouldAbstain(result, o.AbstentionThreshold))
