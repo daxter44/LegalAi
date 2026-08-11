@@ -76,13 +76,6 @@ if (args.Contains("--probe-chunk"))
     return;
 }
 
-// TYMCZASOWE — diagnoza follow-up (art. 1a u.p.o.l.): --probe-followup
-if (args.Contains("--probe-followup"))
-{
-    await FollowUpProbe.RunAsync(host.Services, default);
-    return;
-}
-
 var topK = cfg.GetValue<int?>("Retrieval:TopK") ?? 8;
 var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
 var minChunkTokens = cfg.GetValue<int?>("Retrieval:MinChunkTokens") ?? 20;
