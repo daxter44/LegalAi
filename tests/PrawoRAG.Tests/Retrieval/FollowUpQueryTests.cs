@@ -183,4 +183,59 @@ public class FollowUpQueryTests
     [Fact]
     public void ExactMatch_text_empty_history_is_question_only()
         => Assert.Equal("dopytanie", FollowUpQuery.ContextualizeForExactMatch(Array.Empty<ChatTurn>(), "dopytanie"));
+
+    // --- PickContextual na WYNIKACH: gdy jest cross-encoder, decyduje on, nie cosine ---
+
+    private static RetrievalResult Res(double cosine, double? rerank = null) =>
+        new([], cosine, rerank);
+
+    [Fact] // Zmierzone 2026-08-11: fold ma WYŻSZY cosine (0.8576 vs 0.8431) i ZERO trafnych źródeł.
+    public void Rerank_signal_overrides_misleading_cosine()
+    {
+        var raw = Res(cosine: 0.8431, rerank: 0.8842);   // uodo art. 60 na wierzchu
+        var ctx = Res(cosine: 0.8576, rerank: 0.0503);   // definicje z ustawy o systemie informacji
+        Assert.False(FollowUpQuery.PickContextual(raw, ctx,
+            cosineMargin: FollowUpQuery.DefaultSignalMargin,
+            rerankMargin: FollowUpQuery.DefaultRerankSignalMargin));
+    }
+
+    [Fact] // Anafora („a co z § 2?") — wariant kontekstowy MUSI dalej wygrywać, gdy realnie trafia lepiej.
+    public void Anaphoric_followup_still_picks_contextual_on_rerank()
+    {
+        var raw = Res(cosine: 0.879, rerank: 0.12);      // przypadkowe fragmenty
+        var ctx = Res(cosine: 0.879, rerank: 0.55);      // właściwy artykuł z poprzedniej tury
+        Assert.True(FollowUpQuery.PickContextual(raw, ctx,
+            cosineMargin: FollowUpQuery.DefaultSignalMargin,
+            rerankMargin: FollowUpQuery.DefaultRerankSignalMargin));
+    }
+
+    [Fact] // Asymetria zostaje na skali rerankera: surowy musi pobić kontekstowy o margines.
+    public void Raw_within_rerank_margin_still_loses()
+    {
+        var raw = Res(cosine: 0.80, rerank: 0.60);
+        var ctx = Res(cosine: 0.80, rerank: 0.58);       // różnica 0.02 < margines 0.05
+        Assert.True(FollowUpQuery.PickContextual(raw, ctx,
+            cosineMargin: FollowUpQuery.DefaultSignalMargin,
+            rerankMargin: FollowUpQuery.DefaultRerankSignalMargin));
+    }
+
+    [Fact] // Reranker wyłączony (Reranker:Enabled=false) → oba RerankTopScore null → spadamy na cosine.
+    public void Without_rerank_signal_falls_back_to_cosine()
+    {
+        var raw = Res(cosine: 0.85);
+        var ctx = Res(cosine: 0.60);
+        Assert.False(FollowUpQuery.PickContextual(raw, ctx,
+            cosineMargin: FollowUpQuery.DefaultSignalMargin,
+            rerankMargin: FollowUpQuery.DefaultRerankSignalMargin));
+    }
+
+    [Fact] // Sygnał rerankera TYLKO na jednym wariancie = nieporównywalny → cosine, nie zgadywanie.
+    public void One_sided_rerank_signal_falls_back_to_cosine()
+    {
+        var raw = Res(cosine: 0.85, rerank: 0.99);
+        var ctx = Res(cosine: 0.60);
+        Assert.False(FollowUpQuery.PickContextual(raw, ctx,
+            cosineMargin: FollowUpQuery.DefaultSignalMargin,
+            rerankMargin: FollowUpQuery.DefaultRerankSignalMargin));
+    }
 }

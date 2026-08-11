@@ -125,4 +125,29 @@ public static class FollowUpQuery
     /// </summary>
     public static bool PickContextual(double rawSignal, double contextualSignal, double margin = DefaultSignalMargin)
         => rawSignal <= contextualSignal + margin;
+
+    /// <summary>
+    /// Margines na skali CROSS-ENCODERA (sigmoid ~0..1) — inna skala niż <see cref="DefaultSignalMargin"/>
+    /// (cosine), więc osobna stała, nie współdzielona liczba. Wartość startowa, NIE skalibrowana:
+    /// jedyny pomiar (2026-08-11) to 0.8842 vs 0.0503 — rozdział o trzy rzędy wielkości, przy którym
+    /// każdy sensowny margines daje ten sam wynik. Kalibracja: `--refusals` na zamrożonym zestawie
+    /// (Retrieval:RerankSignalMargin, bez redeployu).
+    /// </summary>
+    public const double DefaultRerankSignalMargin = 0.05;
+
+    /// <summary>
+    /// Wybór wariantu follow-upu na DWÓCH rozdzielonych sygnałach. Gdy cross-encoder ocenił OBA
+    /// warianty (Reranker:Enabled=true), decyduje ON — bo cosine przy foldzie kłamie: sklejka zawiera
+    /// fragment poprzedniej odpowiedzi, więc mierzy podobieństwo do samej siebie i rośnie razem z
+    /// długością foldu, nie z trafnością (zmierzone: fold 0.8576/0 trafnych vs surowe 0.8431/5 trafnych).
+    /// Warunek „OBA": jednostronny sygnał jest nieporównywalny, więc wtedy zostaje cosine —
+    /// nie zgadujemy. Reranker wyłączony → zachowanie dokładnie jak dotąd (razem z jego wadami).
+    /// Asymetria (surowy musi POBIĆ kontekstowy o margines) zostaje na obu skalach: uzasadnienie
+    /// kosztowe z <see cref="PickContextual(double, double, double)"/> nie zależy od tego, kto sądzi.
+    /// </summary>
+    public static bool PickContextual(
+        RetrievalResult raw, RetrievalResult contextual, double cosineMargin, double rerankMargin)
+        => raw.RerankTopScore is { } rawRerank && contextual.RerankTopScore is { } ctxRerank
+            ? rawRerank <= ctxRerank + rerankMargin
+            : PickContextual(raw.MaxSimilarity, contextual.MaxSimilarity, cosineMargin);
 }
