@@ -23,6 +23,22 @@ public sealed record RetrievalQuery
     /// inaczej <see cref="Text"/> (kompatybilność wsteczna — /api/search, testy, pytania bez historii).</summary>
     public string EffectiveExactMatchText => ExactMatchText ?? Text;
 
+    /// <summary>
+    /// Tekst, którym cross-encoder ocenia kandydatów — gdy różni się od <see cref="Text"/>. Null =
+    /// użyj <see cref="Text"/> (domyślne: /api/search, pytania bez historii, testy). Rozdzielenie
+    /// istnieje z tego samego powodu co <see cref="ExactMatchText"/>, tylko po stronie SĘDZIEGO:
+    /// przy follow-upie <see cref="Text"/> niesie fold z POPRZEDNIEJ ODPOWIEDZI, więc reranker
+    /// dostawał do oceny tekst, którego spory kawałek sam był ocenianą treścią — sklejka oceniała
+    /// samą siebie i wygrywała mimo gorszych źródeł (zmierzone 2026-08-11: fold 0.8576 cosine przy
+    /// 0/8 trafnych slotów vs surowe 0.8431 przy 5/8). Tor gęsty/BM25 dalej czyta pełny
+    /// <see cref="Text"/> — wzbogacenie semantyczne pod anaforę zostaje nietknięte.
+    /// </summary>
+    public string? RerankText { get; init; }
+
+    /// <summary>Tekst faktycznie zasilający cross-encoder: <see cref="RerankText"/> jeśli podany,
+    /// inaczej <see cref="Text"/>.</summary>
+    public string EffectiveRerankText => RerankText ?? Text;
+
     /// <summary>Liczba finalnych kandydatów po fuzji RRF (kontekst dla LLM).</summary>
     public int TopK { get; init; } = 8;
 

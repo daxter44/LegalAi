@@ -152,4 +152,42 @@ public class HybridRetrieverTests
         Assert.Null(res.RerankTopScore);
         await CleanAsync(src);
     }
+
+    [Fact] // R7: reranker dostaje RerankText (surowe pytanie), nie Text (sklejkę follow-upu)
+    public async Task Reranker_scores_against_rerank_text_not_query_text()
+    {
+        const string src = "TEST-RETR-7";
+        await CleanAsync(src);
+        await SeedAsync(src, "a", DocTypes.Judgment, "Reranktekst alfa przepis testowy pierwszy", tokenCount: 20);
+
+        await using var db = NewDb();
+        var reranker = new FakeReranker("alfa");
+        await new HybridRetriever(db, Emb, reranker).RetrieveAsync(
+            new RetrievalQuery
+            {
+                Text = "Reranktekst przepis testowy SKLEJKA z poprzedniej odpowiedzi",
+                RerankText = "Reranktekst surowe pytanie użytkownika",
+                MinChunkTokens = 0,
+            }, default);
+
+        // Sedno: sklejka nie może oceniać samej siebie — cross-encoder sądzi po pytaniu użytkownika.
+        Assert.Equal("Reranktekst surowe pytanie użytkownika", reranker.LastQuery);
+        await CleanAsync(src);
+    }
+
+    [Fact] // R8: bez RerankText reranker dostaje Text (zgodność wsteczna — /api/search, pytania bez historii)
+    public async Task Reranker_falls_back_to_query_text()
+    {
+        const string src = "TEST-RETR-8";
+        await CleanAsync(src);
+        await SeedAsync(src, "a", DocTypes.Judgment, "Rerankfallback alfa przepis testowy", tokenCount: 20);
+
+        await using var db = NewDb();
+        var reranker = new FakeReranker("alfa");
+        await new HybridRetriever(db, Emb, reranker).RetrieveAsync(
+            new RetrievalQuery { Text = "Rerankfallback przepis testowy", MinChunkTokens = 0 }, default);
+
+        Assert.Equal("Rerankfallback przepis testowy", reranker.LastQuery);
+        await CleanAsync(src);
+    }
 }

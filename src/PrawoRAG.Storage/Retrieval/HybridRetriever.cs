@@ -166,7 +166,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         double? rerankTop = null;
         if (reranker is not null && deduped.Count > 0)
         {
-            var scores = await reranker.RerankAsync(query.Text, deduped.Select(c => c.Text).ToList(), ct);
+            var scores = await reranker.RerankAsync(query.EffectiveRerankText, deduped.Select(c => c.Text).ToList(), ct);
             var byIndex = scores.ToDictionary(x => x.Index, x => x.Score);
             ranked = deduped
                 .Select((c, i) => c with { RerankScore = byIndex.GetValueOrDefault(i) })
