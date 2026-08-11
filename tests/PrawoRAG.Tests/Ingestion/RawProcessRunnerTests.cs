@@ -22,9 +22,10 @@ public sealed class RawProcessRunnerTests : IDisposable
         if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true);
     }
 
-    private static RawDocument Doc(string id, string content = "treść dokumentu") => new()
+    private static RawDocument Doc(string id, string content = "treść dokumentu", DateTimeOffset? sourceDate = null) => new()
     {
         Source = "T", ExternalId = id, DocType = "judgment", RawContent = content,
+        SourceModificationDate = sourceDate,
     };
 
     private sealed class InMemoryStore(params RawDocument[] docs) : IRawDocumentStore
@@ -259,6 +260,47 @@ public sealed class RawProcessRunnerTests : IDisposable
         Assert.Equal("zly-dokument", json.RootElement.GetProperty("externalId").GetString());
         Assert.Equal("chunk", json.RootElement.GetProperty("stage").GetString());
         Assert.Contains("TEI: connection refused", json.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact] // Ingestion:MinSourceDate — dokument STARSZY niż próg pomijany BEZ pipeline'u (jak fast-skip)
+    public async Task MinSourceDate_filters_out_older_documents_without_calling_pipeline()
+    {
+        var old = Doc("stary", sourceDate: new DateTimeOffset(2008, 3, 1, 0, 0, 0, TimeSpan.Zero));
+        var recent = Doc("nowy", sourceDate: new DateTimeOffset(2015, 6, 1, 0, 0, 0, TimeSpan.Zero));
+        var pipeline = new ScriptedPipeline((_, _) => Ok());
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IIngestionPipeline>(pipeline);
+        var sp = services.BuildServiceProvider();
+        var opt = new ProcessOptions { FailureLogDir = _logDir, MinSourceDate = new DateOnly(2011, 1, 1) };
+        var runner = new RawProcessRunner(
+            sp.GetRequiredService<IServiceScopeFactory>(), new InMemoryStore(old, recent), Options.Create(opt),
+            NullLogger<RawProcessRunner>.Instance);
+
+        var summary = await runner.RunAsync("T", null, ProcessSkipSet.Empty, default);
+
+        Assert.Equal(["nowy"], pipeline.Processed); // „stary" pominięty bez wołania pipeline'u
+        Assert.Equal(1, summary.Inserted);
+        Assert.Equal(1, summary.Skipped);
+    }
+
+    [Fact] // brak znanej daty źródła → NIE filtrujemy (ostrożnie, nie zgadujemy)
+    public async Task MinSourceDate_does_not_filter_documents_with_unknown_date()
+    {
+        var noDate = Doc("bez-daty", sourceDate: null);
+        var pipeline = new ScriptedPipeline((_, _) => Ok());
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IIngestionPipeline>(pipeline);
+        var sp = services.BuildServiceProvider();
+        var opt = new ProcessOptions { FailureLogDir = _logDir, MinSourceDate = new DateOnly(2011, 1, 1) };
+        var runner = new RawProcessRunner(
+            sp.GetRequiredService<IServiceScopeFactory>(), new InMemoryStore(noDate), Options.Create(opt),
+            NullLogger<RawProcessRunner>.Instance);
+
+        await runner.RunAsync("T", null, ProcessSkipSet.Empty, default);
+
+        Assert.Equal(["bez-daty"], pipeline.Processed);
     }
 
     [Fact] // ODP-3: czysty run nie zostawia pustych plików raportu (tworzenie leniwe)

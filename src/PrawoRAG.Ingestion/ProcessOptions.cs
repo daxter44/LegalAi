@@ -35,4 +35,13 @@ public sealed class ProcessOptions
     /// (współbieżne wątki), ale intencja (seria = awaria infrastruktury → przerwij) zostaje zachowana.
     /// </summary>
     public int ProcessParallelism { get; set; } = 1;
+
+    /// <summary>
+    /// Dolny próg daty źródła (<c>RawDocument.SourceModificationDate</c>) — dokumenty starsze są
+    /// pomijane BEZ przetwarzania (żaden roundtrip do TEI/DB, liczy się jako Skipped). Null (domyślnie)
+    /// = brak filtra, zachowanie jak dotąd. Dokument bez znanej daty (null) NIE jest filtrowany —
+    /// brak informacji to nie powód do odrzucenia. Pomiar 2026-07-23 (próbka 3000 z NSA): ~27%
+    /// korpusu &lt;=2010 — filtr proporcjonalnie skraca run, nie dotyka już zaindeksowanych dokumentów.
+    /// </summary>
+    public DateOnly? MinSourceDate { get; set; }
 }

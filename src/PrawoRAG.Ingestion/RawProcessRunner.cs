@@ -74,6 +74,18 @@ public sealed class RawProcessRunner(
                 var seq = (int)Interlocked.Increment(ref processed);
                 lastId = raw.ExternalId; // best-effort (tylko log) — przy >1 wątku bywa nieuporządkowany
 
+                // Filtr daty (opt-in, Ingestion:MinSourceDate): najtańsze możliwe odrzucenie — przed
+                // liczeniem hasha, zero roundtripu. Brak znanej daty źródła → NIE filtrujemy (ostrożnie).
+                if (options.Value.MinSourceDate is { } minDate &&
+                    raw.SourceModificationDate is { } srcDate &&
+                    DateOnly.FromDateTime(srcDate.UtcDateTime) < minDate)
+                {
+                    Interlocked.Increment(ref skipped);
+                    lock (stateLock) failStreak = 0;
+                    LogProgress(seq);
+                    return;
+                }
+
                 // ODP-1: pominięcie bez scope'a i bez roundtripu do bazy — semantyka jak w pipeline
                 // (ten sam Hashing.Sha256Hex; zbiór zawiera tylko Indexed + bieżący model embeddingu).
                 if (skipSet.Contains(raw.ExternalId, Hashing.Sha256Hex(raw.RawContent)))
