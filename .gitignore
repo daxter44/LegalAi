@@ -36,3 +36,4 @@ Thumbs.db
 
 # Venv narzędzi pomocniczych (np. tools/nsa-ingest) — lokalny, nie wersjonować
 .venv*/
+.superpowers/
