@@ -20,9 +20,14 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     /// <summary>
     /// hnsw.ef_search dla toru gęstego. Domyślne 40 daje słaby recall przy filtrze i gęstwinie
     /// bliskich konkurentów — indeks (aproksymacyjny) potrafi POMINĄĆ prawdziwie najbliższy wektor
-    /// (np. właściwy artykuł kodeksu). 400 przywraca poprawny ranking kosztem nieco wolniejszego skanu.
+    /// (np. właściwy artykuł kodeksu). Nawet 400 (poprzednia wartość) tego nie zamykało: zmierzone
+    /// 2026-08-12 na dwóch niezależnych chunkach (art. 56 KRO z 2026-07-23, art. 2 ustawy o opłatach
+    /// abonamentowych) — dokładna ranga w całym korpusie #14 i #38 (dobre, konkurencyjne podobieństwo),
+    /// a HNSW przy ef_search=400 nie widział ich NAWET w top-200/top-100. 1000 (maksimum dopuszczalne
+    /// przez pgvector) wprowadza oba do puli TopK×4 — koszt +~7ms/zapytanie (10ms→17ms, zmierzone
+    /// EXPLAIN ANALYZE), nieodczuwalne przy odpowiedziach liczonych w sekundach (embedding+reranker+LLM).
     /// </summary>
-    private const int HnswEfSearch = 400;
+    private const int HnswEfSearch = 1000;
 
     /// <summary>Ile torów akronimowych maksymalnie (JAK-5b) — pytania mają zwykle 0–1 akronim;
     /// limit chroni przed pytaniem-listą skrótów.</summary>
