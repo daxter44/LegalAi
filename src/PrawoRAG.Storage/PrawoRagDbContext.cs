@@ -75,9 +75,17 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options) : Db
             e.HasIndex(x => x.EmbeddedWith);
             e.Property(x => x.ArticleNo).HasMaxLength(16);
             e.HasIndex(x => x.ArticleNo); // dokładny filtr retrievalu strukturalnego (QU-1)
-            // HNSW (cosine) dla retrieval gęstego; GIN dla BM25.
-            e.HasIndex(x => x.Embedding).HasMethod("hnsw").HasOperators("vector_cosine_ops");
+            // GIN dla BM25.
             e.HasIndex(x => x.SearchVector).HasMethod("gin");
+            // UWAGA: indeksu HNSW dla toru gęstego NIE MA w modelu EF — jest WYRAŻENIOWY
+            // (`("Embedding"::halfvec(1024)) halfvec_cosine_ops`), a `HasIndex` nie umie wyrazić rzutu
+            // typu. Zarządza nim migracja SyncHalfvecEmbeddingIndex (surowy SQL). Deklarowanie tu
+            // wariantu fp32 `("Embedding" vector_cosine_ops)` było AKTYWNIE SZKODLIWE: zapytanie toru
+            // gęstego rzutuje obie strony `<=>` na halfvec (HybridRetriever.DenseAsync), a indeks fp32
+            // takiego wyrażenia NIE OBSŁUGUJE — zmierzone planem zapytania przy `enable_seqscan=off`:
+            // fp32 → `Sort + Seq Scan`, wyrażeniowy halfvec → `Index Scan`. Każde środowisko postawione
+            // z samych migracji dostawało więc sequential scan po całej tabeli chunks (7,4 mln wierszy)
+            // przy KAŻDYM pytaniu, bez żadnego sygnału błędu.
         });
 
         b.Entity<SyncStateEntity>(e =>

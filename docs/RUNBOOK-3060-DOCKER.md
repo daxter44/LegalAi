@@ -197,11 +197,25 @@ terminal SSH/zdalny pulpit nie może się rozłączyć w trakcie.
 
 ```bash
 docker exec -it $(docker compose ps -q db) psql -U praworag -d praworag -c '
-SET maintenance_work_mem = '"'"'4GB'"'"';
-CREATE INDEX "IX_chunks_Embedding" ON chunks USING hnsw ("Embedding" vector_cosine_ops);
+SET maintenance_work_mem = '"'"'12GB'"'"';
+SET max_parallel_maintenance_workers = 0;
+CREATE INDEX "IX_chunks_Embedding" ON chunks USING hnsw (("Embedding"::halfvec(1024)) halfvec_cosine_ops);
 CREATE INDEX "IX_chunks_SearchVector" ON chunks USING gin ("SearchVector");
 '
 ```
+
+**Indeks MUSI być wyrażeniowy na `halfvec(1024)`, nie fp32 (`"Embedding" vector_cosine_ops`).** Dwa
+powody, oba zmierzone:
+1. Tor gęsty (`HybridRetriever.DenseAsync`) rzutuje obie strony `<=>` na `halfvec(1024)` i wariant fp32
+   takiego wyrażenia **nie obsługuje** — przy `enable_seqscan = off` plan pokazuje `Sort + Seq Scan`,
+   czyli to nie preferencja plannera, a brak dopasowania indeksu. Zbudowanie fp32 = sequential scan po
+   7,4 mln wierszy przy każdym pytaniu, bez żadnego błędu w logach.
+2. Pełny graf fp32 potrzebowałby ~33 GB przy realnym sufcie ~15 GB RAM tego środowiska (WSL2/Docker) —
+   pierwsze podejścia padały na OOM. `halfvec` zmieścił się w 18 GB i zbudował w ~12,5 h przy
+   `maintenance_work_mem=12GB` i wyłączonych workerach równoległych (stąd wartości powyżej).
+
+Postać indeksu pilnuje od tej pory migracja `SyncHalfvecEmbeddingIndex` (jest no-opem, gdy indeks już
+ma właściwy kształt — nie przebuduje 18 GB) oraz test `HalfvecIndexTests`.
 `maintenance_work_mem` przyspiesza budowę HNSW — podnieś, jeśli maszyna ma więcej wolnego RAM-u.
 **Odbudowa HNSW przy 16 mln wektorów zajmie realnie godziny, nie minuty** — to osobny, długi krok,
 zaplanuj go świadomie (noc, `tmux`), zanim uznasz proces za zakończony i przejdziesz do E5 (krok 12).
