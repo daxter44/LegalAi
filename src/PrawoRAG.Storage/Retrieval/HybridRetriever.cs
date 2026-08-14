@@ -41,14 +41,23 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         var qvec = new Vector(await embedder.EmbedQueryAsync(query.Text, ct));
         var k = query.CandidatesPerPath;
 
-        // ef_search musi obowiązywać na TYM samym połączeniu co zapytanie dense — transakcja to gwarantuje.
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        await db.Database.ExecuteSqlRawAsync($"SET LOCAL hnsw.ef_search = {HnswEfSearch}", ct);
-
         // Tor gęsty: najmniejszy dystans cosine. Surowe SQL z rzutem na halfvec(1024) — IX_chunks_Embedding
-        // jest teraz indeksem wyrażeniowym (fp16, oszczędność pamięci przy budowie); LINQ CosineDistance
+        // jest indeksem wyrażeniowym (fp16, oszczędność pamięci przy budowie); LINQ CosineDistance
         // porównuje fp32 do fp32 i nie trafiłby w ten indeks (pełny sequential scan po 7M+ wierszy).
-        var dense = await DenseAsync(query, qvec, k, ct);
+        //
+        // Transakcja obejmuje TYLKO ten jeden tor, bo tylko on potrzebuje `SET LOCAL hnsw.ef_search`
+        // (ustawienie musi obowiązywać na TYM SAMYM połączeniu co zapytanie — transakcja to gwarantuje,
+        // a `LOCAL` sprząta po sobie, więc połączenie wraca do puli czyste). Wcześniej `tx` żył do końca
+        // metody, czyli połączenie wisiało `idle in transaction` przez WSZYSTKIE pozostałe tory ORAZ dwa
+        // round-tripy HTTP do cross-encodera (sekundy) — to zjada pulę połączeń przy równoległych
+        // użytkownikach i blokuje autovacuum na chunks/documents.
+        List<DenseHit> dense;
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            await db.Database.ExecuteSqlRawAsync($"SET LOCAL hnsw.ef_search = {HnswEfSearch}", ct);
+            dense = await DenseAsync(query, qvec, k, ct);
+            await tx.CommitAsync(ct); // odczyt — commit tylko po to, żeby zamknąć transakcję jawnie
+        }
 
         // Tor rzadki: BM25 po tsvector (konfiguracja zgodna z kolumną generowaną).
         var sparse = await ApplyFilters(db.Chunks, query)
@@ -90,12 +99,13 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
                     // chunków, ORDER BY ts_rank po takim zbiorze jest kosztowne). To tylko dodatkowy
                     // sygnał recall (komentarz wyżej) — awaria tego toru NIE MOŻE wywalić całej
                     // odpowiedzi czatu, tak jak awaria augmentera już jest best-effort.
-                    // SAVEPOINT jest KONIECZNY: sam try/catch nie wystarczy — Postgres po błędzie
-                    // zatruwa CAŁĄ otaczającą transakcję (25P02 „current transaction is aborted"),
-                    // więc bez rollbacku do savepointu każde KOLEJNE zapytanie w tej transakcji
-                    // (drugi akronim, finalny fetch chunków) też by padło (zmierzone na żywo, 2026-07-22).
-                    const string savepoint = "acronym_lane";
-                    await tx.CreateSavepointAsync(savepoint, ct);
+                    //
+                    // Dawniej stał tu SAVEPOINT, bo tor biegł WEWNĄTRZ transakcji obejmującej cały
+                    // retrieval, a Postgres po błędzie zatruwa całą otaczającą transakcję (25P02
+                    // „current transaction is aborted") — bez rollbacku padłyby wszystkie kolejne
+                    // zapytania (zmierzone na żywo 2026-07-22). Po zawężeniu transakcji do samego toru
+                    // gęstego ten tor biegnie BEZ transakcji: każde zapytanie jest własną, niejawną
+                    // transakcją, więc nie ma czego zatruć ani cofać i sam try/catch już wystarcza.
                     try
                     {
                         var acrHits = await ApplyFilters(db.Chunks, query)
@@ -109,8 +119,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
                     }
                     catch (Exception) when (ct.IsCancellationRequested == false)
                     {
-                        // best-effort — cofnij TYLKO ten tor (savepoint), reszta transakcji zostaje ważna.
-                        await tx.RollbackToSavepointAsync(savepoint, ct);
+                        // best-effort — ten tor tylko dokłada recall; brak wyników nie psuje odpowiedzi.
                     }
                 }
             }
@@ -127,10 +136,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         if (candidateIds.Count == 0)
             return new RetrievalResult([], 0);
 
-        var rows = await db.Chunks
-            .Include(c => c.Document)
-            .Where(c => candidateIds.Contains(c.Id))
-            .ToListAsync(ct);
+        var rows = await Project(db.Chunks.Where(c => candidateIds.Contains(c.Id))).ToListAsync(ct);
 
         var deduped = rows
             .Select(c => new RetrievedChunk
@@ -139,12 +145,12 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
                 DocumentId = c.DocumentId,
                 Text = c.Text,
                 Section = c.Section,
-                Source = c.Document!.Source,
-                DocType = c.Document.DocType,
-                Title = c.Document.Title,
-                SourceUrl = c.Document.SourceUrl,
+                Source = c.Source,
+                DocType = c.DocType,
+                Title = c.Title,
+                SourceUrl = c.SourceUrl,
                 Locator = Deserialize(c.Locator),
-                LegalBases = LegalBasesDisplay(c.Document.TypedMetadata),
+                LegalBases = LegalBasesDisplay(c.TypedMetadata),
                 Score = rrf[c.Id],
                 Similarity = sim.TryGetValue(c.Id, out var s) ? s : null,
             })
@@ -240,7 +246,15 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
             .Take(query.TopK)
             .ToList();
 
-        return new RetrievalResult(final, maxSim, rerankTop);
+        // Ile FINALNYCH slotów zajęło trafienie dokładne (sygnatura/akt/cytat z pytania użytkownika) —
+        // trzeci sygnał dla bramki abstynencji, obok cosine i score rerankera. Liczone po `final`, nie po
+        // `exact`, bo interesuje nas to, co model FAKTYCZNIE dostanie w kontekście (cap per dokument
+        // i TopK mogą uciąć). Most cytowań tu NIE wchodzi — jest sygnałem pochodnym, nie jawnym askiem
+        // (patrz RetrievalResult.ExactMatchHits).
+        var exactIds = exact.Select(c => c.ChunkId).ToHashSet();
+        var exactInFinal = final.Count(c => exactIds.Contains(c.ChunkId));
+
+        return new RetrievalResult(final, maxSim, rerankTop, exactInFinal);
     }
 
     /// <summary>Minimalna liczba NIEZALEŻNYCH orzeczeń cytujących artykuł, żeby wszedł mostem cytowań.
@@ -357,24 +371,14 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         var seen = new HashSet<Guid>();
         foreach (var key in keys.Take(3))
         {
-            var hits = await db.Chunks.Include(x => x.Document)
-                .Where(x => x.Document!.CaseNumber == key)
-                .OrderBy(x => x.Document!.ExternalId).ThenBy(x => x.ChunkIndex)
-                .Take(SignatureChunksPerDoc)
+            var hits = await Project(db.Chunks
+                    .Where(x => x.Document!.CaseNumber == key)
+                    .OrderBy(x => x.Document!.ExternalId).ThenBy(x => x.ChunkIndex)
+                    .Take(SignatureChunksPerDoc))
                 .ToListAsync(ct);
 
             foreach (var h in hits)
-            {
-                if (!seen.Add(h.Id)) continue;
-                result.Add(new RetrievedChunk
-                {
-                    ChunkId = h.Id, DocumentId = h.DocumentId, Text = h.Text, Section = h.Section,
-                    Source = h.Document!.Source, DocType = h.Document.DocType, Title = h.Document.Title,
-                    SourceUrl = h.Document.SourceUrl, Locator = Deserialize(h.Locator),
-                    LegalBases = LegalBasesDisplay(h.Document.TypedMetadata),
-                    Score = double.MaxValue, Similarity = null, // trafienie dokładne — zawsze na górę
-                });
-            }
+                if (seen.Add(h.Id)) result.Add(ExactMatchChunk(h));
         }
         return result;
     }
@@ -400,24 +404,14 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         var seen = new HashSet<Guid>();
         foreach (var key in keys.Take(3))
         {
-            var hits = await db.Chunks.Include(x => x.Document)
-                .Where(x => x.Document!.Source == "ELI" && x.Document.ExternalId == key)
-                .OrderBy(x => x.ChunkIndex)
-                .Take(ActReferenceChunksPerDoc)
+            var hits = await Project(db.Chunks
+                    .Where(x => x.Document!.Source == "ELI" && x.Document.ExternalId == key)
+                    .OrderBy(x => x.ChunkIndex)
+                    .Take(ActReferenceChunksPerDoc))
                 .ToListAsync(ct);
 
             foreach (var h in hits)
-            {
-                if (!seen.Add(h.Id)) continue;
-                result.Add(new RetrievedChunk
-                {
-                    ChunkId = h.Id, DocumentId = h.DocumentId, Text = h.Text, Section = h.Section,
-                    Source = h.Document!.Source, DocType = h.Document.DocType, Title = h.Document.Title,
-                    SourceUrl = h.Document.SourceUrl, Locator = Deserialize(h.Locator),
-                    LegalBases = LegalBasesDisplay(h.Document.TypedMetadata),
-                    Score = double.MaxValue, Similarity = null, // trafienie dokładne — zawsze na górę
-                });
-            }
+                if (seen.Add(h.Id)) result.Add(ExactMatchChunk(h));
         }
         return result;
     }
@@ -464,31 +458,87 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     private async Task FetchArticleAsync(
         string article, string actExtId, int maxChunks, HashSet<Guid> seen, List<RetrievedChunk> result, CancellationToken ct)
     {
-        var hits = await db.Chunks.Include(x => x.Document)
-            .Where(x => x.ArticleNo == article && x.Document!.ExternalId == actExtId)
-            .OrderBy(x => x.ChunkIndex)
-            .Take(maxChunks)
+        var hits = await Project(db.Chunks
+                .Where(x => x.ArticleNo == article && x.Document!.ExternalId == actExtId)
+                .OrderBy(x => x.ChunkIndex)
+                .Take(maxChunks))
             .ToListAsync(ct);
 
         foreach (var h in hits)
-        {
-            if (!seen.Add(h.Id)) continue;
-            result.Add(new RetrievedChunk
-            {
-                ChunkId = h.Id, DocumentId = h.DocumentId, Text = h.Text, Section = h.Section,
-                Source = h.Document!.Source, DocType = h.Document.DocType, Title = h.Document.Title,
-                SourceUrl = h.Document.SourceUrl, Locator = Deserialize(h.Locator),
-                Score = double.MaxValue, Similarity = null, // trafienie dokładne — zawsze na górę
-            });
-        }
+            if (seen.Add(h.Id)) result.Add(ExactMatchChunk(h));
     }
+
+    /// <summary>
+    /// Wiersz chunka W PROJEKCJI — wyłącznie kolumny, których retrieval faktycznie używa.
+    ///
+    /// Powód: encja <see cref="ChunkEntity"/> niesie `Embedding` (1024×fp32 ≈ 4 KB) i `SearchVector`
+    /// (tsvector długiego chunka to kolejne kilka KB). Pobieranie pełnych, ŚLEDZONYCH encji ciągnęło
+    /// więc setki KB wektorów na turę czatu — dla danych, których nikt tu nie czyta (dystanse policzył
+    /// już Postgres w torze gęstym) — plus snapshoty change trackera. Projekcja do typu innego niż
+    /// encja wyłącza śledzenie z definicji, więc `AsNoTracking` jest tu zbędne.
+    /// </summary>
+    private sealed record ChunkRow(
+        Guid Id, Guid DocumentId, string Text, string? Section, JsonDocument? Locator,
+        string Source, string DocType, string Title, string? SourceUrl, JsonDocument? TypedMetadata);
+
+    /// <summary>Projekcja wspólna dla wszystkich torów — jedno miejsce, w którym rośnie lista kolumn.</summary>
+    private static IQueryable<ChunkRow> Project(IQueryable<ChunkEntity> q) =>
+        q.Select(c => new ChunkRow(
+            c.Id, c.DocumentId, c.Text, c.Section, c.Locator,
+            c.Document!.Source, c.Document.DocType, c.Document.Title, c.Document.SourceUrl,
+            c.Document.TypedMetadata));
+
+    /// <summary>
+    /// Chunk z toru DOKŁADNEGO (sygnatura / odwołanie do aktu / cytat artykułu) — wspólny mapper dla
+    /// trzech torów, które konstruowały ten sam obiekt trzema kopiami tego samego kodu.
+    /// `Score = double.MaxValue` to marker „trafienie dokładne" (po nim testy i diagnostyka poznają
+    /// pochodzenie chunka), `Similarity = null` bo tor dokładny nie liczy cosine.
+    /// </summary>
+    private static RetrievedChunk ExactMatchChunk(ChunkRow h) => new()
+    {
+        ChunkId = h.Id, DocumentId = h.DocumentId, Text = h.Text, Section = h.Section,
+        Source = h.Source, DocType = h.DocType, Title = h.Title, SourceUrl = h.SourceUrl,
+        Locator = Deserialize(h.Locator),
+        // Podstawy prawne dotyczą orzeczeń (lane sygnatury). Dla aktów (lane odwołania, cytat, most)
+        // metadane nie mają `referencedRegulations`, więc wychodzi null — tak jak dotąd.
+        LegalBases = LegalBasesDisplay(h.TypedMetadata),
+        Score = double.MaxValue, Similarity = null,
+    };
+
+    /// <summary>
+    /// Memoizacja rozpoznania aktu w obrębie JEDNEJ instancji retrievera (rejestracja `AddScoped`, więc
+    /// zasięg = jedno żądanie; przy follow-upie ten sam obiekt obsługuje OBA retrievale).
+    ///
+    /// Powód: `ResolveActAsync` to najdroższe zapytanie poza torem gęstym — gałąź aliasu robi
+    /// `ILIKE '%…%'`, a gałąź frazy liczy `similarity()` dla KAŻDEGO aktu w korpusie (brak indeksu GIN
+    /// trgm na `documents.Title`; migracja zakłada samo rozszerzenie pg_trgm). Wywołań na retrieval jest
+    /// do 6: do 4 z toru strukturalnego + do 2 z mostu cytowań — i praktycznie zawsze o TĘ SAMĄ wskazówkę
+    /// („art. 415 KC" i „art. 5 KC" → dwa razy „KC"; zwycięzcy mostu też zwykle dzielą alias).
+    ///
+    /// Klucz CELOWO `Ordinal` (wielkość liter znaczy): `ILIKE` jest nieczuły na wielkość, ale
+    /// `similarity()` już nie — wspólny wpis dla „KC" i „kc" mógłby zwrócić wynik, którego baza dla
+    /// danego zapisu nie dałaby. Memoizacja ma być niewidoczna, nie „prawie niewidoczna".
+    ///
+    /// Cache PROCESOWY (zero zapytań po rozgrzaniu) byłby jeszcze tańszy, ale wymaga unieważniania po
+    /// ingeście aktów — inaczej zapamiętany NULL trwale ukrywa akt dodany później. To osobny krok, do
+    /// zrobienia z pomiarem w ręku, nie po drodze.
+    /// </summary>
+    private readonly Dictionary<string, string?> _actResolutionCache = new(StringComparer.Ordinal);
 
     /// <summary>Rozpoznaje akt z wskazówki: skrót (mapa aliasów → najkrótszy pasujący tytuł, np. KK≠KKW),
     /// fraza → dopasowanie rozmyte pg_trgm do tytułów aktów. Null = brak pewnego dopasowania (QU-2).</summary>
     private async Task<string?> ResolveActAsync(string? hint, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(hint)) return null;
+        if (_actResolutionCache.TryGetValue(hint, out var cached)) return cached;
 
+        var resolved = await ResolveActUncachedAsync(hint, ct);
+        _actResolutionCache[hint] = resolved;
+        return resolved;
+    }
+
+    private async Task<string?> ResolveActUncachedAsync(string hint, CancellationToken ct)
+    {
         if (ActAliases.Canonical(hint) is { } canonical)
             return await db.Documents
                 .Where(d => d.DocType == "act" && EF.Functions.ILike(d.Title, "%" + canonical + "%"))

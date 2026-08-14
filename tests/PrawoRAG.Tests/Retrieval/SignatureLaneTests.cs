@@ -85,6 +85,32 @@ public class SignatureLaneTests
             // Podstawy prawne przenoszą się z metadanych do wyniku (łańcuch DB → RetrievedChunk).
             Assert.NotNull(res.Chunks[0].LegalBases);
             Assert.Contains(res.Chunks[0].LegalBases!, b => b.Contains("Dz.U. 2023 poz 977"));
+
+            // Retriever RAPORTUJE trafienie dokładne osobnym sygnałem — bez tego bramka abstynencji
+            // odmawiała, trzymając w kontekście orzeczenie wprost wskazane przez użytkownika (cosine
+            // gołej sygnatury jest niski, bo to identyfikator, nie zapytanie semantyczne).
+            Assert.True(res.ExactMatchHits > 0);
+            Assert.False(AbstentionPolicy.ShouldAbstain(res, AbstentionPolicy.DefaultThreshold));
+        }
+        finally { await CleanAsync(); }
+    }
+
+    [Fact] // Kontrola negatywna: pytanie BEZ sygnatury nie podnosi sygnału exact-match
+    public async Task Question_without_signature_reports_no_exact_match()
+    {
+        await CleanAsync();
+        try
+        {
+            await SeedJudgmentAsync("target", "IX ZZ 99999/99", TargetText);
+
+            await using var db = NewDb();
+            var res = await new HybridRetriever(db, Emb).RetrieveAsync(
+                new RetrievalQuery { Text = "Jakie są przesłanki wznowienia postępowania?", MinChunkTokens = 0 },
+                default);
+
+            // Brak sygnatury/Dz.U./cytatu w pytaniu → zero trafień dokładnych → bramka dalej stoi
+            // wyłącznie na cosine (żadnego rozluźnienia dla pytań opisowych).
+            Assert.Equal(0, res.ExactMatchHits);
         }
         finally { await CleanAsync(); }
     }
