@@ -107,8 +107,25 @@ public sealed record RetrievedChunk
 /// śmieciowej puli). Wcześniej reranker po cichu NADPISYWAŁ MaxSimilarity swoim score — próg
 /// kalibrowany pod cosine przestawał cokolwiek znaczyć. Null = reranker wyłączony/pusto.
 /// </summary>
+/// <param name="ExactMatchHits">
+/// Ile chunków w <see cref="Chunks"/> przyszło torem DOKŁADNYM na podstawie tego, co użytkownik
+/// NAPISAŁ: sygnatura akt („III SA/Po 154/26"), numer Dziennika Ustaw („Dz.U. 2025 poz. 1815") albo
+/// cytat artykułu („art. 415 KC"). Trzeci rozdzielony sygnał, z tego samego powodu co
+/// <see cref="RerankTopScore"/>: bramka abstynencji stoi na cosine z toru gęstego, a trafienie
+/// dokładne jest odpowiedzią na INNE pytanie — nie „jak blisko semantycznie", ale „czy mamy DOKŁADNIE
+/// ten dokument, o który pytano". Goła sygnatura embeduje się bezwartościowo (nie jest zapytaniem
+/// semantycznym, a identyfikatorem), więc bez tego sygnału system odmawiał, TRZYMAJĄC w kontekście
+/// dokument wprost wskazany przez użytkownika — czyli tory sygnatury/aktu/cytatu unieważniały się
+/// nawzajem z bramką.
+///
+/// Świadomie NIE liczy tu mostu cytowań: most to sygnał POCHODNY (przepis wygłosowany z cytowań
+/// w trafionych orzeczeniach), nie jawny ask użytkownika — przepuszczanie bramki na jego podstawie
+/// rozluźniałoby ją dla pytań opisowych, gdzie próg cosine jest jedyną obroną przed odpowiadaniem
+/// na podstawie przypadkowej puli.
+/// </param>
 public sealed record RetrievalResult(
-    IReadOnlyList<RetrievedChunk> Chunks, double MaxSimilarity, double? RerankTopScore = null);
+    IReadOnlyList<RetrievedChunk> Chunks, double MaxSimilarity, double? RerankTopScore = null,
+    int ExactMatchHits = 0);
 
 public interface IRetriever
 {

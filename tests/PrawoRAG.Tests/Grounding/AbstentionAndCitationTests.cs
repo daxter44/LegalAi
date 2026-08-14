@@ -34,6 +34,29 @@ public class AbstentionPolicyTests
         Assert.False(AbstentionPolicy.ShouldAbstain(r, 0.55));
         Assert.True(AbstentionPolicy.ShouldAbstain(r, 0.70));
     }
+
+    [Fact] // trafienie DOKŁADNE (sygnatura/Dz.U./cytat z pytania) przepuszcza bramkę mimo niskiego cosine
+    public void Does_not_abstain_on_exact_match_below_threshold()
+    {
+        // Realny przypadek: goła sygnatura „III SA/Po 154/26" embeduje się bezwartościowo (identyfikator,
+        // nie zapytanie semantyczne), więc cosine leci poniżej progu DOKŁADNIE wtedy, gdy w kontekście
+        // leży orzeczenie wprost wskazane przez użytkownika.
+        var r = Result(0.30) with { ExactMatchHits = 1 };
+        Assert.False(AbstentionPolicy.ShouldAbstain(r, 0.55));
+    }
+
+    [Fact] // brak kandydatów wygrywa z sygnałem exact-match (nie ma czego pokazać)
+    public void Abstains_on_empty_even_with_exact_match() =>
+        Assert.True(AbstentionPolicy.ShouldAbstain(new RetrievalResult([], 0, null, 1), 0.55));
+
+    [Fact] // most cytowań (sygnał POCHODNY) NIE przepuszcza bramki — świadome ograniczenie wyjątku
+    public void Bridge_alone_does_not_open_the_gate()
+    {
+        // Most nie zwiększa ExactMatchHits (patrz HybridRetriever: liczy tylko sygnaturę/akt/cytat),
+        // więc pytanie opisowe bez pokrycia dalej kończy się odmową — próg cosine zostaje jedyną obroną.
+        var r = Result(0.30);
+        Assert.True(AbstentionPolicy.ShouldAbstain(r, 0.55));
+    }
 }
 
 /// <summary>T-FABR — anty-fabrykacja cytatów.</summary>
