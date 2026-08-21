@@ -10,10 +10,12 @@ namespace PrawoRAG.Domain.Retrieval;
 /// („art. 367 KPC"), więc retrieval strukturalny (QU) i augmenter nowel działają na follow-upach
 /// bez zmian w nich samych. Czysta — testowalna bez DB/LLM.
 ///
-/// Anafora typu „a kim jest osoba uprawniona z POWYŻSZEJ ODPOWIEDZI?" odwołuje się do treści i źródeł
-/// POPRZEDNIEJ ODPOWIEDZI, nie do wcześniejszych pytań — dlatego wariant kontekstowy foldu­je też kotwice
-/// ostatniej realnej odpowiedzi (metadane źródeł + cytaty + krótki fragment). Odtwarza to samodzielne
-/// pytanie, które w nowym czacie retrieval trafia poprawnie, bez dodatkowego wywołania LLM.
+/// Anafora typu „a kim jest osoba uprawniona z POWYŻSZEJ ODPOWIEDZI?" odwołuje się do treści
+/// POPRZEDNIEJ ODPOWIEDZI, nie do wcześniejszych pytań — dlatego wariant kontekstowy folduje też
+/// cytaty i krótki fragment ostatniej realnej odpowiedzi. Odtwarza to samodzielne pytanie, które
+/// w nowym czacie retrieval trafia poprawnie, bez dodatkowego wywołania LLM. Kotwice metadanych
+/// źródeł (numer Dz.U./artykułu poprzedniej tury) USUNIĘTE 2026-08-11 — patrz komentarz przy
+/// <see cref="Contextualize(IReadOnlyList{ChatTurn}, string)"/>.
 /// </summary>
 public static class FollowUpQuery
 {
@@ -64,6 +66,11 @@ public static class FollowUpQuery
     /// wariant surowy nadal konkuruje przez asymetryczny <see cref="PickContextual"/>. Brak niepustej
     /// odpowiedzi → zwraca sam rdzeń (łagodny fallback, zgodny ze starym zachowaniem).
     /// </summary>
+    /// Kotwice źródeł USUNIĘTE 2026-08-11: niosły numer Dz.U. i numer artykułu poprzedniej tury, więc
+    /// w każdej ścieżce bez ExactMatchText wyzwalały tory DOKŁADNE i zjadały cały budżet slotów aktem
+    /// z poprzedniej tury (zmierzone: 8/8 slotów ze Score=MaxValue), a tam gdzie tory dokładne są
+    /// odcięte — dominowały BM25 tytułem aktu. Sam fragment odpowiedzi (bez kotwic) w tym samym
+    /// pomiarze wyciągnął uodo art. 107 na #2 — dlatego zostaje.
     public static string Contextualize(IReadOnlyList<ChatTurn> history, string question)
     {
         var baseCtx = Contextualize(history.Select(t => t.Question).ToList(), question);
@@ -71,15 +78,12 @@ public static class FollowUpQuery
         var lastAnswered = history.LastOrDefault(t => !string.IsNullOrWhiteSpace(t.Answer));
         if (lastAnswered is null) return baseCtx;
 
-        var anchors = lastAnswered.SourceAnchors is { Count: > 0 } a
-            ? string.Join(" ", a.Where(s => !string.IsNullOrWhiteSpace(s)))
-            : "";
         var cites = string.Join(" ", ExtractCitationTokens(lastAnswered.Answer!));
         var snippet = TrimForRetrieval(lastAnswered.Answer!, MaxFoldedAnswerChars);
 
-        // Kolejność: rdzeń (intencja) → źródła → cytaty → fragment. Cytaty PRZED fragmentem, więc
+        // Kolejność: rdzeń (intencja) → cytaty → fragment. Cytaty PRZED fragmentem, więc
         // przetrwają nawet gdy fragment urwie się przed miejscem cytatu w odpowiedzi.
-        return string.Join(" ", new[] { baseCtx, anchors, cites, snippet }
+        return string.Join(" ", new[] { baseCtx, cites, snippet }
             .Where(s => !string.IsNullOrWhiteSpace(s)));
     }
 

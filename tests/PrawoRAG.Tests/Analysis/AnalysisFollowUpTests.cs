@@ -6,7 +6,7 @@ namespace PrawoRAG.Tests.Analysis;
 /// <summary>
 /// T-SPK-6 — dopytania po raporcie: routing mechaniczny po odwołaniach (§/art./pkt, także części
 /// „(cz. n)"), fallback embeddingowy w kolejności dokumentu, kompozycja tury-kotwicy (wybrane
-/// jednostki z przodu, budżet 1500 znaków, tabela werdyktów dla pytań przekrojowych, kotwice źródeł).
+/// jednostki z przodu, budżet 1500 znaków, tabela werdyktów dla pytań przekrojowych).
 /// </summary>
 public class AnalysisFollowUpTests
 {
@@ -82,7 +82,6 @@ public class AnalysisFollowUpTests
         Assert.Contains("§ 1 — OK; § 2 — RYZYKO; § 3 — OK", turn.Answer); // tabela przekrojowa
         Assert.True(turn.Answer.IndexOf("§ 2 — RYZYKO") < turn.Answer.IndexOf("Streszczenie:")); // wybrane z przodu
         Assert.True(turn.Answer.Length <= GroundedPrompt.MaxHistoryAnswerChars + 1);
-        Assert.Equal(["art. 2 KC"], turn.SourceAnchors!); // kotwice źródeł TYLKO wybranych jednostek
     }
 
     [Fact] // pytanie przekrojowe (bez selekcji): kotwica = streszczenie + tabela werdyktów
@@ -93,7 +92,6 @@ public class AnalysisFollowUpTests
 
         Assert.Contains("Werdykty: § 1 — OK", turn.Answer);
         Assert.DoesNotContain("Treść:", turn.Answer);
-        Assert.Null(turn.SourceAnchors);
     }
 
     [Fact] // bardzo długie uzasadnienia/streszczenie → twarde cięcie do budżetu historii

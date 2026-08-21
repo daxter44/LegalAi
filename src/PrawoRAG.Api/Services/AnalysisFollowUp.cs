@@ -62,8 +62,10 @@ public static class AnalysisFollowUp
     /// Tura-kotwica: raport analizy udaje „poprzednią odpowiedź asystenta". Kolejność treści wg
     /// ważności (GroundedPrompt tnie OGON do 1500 znaków — to, co najważniejsze dla pytania, musi
     /// być z przodu): wybrane jednostki (treść + werdykt + uzasadnienie) → streszczenie → tabela
-    /// werdyktów wszystkich jednostek (pytania przekrojowe). SourceAnchors = etykiety źródeł
-    /// wybranych jednostek (kontekstualizacja retrievalu follow-upu).
+    /// werdyktów wszystkich jednostek (pytania przekrojowe). Kotwice źródeł (etykiety wybranych
+    /// jednostek) USUNIĘTE 2026-08-11 razem z polem <c>SourceAnchors</c> w <see cref="ChatTurn"/> —
+    /// kontekstualizacja follow-upu folduje ten sam tekst <see cref="ChatTurn.Answer"/> przez cytaty
+    /// i fragment (patrz <see cref="PrawoRAG.Domain.Retrieval.FollowUpQuery"/>).
     /// </summary>
     public static ChatTurn ComposeAnchorTurn(AnalysisSnapshot snap, IReadOnlyList<int> selectedIndexes)
     {
@@ -95,20 +97,11 @@ public static class AnalysisFollowUp
             .Where(r => r is not null)
             .Select(r => $"{r!.Heading} — {AnalysisPrompts.Label(r.Verdict)}")));
 
-        var anchors = selected
-            .Where(s => s.Result is not null)
-            .SelectMany(s => s.Result!.Sources)
-            .Select(src => src.Label)
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .Distinct()
-            .Take(6)
-            .ToList();
-
         var answer = sb.ToString();
         if (answer.Length > PrawoRAG.Llm.Grounding.GroundedPrompt.MaxHistoryAnswerChars)
             answer = answer[..PrawoRAG.Llm.Grounding.GroundedPrompt.MaxHistoryAnswerChars] + "…";
 
-        return new ChatTurn(snap.Prompt, answer, anchors.Count > 0 ? anchors : null);
+        return new ChatTurn(snap.Prompt, answer);
     }
 
     private static string NormalizeKind(string raw) => raw.ToLowerInvariant() switch

@@ -331,16 +331,6 @@
     private static bool IsRefusal(Exchange ex) =>
         ex.Done && !ex.Abstained && ex.Answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Kotwice źródeł tury (etykieta lokalizatora + tytuł aktu, np. „art. 157 § 1 KW",
-    /// „Kodeks wykroczeń") dla kontekstualizacji retrievalu follow-upu — czyste, bez ryzyka halucynacji.
-    /// Garść pierwszych źródeł wystarcza; więcej rozmywa embedding bieżącej intencji.</summary>
-    private const int FollowUpSourceAnchorsTaken = 4;
-    private static IReadOnlyList<string> SourceAnchors(Exchange ex) =>
-        ex.Sources
-            .Take(FollowUpSourceAnchorsTaken)
-            .Select(s => $"{s.Label} {s.Title}".Trim())
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToList();
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
@@ -431,7 +421,7 @@
             .Where(e => e.Done && e.Error is null)
             .Select(e => e.Abstained || IsRefusal(e)
                 ? new ChatTurn(e.Question, null)
-                : new ChatTurn(e.Question, e.Answer, SourceAnchors(e)))
+                : new ChatTurn(e.Question, e.Answer))
             .ToList();
 
         var ex = new Exchange { Question = question, Streaming = true };

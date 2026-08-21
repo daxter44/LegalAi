@@ -16,8 +16,7 @@ public class FollowUpSelectorTests
     private const string Q2 = "A co powinienem zrobić, jeżeli do wycieku doszło?";
 
     private static readonly IReadOnlyList<ChatTurn> History =
-        [new(Q1, "Źródła nie określają sankcji. Podmioty prowadzące bazy danych w ochronie zdrowia…",
-            ["Ustawa o systemie informacji w ochronie zdrowia, art. 37"])];
+        [new(Q1, "Źródła nie określają sankcji. Podmioty prowadzące bazy danych w ochronie zdrowia…")];
 
     private static RetrievalQuery Factory(string text) => new() { Text = text, TopK = 8 };
 
@@ -41,9 +40,9 @@ public class FollowUpSelectorTests
             FollowUpQuery.DefaultSignalMargin, FollowUpQuery.DefaultRerankSignalMargin, default);
 
         var ctx = retriever.Queries[1];
-        Assert.Contains("art. 37", ctx.Text);                 // fold zostaje w torze gęstym/BM25
+        Assert.Contains("Źródła nie określają sankcji", ctx.Text); // fold zostaje w torze gęstym/BM25
         Assert.Equal(Q2, ctx.RerankText);                     // sędzia sądzi po pytaniu użytkownika
-        Assert.DoesNotContain("art. 37", ctx.EffectiveExactMatchText); // tory dokładne bez foldu
+        Assert.DoesNotContain("Źródła nie określają sankcji", ctx.EffectiveExactMatchText); // tory dokładne bez foldu
     }
 
     [Fact] // Zmierzony przypadek: fold ma wyższy cosine, ale reranker go demaskuje → wygrywa surowy.

@@ -59,7 +59,7 @@ public class FollowUpQueryTests
         Assert.True(FollowUpQuery.PickContextual(0.70, 0.65, margin: 0.10));  // 0.05 ≤ 0.10 → kontekstowe
     }
 
-    // --- Overload ChatTurn: fold kotwic ostatniej realnej odpowiedzi (cytat + rzeczowniki + źródła) ---
+    // --- Overload ChatTurn: fold ostatniej realnej odpowiedzi (cytat wyłuskany + fragment tekstu) ---
 
     private const string LasAnswer =
         "Grzywna może wynikać z art. 157 § 1 kodeksu wykroczeń, jeżeli osoba nie opuści lasu na żądanie osoby uprawnionej.";
@@ -124,19 +124,6 @@ public class FollowUpQueryTests
     }
 
     [Fact]
-    public void Folds_source_anchors_when_present()
-    {
-        var history = new[]
-        {
-            new ChatTurn("q", "krótka odpowiedź", new[] { "art. 157 § 1 KW", "Kodeks wykroczeń" }),
-        };
-        var result = FollowUpQuery.Contextualize(history, "dopytanie");
-
-        Assert.Contains("Kodeks wykroczeń", result);
-        Assert.Contains("art. 157 § 1 KW", result);
-    }
-
-    [Fact]
     public void Question_context_leads_before_folded_answer()
     {
         var history = new[] { new ChatTurn("pierwsze", "odpowiedź z art. 5 KC") };
@@ -147,25 +134,24 @@ public class FollowUpQueryTests
 
     // --- ContextualizeForExactMatch: tekst dla torów DOKŁADNYCH = TYLKO pytania usera, bez foldu ---
 
-    [Fact] // rdzeń bugu: kotwica wyroku z ODPOWIEDZI systemu nie może zasilać exact-match (sygnatura/DzU)
-    public void ExactMatch_text_excludes_answer_anchors_and_citations()
+    [Fact] // rdzeń bugu: treść z ODPOWIEDZI systemu (fragment) nie może zasilać exact-match
+    public void ExactMatch_text_excludes_answer_derived_content()
     {
         var history = new[]
         {
             new ChatTurn(
                 "jak kwalifikować obiekty do podatku od nieruchomości?",
-                "Zgodnie z orzecznictwem [2] art. 1a decyduje przeznaczenie.",
-                new[] { "Wojewódzki Sąd Administracyjny w Poznaniu, I SA/Po 594/17" }),
+                "Zgodnie z orzecznictwem [2] art. 1a decyduje przeznaczenie."),
         };
         var q = "a Art. 1a USTAWA O PODATKACH I OPŁATACH LOKALNYCH ?";
 
         var exact = FollowUpQuery.ContextualizeForExactMatch(history, q);
         var semantic = FollowUpQuery.Contextualize(history, q);
 
-        // Exact-match NIE widzi sygnatury wyroku (była tylko w kotwicy odpowiedzi) — bug naprawiony.
-        Assert.DoesNotContain("I SA/Po 594/17", exact);
-        // ...ale wariant semantyczny DALEJ ją niesie (recall pod anaforę bez zmian).
-        Assert.Contains("I SA/Po 594/17", semantic);
+        // Exact-match NIE widzi fragmentu odpowiedzi (tylko pytania) — bug naprawiony.
+        Assert.DoesNotContain("decyduje przeznaczenie", exact);
+        // ...ale wariant semantyczny DALEJ go niesie (fold fragmentu, recall pod anaforę bez zmian).
+        Assert.Contains("decyduje przeznaczenie", semantic);
         // Bieżące pytanie usera (z jego cytatem) jest w tekście exact-match — tor strukturalny odpali.
         Assert.Contains("Art. 1a", exact);
     }

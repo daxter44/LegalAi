@@ -249,7 +249,7 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         var o = opt.Value;
         var history = (req.History ?? [])
             .Where(t => !string.IsNullOrWhiteSpace(t.Question))
-            .Select(t => new ChatTurn(t.Question, t.Answer, t.SourceAnchors))
+            .Select(t => new ChatTurn(t.Question, t.Answer))
             .ToList();
 
         // Follow-upy: podwójny retrieval + wybór wariantu — wspólny FollowUpSelector (parytet z UI/evalem).
@@ -330,9 +330,9 @@ internal sealed record SearchRequest(string Query, FiltersDto? Filters, int? Top
 internal sealed record ChatRequest(string Question, FiltersDto? Filters, IReadOnlyList<HistoryTurnDto>? History = null);
 
 /// <summary>Jedna zakończona tura rozmowy w żądaniu SSE (kontekst follow-upów). Answer=null przy abstynencji.
-/// SourceAnchors (opcjonalne) = etykiety/tytuły źródeł tamtej tury; klient API może je przysłać dla lepszej
-/// kontekstualizacji follow-upu, brak → łagodna degradacja do cytatów z tekstu odpowiedzi.</summary>
-internal sealed record HistoryTurnDto(string Question, string? Answer, IReadOnlyList<string>? SourceAnchors = null);
+/// Kotwice źródeł USUNIĘTE 2026-08-11 (patrz <see cref="ChatTurn"/>) — kontekstualizacja follow-upu
+/// folduje wyłącznie cytaty i fragment tekstu odpowiedzi.</summary>
+internal sealed record HistoryTurnDto(string Question, string? Answer);
 
 public sealed class RetrievalOptions
 {
