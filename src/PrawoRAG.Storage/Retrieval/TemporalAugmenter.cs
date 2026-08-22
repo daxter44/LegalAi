@@ -142,6 +142,31 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
     }
 
     /// <summary>Wiersz chunka noweli W PROJEKCJI — bez `Embedding` i `SearchVector` (tu nieużywanych).</summary>
+    /// <summary>
+    /// Buduje marker noweli — KLUCZOWE: rozstrzyga w KODZIE (nie zostawia LLM-owi), czy data wejścia
+    /// w życie już minęła. Diagnoza 2026-08-22 (pytanie o zastępstwo aplikanta adwokackiego): model bez
+    /// tej informacji dostawał samą datę ("obowiązuje od 2026-06-18") bez punktu odniesienia „dziś" —
+    /// nie ma jak wywnioskować, że ta data już minęła, więc zgadywał (i zgadł źle: opisał JUŻ
+    /// obowiązującą zmianę jako przyszłą, „od 18 czerwca zasady się zmienią"). LLM nie zna dzisiejszej
+    /// daty z kontekstu treningu — musi dostać gotowy werdykt, nie surowe dane do policzenia samemu.
+    /// </summary>
+    private static string BuildMarker(string? effectiveDateRaw)
+    {
+        if (string.IsNullOrWhiteSpace(effectiveDateRaw))
+            return "[NOWELIZACJA — data wejścia w życie nieznana, jeszcze niewchłonięta do tekstu jednolitego]\n";
+
+        if (!DateOnly.TryParse(effectiveDateRaw, out var effectiveDate))
+            // Data w metadanych nieparsowalna — nie zgaduj status, zostaw neutralny opis jak dotąd
+            // (bez rozstrzygnięcia JUŻ/JESZCZE NIE), reguła 6 promptu i tak każe zestawić oba źródła.
+            return $"[NOWELIZACJA — obowiązuje od {effectiveDateRaw}, jeszcze niewchłonięta do tekstu jednolitego]\n";
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var status = effectiveDate <= today
+            ? $"JUŻ OBOWIĄZUJE od {effectiveDateRaw} — to jest AKTUALNY, dziś obowiązujący stan prawny"
+            : $"WEJDZIE W ŻYCIE {effectiveDateRaw} — jeszcze NIE obowiązuje, do tej daty obowiązuje tekst jednolity";
+        return $"[NOWELIZACJA — {status}, jeszcze niewchłonięta do tekstu jednolitego]\n";
+    }
+
     private sealed record AmendmentChunkRow(
         Guid Id, Guid DocumentId, string Text, string? Section, JsonDocument? Locator,
         string Source, string DocType, string Title, string? SourceUrl);
@@ -158,8 +183,7 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
 
     private static RetrievedChunk ToAmendmentChunk(AmendmentChunkRow ch, AmendmentRef am)
     {
-        var date = string.IsNullOrWhiteSpace(am.EffectiveDate) ? "" : $" obowiązuje od {am.EffectiveDate},";
-        var marker = $"[NOWELIZACJA —{date} jeszcze niewchłonięta do tekstu jednolitego]\n";
+        var marker = BuildMarker(am.EffectiveDate);
         return new RetrievedChunk
         {
             ChunkId = ch.Id,

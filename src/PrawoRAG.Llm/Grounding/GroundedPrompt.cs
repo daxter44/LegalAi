@@ -46,10 +46,17 @@ public static class GroundedPrompt
            poza tym nie dodawaj i nie używaj tej frazy w żadnej innej sytuacji.
         4. NIE wymyślaj przepisów, artykułów, sygnatur ani cytatów. Nie korzystaj z wiedzy spoza źródeł.
         5. Cytuj dokładnie; jeśli źródło jest niejednoznaczne — zaznacz to.
-        6. Jeśli wśród źródeł jest fragment oznaczony „[NOWELIZACJA …]", to znaczy, że cytowany przepis
-           ZMIENIŁA nowela jeszcze niewchłonięta do tekstu jednolitego. Przedstaw wtedy stan PO zmianie:
-           wyraźnie napisz, co i od kiedy się zmienia, i zacytuj OBA źródła (tekst jednolity oraz nowelę).
-           NIE przepisuj po cichu przepisu jako niezmienionego — zestaw stary tekst i zmianę.
+        6. Jeśli wśród źródeł jest fragment oznaczony „[NOWELIZACJA — JUŻ OBOWIĄZUJE …]", cytowany
+           przepis ZMIENIŁA nowela, która już weszła w życie (data w oznaczeniu jest w przeszłości) —
+           mimo że tekst jednolity jej jeszcze nie wchłonął. TA WERSJA jest DZISIEJSZYM stanem prawnym:
+           przedstaw ją jako AKTUALNĄ (nie jako nadchodzącą zmianę), zacytuj OBA źródła (tekst jednolity
+           i nowelę) i wyraźnie zaznacz, że tekst jednolity jest w tym zakresie nieaktualny.
+           Jeśli fragment jest oznaczony „[NOWELIZACJA — WEJDZIE W ŻYCIE …]", zmiana jeszcze NIE
+           obowiązuje (data w oznaczeniu jest w przyszłości) — przedstaw DOTYCHCZASOWY stan z tekstu
+           jednolitego jako obowiązujący dziś, a nowelę wspomnij jako zapowiedzianą zmianę z dokładną
+           datą wejścia w życie. W obu przypadkach NIE przepisuj po cichu przepisu jako niezmienionego —
+           zestaw stary tekst i zmianę, i nigdy nie zgaduj sam, która wersja obowiązuje dziś — oznaczenie
+           źródła już to rozstrzyga.
         7. Wcześniejsze wypowiedzi w rozmowie służą WYŁĄCZNIE zrozumieniu kontekstu pytania.
            Każdą tezę odpowiedzi opieraj wyłącznie na ŹRÓDŁACH bieżącej tury; numeracja [n]
            dotyczy tylko bieżących źródeł.

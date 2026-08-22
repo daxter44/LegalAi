@@ -51,12 +51,12 @@ public class TemporalAugmenterTests
         await db.Documents.Where(d => d.Source == Src).ExecuteDeleteAsync();
     }
 
-    private static async Task<(Guid BaseDocId, Guid AmendmentDocId)> SeedAsync()
+    private static async Task<(Guid BaseDocId, Guid AmendmentDocId)> SeedAsync(string? effectiveDate = null)
     {
         await using var db = NewDb();
 
         // Akt bazowy: w metadanych nowela NIEWCHŁONIĘTA do tekstu jednolitego.
-        var unabsorbed = new[] { new AmendmentRef(AmendmentExtId, EffectiveDate) };
+        var unabsorbed = new[] { new AmendmentRef(AmendmentExtId, effectiveDate ?? EffectiveDate) };
         var baseDoc = NewDoc(BaseActExtId, JsonSerializer.SerializeToDocument(
             new Dictionary<string, object?> { ["unabsorbedAmendments"] = unabsorbed }));
         db.Documents.Add(baseDoc);
@@ -110,7 +110,33 @@ public class TemporalAugmenterTests
             Assert.Contains(result, c => c.Text.Contains("Termin wynosi 14 dni"));
             var added = Assert.Single(result, c => c.Text.Contains("otrzymuje brzmienie"));
             Assert.Equal(EffectiveDate, added.AmendmentEffectiveDate);
-            Assert.Contains("[NOWELIZACJA", added.Text); // marker czytany przez regułę 6 promptu
+            // Data (2099) jest w przyszłości względem "dziś" — marker musi to jednoznacznie
+            // rozstrzygnąć w kodzie, nie zostawiać LLM-owi zgadywania (regresja 2026-08-22).
+            Assert.Contains("[NOWELIZACJA — WEJDZIE W ŻYCIE", added.Text);
+            Assert.DoesNotContain("JUŻ OBOWIĄZUJE", added.Text);
+        }
+        finally { await CleanAsync(); }
+    }
+
+    [Fact] // AUG1b: nowela z datą wejścia w życie W PRZESZŁOŚCI — regresja 2026-08-22 (aplikant
+    // adwokacki / radca prawny): model bez rozstrzygnięcia w kodzie opisywał już obowiązującą zmianę
+    // jako przyszłą ("od 18 czerwca zasady się zmienią"), bo nie zna dzisiejszej daty i nie ma jak
+    // porównać jej z datą w markerze. Marker musi jednoznacznie powiedzieć "JUŻ OBOWIĄZUJE".
+    public async Task Marks_amendment_already_in_force_when_effective_date_is_past()
+    {
+        await CleanAsync();
+        try
+        {
+            var (baseDocId, _) = await SeedAsync(effectiveDate: "2020-01-01");
+
+            await using var db = NewDb();
+            var retrieved = new[] { ActChunk(baseDocId, "Art. 94 § 2. Termin wynosi 14 dni.", "94") };
+            var result = await new TemporalAugmenter(db).AugmentAsync(
+                new RetrievalQuery { Text = "jaki jest termin z art. 94 § 2?" }, retrieved, default);
+
+            var added = Assert.Single(result, c => c.Text.Contains("otrzymuje brzmienie"));
+            Assert.Contains("[NOWELIZACJA — JUŻ OBOWIĄZUJE od 2020-01-01", added.Text);
+            Assert.DoesNotContain("WEJDZIE W ŻYCIE", added.Text);
         }
         finally { await CleanAsync(); }
     }
