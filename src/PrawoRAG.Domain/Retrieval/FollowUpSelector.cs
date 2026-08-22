@@ -1,4 +1,5 @@
 using PrawoRAG.Domain.Llm;
+using PrawoRAG.Domain;
 
 namespace PrawoRAG.Domain.Retrieval;
 
@@ -26,7 +27,7 @@ public static class FollowUpSelector
         CancellationToken ct)
     {
         var rawQuery = queryFactory(question);
-        var rawResult = await retriever.RetrieveAsync(rawQuery, ct);
+        var rawResult = await LatencyLog.TimeAsync("retrieval.raw", () => retriever.RetrieveAsync(rawQuery, ct));
         if (history.Count == 0) return new Selection(rawQuery, rawResult, UsedContextual: false);
 
         // SEKWENCYJNIE — wspólny scoped DbContext nie jest thread-safe (nie zrównoleglać).
@@ -38,7 +39,9 @@ public static class FollowUpSelector
             // SĘDZIA: surowe pytanie — inaczej sklejka ocenia samą siebie (patrz RetrievalQuery.RerankText).
             RerankText = question,
         };
-        var ctxResult = await retriever.RetrieveAsync(ctxQuery, ct);
+        // Follow-up: DRUGIE pełne wywołanie RetrieveAsync (sekwencyjnie, patrz komentarz wyżej) —
+        // podwaja koszt każdego etapu toru (embedding, SQL, reranker) względem pytania bez historii.
+        var ctxResult = await LatencyLog.TimeAsync("retrieval.contextual", () => retriever.RetrieveAsync(ctxQuery, ct));
 
         return FollowUpQuery.PickContextual(rawResult, ctxResult, cosineMargin, rerankMargin)
             ? new Selection(ctxQuery, ctxResult, UsedContextual: true)

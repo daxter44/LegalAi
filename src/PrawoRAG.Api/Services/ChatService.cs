@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.Options;
+using PrawoRAG.Domain;
 using PrawoRAG.Domain.Embeddings;
 using PrawoRAG.Domain.Llm;
 using PrawoRAG.Domain.Retrieval;
@@ -23,6 +24,7 @@ public sealed class ChatService(
         string question, IReadOnlyList<ChatTurn> history, DocumentContext? document,
         [EnumeratorCancellation] CancellationToken ct)
     {
+        var chatSw = System.Diagnostics.Stopwatch.StartNew();
         var o = options.Value;
         RetrievalQuery Query(string text) => new()
         {
@@ -51,7 +53,8 @@ public sealed class ChatService(
         // dotyczące pytanych artykułów (best-effort — awaria nie blokuje odpowiedzi). Dostaje EFEKTYWNE
         // zapytanie (może być sklejone z historią) — to ono niesie cytaty z poprzednich tur.
         var chunks = result.Chunks;
-        try { chunks = await augmenter.AugmentAsync(query, result.Chunks, ct); } catch { /* best-effort */ }
+        try { chunks = await LatencyLog.TimeAsync("augment", () => augmenter.AugmentAsync(query, result.Chunks, ct)); }
+        catch { /* best-effort */ }
 
         // Norma przed narracjami (PRZEPISY → ORZECZNICTWO) — TEN SAM porządek musi zasilić prompt,
         // panel źródeł i kontekst walidatora (jedna numeracja [n]).
@@ -83,11 +86,16 @@ public sealed class ChatService(
         request = request with { OnUsage = u => usage = u, OnReasoning = r => reasoning = r };
 
         var full = new StringBuilder();
+        var llmSw = System.Diagnostics.Stopwatch.StartNew();
+        var firstTokenMs = -1L;
         await foreach (var delta in llm.StreamCompletionAsync(request, ct))
         {
+            if (firstTokenMs < 0) firstTokenMs = llmSw.ElapsedMilliseconds;
             full.Append(delta);
             yield return new TokenEvent(delta);
         }
+        LatencyLog.Mark("llm.first_token", firstTokenMs);
+        LatencyLog.Mark("llm.total", llmSw.ElapsedMilliseconds);
 
         if (!string.IsNullOrWhiteSpace(reasoning))
             yield return new ReasoningEvent(reasoning);
@@ -97,6 +105,7 @@ public sealed class ChatService(
             .Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
         var check = CitationValidator.Validate(full.ToString(), contextTexts, sources.Count,
             docFragments.Select(f => f.Text).ToList(), docFragments.Count);
+        LatencyLog.Mark("chat.total", chatSw.ElapsedMilliseconds);
         yield return new DoneEvent(Abstained: false, Model: llm.ModelId, Check: check, Usage: usage);
     }
 

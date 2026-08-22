@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using PrawoRAG.Api.Services;
+using PrawoRAG.Domain;
 using PrawoRAG.Domain.Llm;
 using PrawoRAG.Domain.Retrieval;
 using PrawoRAG.Embeddings;
@@ -229,6 +230,7 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
 
     http.Response.ContentType = "text/event-stream";
     http.Response.Headers.CacheControl = "no-cache";
+    var chatSw = System.Diagnostics.Stopwatch.StartNew();
 
     async Task Send(string ev, object data)
     {
@@ -270,7 +272,8 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         // dotyczące pytanych artykułów (best-effort — parytet z UI/ChatService). Dostaje EFEKTYWNE
         // zapytanie (może być sklejone z historią) — to ono niesie cytaty z poprzednich tur.
         var chunks = result.Chunks;
-        try { chunks = await augmenter.AugmentAsync(q, result.Chunks, ct); } catch { /* best-effort */ }
+        try { chunks = await LatencyLog.TimeAsync("augment", () => augmenter.AugmentAsync(q, result.Chunks, ct)); }
+        catch { /* best-effort */ }
 
         // Norma przed narracjami (parytet z ChatService) — jeden porządek dla promptu/źródeł/walidatora.
         chunks = GroundedPrompt.OrderForGrounding(chunks);
@@ -284,11 +287,16 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         request = request with { OnUsage = u => usage = u };
 
         var full = new StringBuilder();
+        var llmSw = System.Diagnostics.Stopwatch.StartNew();
+        var firstTokenMs = -1L;
         await foreach (var delta in llm.StreamCompletionAsync(request, ct))
         {
+            if (firstTokenMs < 0) firstTokenMs = llmSw.ElapsedMilliseconds;
             full.Append(delta);
             await Send("token", new { text = delta });
         }
+        LatencyLog.Mark("llm.first_token", firstTokenMs);
+        LatencyLog.Mark("llm.total", llmSw.ElapsedMilliseconds);
 
         // ANTY-FABRYKACJA — czy cytaty istnieją w dostarczonym kontekście.
         var contextTexts = chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
@@ -298,6 +306,7 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
             : (object)new { abstained = false, model = llm.ModelId, citationCheck = check });
 
         costGuard.Record(apiUser, full.Length); // dolicz wyjście do dziennego budżetu znaków
+        LatencyLog.Mark("chat.total", chatSw.ElapsedMilliseconds);
         return Results.Empty;
     }
     catch (Exception ex)

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using PrawoRAG.Domain;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
 using PrawoRAG.Domain.Documents;
@@ -43,7 +44,8 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
 
     public async Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, CancellationToken ct)
     {
-        var qvec = new Vector(await embedder.EmbedQueryAsync(query.Text, ct));
+        var totalSw = System.Diagnostics.Stopwatch.StartNew();
+        var qvec = new Vector(await LatencyLog.TimeAsync("embed", () => embedder.EmbedQueryAsync(query.Text, ct)));
         var k = query.CandidatesPerPath;
 
         // Tor gęsty: najmniejszy dystans cosine. Surowe SQL z rzutem na halfvec(1024) — IX_chunks_Embedding
@@ -57,20 +59,22 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // round-tripy HTTP do cross-encodera (sekundy) — to zjada pulę połączeń przy równoległych
         // użytkownikach i blokuje autovacuum na chunks/documents.
         List<DenseHit> dense;
+        var denseSw = System.Diagnostics.Stopwatch.StartNew();
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             await db.Database.ExecuteSqlRawAsync($"SET LOCAL hnsw.ef_search = {HnswEfSearch}", ct);
             dense = await DenseAsync(query, qvec, k, ct);
             await tx.CommitAsync(ct); // odczyt — commit tylko po to, żeby zamknąć transakcję jawnie
         }
+        LatencyLog.Mark("dense", denseSw.ElapsedMilliseconds);
 
         // Tor rzadki: BM25 po tsvector (konfiguracja zgodna z kolumną generowaną).
-        var sparse = await ApplyFilters(db.Chunks, query)
+        var sparse = await LatencyLog.TimeAsync("sparse", () => ApplyFilters(db.Chunks, query)
             .Where(c => c.SearchVector!.Matches(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, query.Text)))
             .Select(c => new { c.Id, Rank = c.SearchVector!.Rank(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, query.Text)) })
             .OrderByDescending(x => x.Rank)
             .Take(k)
-            .ToListAsync(ct);
+            .ToListAsync(ct));
 
         // Fuzja RRF.
         var rrf = new Dictionary<Guid, double>();
@@ -89,6 +93,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // leksykalne per wykryty akronim wchodzi do fuzji RRF jak każdy tor — o precyzję dba dalej
         // reranking/fuzja, my łatamy wyłącznie dziurę recall. Brak akronimów w pytaniu = zero kosztu.
         var acronyms = AcronymDetector.Extract(query.Text).Take(MaxAcronymLanes).ToList();
+        var acronymSw = System.Diagnostics.Stopwatch.StartNew();
         if (acronyms.Count > 0)
         {
             // Krótki timeout TYLKO na czas toru akronimowego — przywrócony niezależnie od wyniku,
@@ -132,6 +137,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
             {
                 db.Database.SetCommandTimeout(originalTimeout);
             }
+            LatencyLog.Mark("acronym", acronymSw.ElapsedMilliseconds);
         }
 
         // Nad-pobieramy kandydatów przed dedupem po tekście: standardowe formułki (dyrektywy, tezy TSUE)
@@ -141,7 +147,8 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         if (candidateIds.Count == 0)
             return new RetrievalResult([], 0);
 
-        var rows = await Project(db.Chunks.Where(c => candidateIds.Contains(c.Id))).ToListAsync(ct);
+        var rows = await LatencyLog.TimeAsync("fetch_candidates",
+            () => Project(db.Chunks.Where(c => candidateIds.Contains(c.Id))).ToListAsync(ct));
 
         var deduped = rows
             .Select(c => new RetrievedChunk
@@ -177,7 +184,8 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         double? rerankTop = null;
         if (reranker is not null && deduped.Count > 0)
         {
-            var scores = await reranker.RerankAsync(query.EffectiveRerankText, deduped.Select(c => c.Text).ToList(), ct);
+            var scores = await LatencyLog.TimeAsync("rerank.main",
+                () => reranker.RerankAsync(query.EffectiveRerankText, deduped.Select(c => c.Text).ToList(), ct));
             var byIndex = scores.ToDictionary(x => x.Index, x => x.Score);
             ranked = deduped
                 .Select((c, i) => c with { RerankScore = byIndex.GetValueOrDefault(i) })
@@ -194,17 +202,17 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // orzeczenie po znormalizowanym kluczu i wstaw na SAM WIERZCH. Sygnatura to identyfikator,
         // nie zapytanie semantyczne — similarity nigdy tego nie gwarantuje (własna sygnatura ląduje
         // w tekście chunka tylko przypadkiem). DOKŁADA, nie usuwa; brak sygnatury → zero kosztu.
-        var signature = await SignatureAsync(query, ct);
+        var signature = await LatencyLog.TimeAsync("lane.signature", () => SignatureAsync(query, ct));
 
         // Lane odwołania do aktu: pytanie zawiera numer Dziennika Ustaw („Dz.U. 2025 poz. 1815"
         // albo bezpośrednio ELI „DU/2025/1815") → pobierz DOKŁADNIE ten akt. Sam poziom co sygnatura
         // orzeczenia (identyfikator dokumentu, nie zapytanie semantyczne) — bez re-embeddingu.
-        var actReference = await ActReferenceAsync(query, ct);
+        var actReference = await LatencyLog.TimeAsync("lane.act_reference", () => ActReferenceAsync(query, ct));
 
         // QU-3: retrieval strukturalny — gdy pytanie zawiera cytat („art. 94 KW"), pobierz DOKŁADNIE ten
         // artykuł po metadanych i wstaw na górę (gwarantowane sloty). DOKŁADA, nigdy nie usuwa semantycznych;
         // brak rozpoznania aktu → zachowanie jak dziś (zero regresji).
-        var structural = await StructuralAsync(query, ct);
+        var structural = await LatencyLog.TimeAsync("lane.structural", () => StructuralAsync(query, ct));
 
         // Cap dominacji jednego dokumentu w torach DOKŁADNYCH: sygnatura/akt/cytat dociągają po
         // kilkanaście chunków JEDNEGO dokumentu ze Score=MaxValue — przy TopK=8 jedno trafienie zjadało
@@ -221,7 +229,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         var voters = voterFloor is { } floor
             ? ranked.Where(c => c.RerankScore >= floor).ToList()
             : ranked;
-        var bridge = await CitationBridgeAsync(query, voters, ct);
+        var bridge = await LatencyLog.TimeAsync("citation_bridge", () => CitationBridgeAsync(query, voters, ct));
 
         // Most NIE dostaje już gwarantowanego slotu przed semantyką: dociągnięty przepis przechodzi przez
         // tego samego sędziego co reszta i wchodzi tam, gdzie zasłużył. Wcześniej wstrzykiwał się na
@@ -230,8 +238,8 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // BridgeChunksPerArticle) i tylko gdy most cokolwiek zwrócił.
         if (reranker is not null && bridge.Count > 0)
         {
-            var bridgeScores = await reranker.RerankAsync(
-                query.EffectiveRerankText, bridge.Select(c => c.Text).ToList(), ct);
+            var bridgeScores = await LatencyLog.TimeAsync("rerank.bridge", () => reranker.RerankAsync(
+                query.EffectiveRerankText, bridge.Select(c => c.Text).ToList(), ct));
             var byIndex = bridgeScores.ToDictionary(x => x.Index, x => x.Score);
             // Most PRZED `ranked` w konkatenacji: gdy ten sam chunk przyszedł oboma torami, ma zostać
             // wersja mostu (Score=double.MaxValue — po tym markerze testy i diagnostyka poznają, że to
@@ -259,6 +267,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         var exactIds = exact.Select(c => c.ChunkId).ToHashSet();
         var exactInFinal = final.Count(c => exactIds.Contains(c.ChunkId));
 
+        LatencyLog.Mark("retrieval.total", totalSw.ElapsedMilliseconds);
         return new RetrievalResult(final, maxSim, rerankTop, exactInFinal);
     }
 
