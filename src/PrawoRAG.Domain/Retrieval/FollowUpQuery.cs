@@ -66,11 +66,13 @@ public static class FollowUpQuery
     /// wariant surowy nadal konkuruje przez asymetryczny <see cref="PickContextual"/>. Brak niepustej
     /// odpowiedzi → zwraca sam rdzeń (łagodny fallback, zgodny ze starym zachowaniem).
     /// </summary>
+    /// <remarks>
     /// Kotwice źródeł USUNIĘTE 2026-08-11: niosły numer Dz.U. i numer artykułu poprzedniej tury, więc
     /// w każdej ścieżce bez ExactMatchText wyzwalały tory DOKŁADNE i zjadały cały budżet slotów aktem
     /// z poprzedniej tury (zmierzone: 8/8 slotów ze Score=MaxValue), a tam gdzie tory dokładne są
     /// odcięte — dominowały BM25 tytułem aktu. Sam fragment odpowiedzi (bez kotwic) w tym samym
     /// pomiarze wyciągnął uodo art. 107 na #2 — dlatego zostaje.
+    /// </remarks>
     public static string Contextualize(IReadOnlyList<ChatTurn> history, string question)
     {
         var baseCtx = Contextualize(history.Select(t => t.Question).ToList(), question);
