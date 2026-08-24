@@ -157,9 +157,14 @@ public static class RefusalEvalRunner
         var retriever = sp.GetRequiredService<IRetriever>();
         RetrievalQuery Query(string text) => new() { Text = text, TopK = topK, MinChunkTokens = minChunkTokens };
 
-        var selection = await FollowUpSelector.SelectAsync(
-            retriever, Query, item.Question, item.History, margin, rerankMargin, ct);
-        var (query, result) = (selection.Query, selection.Result);
+        // TO SAMO wejście retrievalu co czat (Zadanie 12 planu ROU) — inaczej metryka odmów mierzyłaby
+        // pipeline, którego produkcja nie używa. Blizna: commit 1de510b, „rozjazd kopii = rozjazd
+        // metryki". Reformulator brany z kontenera; gdy go nie ma (brak modelu pomocniczego), pętla
+        // domykająca jest wyłączona i eval mierzy dokładnie to, co dotąd.
+        var retrieval = await GapClosingRetrieval.RetrieveAsync(
+            retriever, Query, item.Question, item.History, margin, rerankMargin, threshold,
+            sp.GetService<IQueryReformulator>(), maxExtraRounds: 1, ct);
+        var (query, result) = (retrieval.Query, retrieval.Result);
 
         if (AbstentionPolicy.ShouldAbstain(result, threshold))
             return new ReplayResult(item.Question, item.Baseline, "odmowa-progu", result.MaxSimilarity,

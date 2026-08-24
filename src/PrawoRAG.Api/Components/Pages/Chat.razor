@@ -89,6 +89,16 @@
                     @* Router uznał, że pytanie nie wymaga przepisów — baza NIE była przeglądana.
                        Etykieta jest JAWNA i niezwijalna: to jedyne miejsce w systemie, gdzie
                        odpowiedź nie jest oparta na źródłach, i użytkownik musi to wiedzieć. *@
+                    @* Druga runda retrievalu: użytkownik ma wiedzieć, że pierwsze wyszukiwanie nie
+                       domknęło pytania, i CZEGO szukaliśmy zamiast tego (to wyjaśnia dodatkowy czas). *@
+                    @if (ex.RetriedQuery is { } retried)
+                    {
+                        <div class="retry-note" role="note">
+                            🔁 Źródła z pierwszego wyszukiwania nie domykały pytania — szukałem też:
+                            <em>@retried</em>
+                        </div>
+                    }
+
                     @if (ex.Done && ex.NoRetrievalReason is not null)
                     {
                         <div class="verify-banner no-retrieval" role="note">
@@ -492,6 +502,7 @@
                     // Bramka zawróciła odpowiedź: czyścimy tekst, żeby druga wersja nie dopisała się
                     // do pierwszej (brudnej) — użytkownik ma zobaczyć poprawioną odpowiedź, nie sklejkę.
                     case RegeneratingEvent: ex.Answer = ""; ex.Regenerated = true; break;
+                    case RetryingRetrievalEvent rr: ex.RetriedQuery = rr.NewQuery; break;
                     case SourcesEvent s: ex.Sources = s.Sources; break;
                     case DocSourcesEvent d: ex.DocFileName = d.FileName; ex.DocFragments = d.Fragments; break;
                     case TokenEvent t: ex.Answer += t.Text; break;
@@ -589,6 +600,10 @@
 
         /// <summary>Czy bramka anty-fabrykacji zawróciła odpowiedź do poprawy (Zadanie 10).</summary>
         public bool Regenerated { get; set; }
+
+        /// <summary>Zapytanie użyte w DRUGIEJ rundzie retrievalu (Zadanie 12) — niepuste ⇒ pierwsze
+        /// wyszukiwanie nie domknęło pytania i szukaliśmy inaczej.</summary>
+        public string? RetriedQuery { get; set; }
 
         private DateTimeOffset _stageStarted = DateTimeOffset.UtcNow;
 

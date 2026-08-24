@@ -422,6 +422,22 @@ public sealed class RetrievalOptions
     /// (100% pytań prawnych do bazy), a nie założona.
     /// </summary>
     public bool RouterEnabled { get; set; }
+
+    /// <summary>
+    /// Pętla domykająca lukę (Faza 4 planu ROU): gdy retrieval nie daje pokrycia, druga runda
+    /// z zapytaniem przełożonym na terminologię ustawową. Domyślnie WŁĄCZONA — może tylko DODAĆ
+    /// kontekst (bramki działają na końcu bez zmian), więc nie wnosi nowego ryzyka halucynacji,
+    /// a jej koszt płacą wyłącznie pytania, które dziś kończą się odmową.
+    /// </summary>
+    public bool GapClosingEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Maksymalna liczba DODATKOWYCH rund retrievalu w turze. 1 = jedna druga próba; 0 = zachowanie
+    /// jak przed Fazą 4. Wyżej świadomie nie idziemy: przy trzeciej rundzie tura kosztuje kilka minut,
+    /// a plan mówi wprost, że jeśli druga runda ratuje &lt;20% odmów, to problemem jest korpus
+    /// albo słownik synonimów — nie liczba prób.
+    /// </summary>
+    public int MaxExtraRounds { get; set; } = 1;
 }
 
 /// <summary>Ugruntowanie odpowiedzi — bramki chroniące rdzeń wartości produktu.</summary>

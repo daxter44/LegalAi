@@ -76,6 +76,13 @@ public static class ChatRoutes
 /// </summary>
 public sealed record RegeneratingEvent(string Reason) : ChatEvent;
 
+/// <summary>
+/// Pierwsza runda retrievalu nie domknęła pytania — szukamy PONOWNIE, zapytaniem przełożonym na
+/// terminologię ustawową (Zadanie 12/13 planu ROU). <see cref="NewQuery"/> pokazujemy użytkownikowi:
+/// druga runda trwa dziesiątki sekund, więc musi widzieć, CZEGO teraz szukamy, a nie kolejną ciszę.
+/// </summary>
+public sealed record RetryingRetrievalEvent(string NewQuery, string Reason) : ChatEvent;
+
 /// <summary>Koniec: wynik kontroli anty-fabrykacji (cytaty) + model. <see cref="Usage"/> = tokeny
 /// in/out z providera (zbierane zawsze; widoczność w UI steruje flaga Diagnostics:ShowTokenUsage).
 /// <see cref="Regenerated"/> = odpowiedź przeszła regenerację bramki (materiał do pomiaru fałszywych

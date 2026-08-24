@@ -17,7 +17,8 @@ namespace PrawoRAG.Api.Services;
 public sealed class ChatService(
     IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> options,
     IEmbeddingProvider embedder, IOptions<DocumentsOptions> documents,
-    IIntentRouter? router = null, IOptions<GroundingOptions>? groundingOptions = null) : IChatService
+    IIntentRouter? router = null, IOptions<GroundingOptions>? groundingOptions = null,
+    IQueryReformulator? reformulator = null) : IChatService
 {
     private readonly bool _documentsEnabled = documents.Value.Enabled;
 
@@ -82,8 +83,11 @@ public sealed class ChatService(
         // Follow-upy: dopytanie („a co z § 2?") samo embeduje się bezwartościowo, więc retrieval liczony
         // 2x (surowy vs kontekstowy) i wybór wariantu — CAŁOŚĆ w FollowUpSelector, wspólnym dla /api/chat,
         // tego serwisu i evalu. Nie kopiować tej logiki z powrotem: rozjazd kopii = rozjazd metryki.
-        var selectionTask = FollowUpSelector.SelectAsync(
-            retriever, Query, question, history, o.FollowUpSignalMargin, o.RerankSignalMargin, ct);
+        // GapClosingRetrieval (Zadanie 12): jedno wejście retrievalu dla czatu, /api/chat i evalu.
+        // Gdy runda 1 nie daje pokrycia — druga runda z przeformułowanym zapytaniem, zamiast odmowy.
+        var selectionTask = GapClosingRetrieval.RetrieveAsync(
+            retriever, Query, question, history, o.FollowUpSignalMargin, o.RerankSignalMargin,
+            o.AbstentionThreshold, o.GapClosingEnabled ? reformulator : null, o.MaxExtraRounds, ct);
 
         // Etapy retrievalu płyną do UI W TRAKCIE — bez tego użytkownik ma kilkadziesiąt sekund ciszy.
         // Jeden oczekujący waiter naraz (odtwarzany po każdym odczycie), żeby nie zostawiać za sobą
@@ -97,8 +101,14 @@ public sealed class ChatService(
             waitForStage = side.Reader.WaitToReadAsync(ct).AsTask();
         }
 
-        var selection = await selectionTask;
-        var (query, result) = (selection.Query, selection.Result);
+        var outcome = await selectionTask;
+        var (query, result) = (outcome.Query, outcome.Result);
+
+        // Druga runda wykonana — pokazujemy CZEGO szukaliśmy. Zdarzenie leci PO fakcie (retrieval
+        // jest awaitowany jako całość), ale przed źródłami, więc użytkownik widzi je przy tej turze.
+        if (outcome.ExtraRound && outcome.ReformulatedQuery is { } newQuery)
+            yield return new RetryingRetrievalEvent(newQuery,
+                "źródła z pierwszego wyszukiwania nie domykały pytania");
 
         // BRAMKA ABSTYNENCJI — brak pokrycia w źródłach → nie generujemy.
         if (AbstentionPolicy.ShouldAbstain(result, o.AbstentionThreshold))
