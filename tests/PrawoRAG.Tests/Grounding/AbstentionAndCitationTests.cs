@@ -101,6 +101,63 @@ public class CitationValidatorTests
         Assert.Empty(check.SuspiciousReferences);
         Assert.True(check.IsClean);
     }
+
+    // --- Zadanie 9 planu ROU: rozdzielenie sygnałów + normalizacja wariantów zapisu ---
+    // Powód: `IsClean` przestaje być kosmetyką (badge ⚠) i staje się BRAMKĄ (Zadanie 10), która
+    // zawraca odpowiedź do regeneracji albo ją blokuje. Sygnał musi więc (a) być rozdzielony,
+    // bo artykuły i sygnatury mają RÓŻNĄ precyzję, (b) nie produkować fałszywych alarmów na
+    // wariantach zapisu, które w aktach są normą.
+
+    [Fact] // Rozdzial sygnalow: sygnatura jest wysokoprecyzyjna (waski regex), artykul zaszumiony.
+           // Bramka moze je traktowac inaczej tylko wtedy, gdy przychodza osobno.
+    public void Splits_suspicious_articles_from_case_numbers()
+    {
+        var ctx = new[] { "Wyrok dotyczył wykroczenia drogowego." };
+        var check = CitationValidator.Validate("Zgodnie z art. 999 oraz wyrokiem I ACa 123/45 [1].", ctx, 1);
+
+        Assert.Contains(check.SuspiciousArticles, s => s.Contains("999"));
+        Assert.Contains(check.SuspiciousCaseNumbers, s => s.Contains("I ACa 123/45"));
+        // Suma zostaje jako kompatybilność wstecz (czyta ją UI i eval).
+        Assert.Equal(
+            check.SuspiciousArticles.Count + check.SuspiciousCaseNumbers.Count,
+            check.SuspiciousReferences.Count);
+    }
+
+    [Theory] // NORMALIZACJA. Lewa strona = jak model pisze w odpowiedzi, prawa = jak stoi w akcie.
+             // Bez tego bramka zawracalaby POPRAWNE odpowiedzi - a to zamiana halucynacji na odmowy,
+             // czyli porazka, nie sukces (prog zabicia: >10% falszywych alarmow).
+    [InlineData("art. 5 ust. 1", "Art. 5. 1. Przepis stanowi, że…")]        // ust. vs numeracja w akcie
+    [InlineData("art. 5 § 2", "Art. 5. § 2. Przepis stanowi, że…")]          // paragraf rozdzielony kropką
+    [InlineData("art. 5 pkt 3", "Art. 5. Przepis wymienia: 3) trzeci punkt")] // pkt jako wyliczenie
+    [InlineData("art. 5 ust. 1 pkt 2", "Art. 5. 1. 2) treść punktu")]         // łańcuch jednostek
+    public void Article_unit_suffixes_do_not_create_false_alarms(string inAnswer, string inContext)
+    {
+        var check = CitationValidator.Validate($"Zgodnie z {inAnswer} [1] tak właśnie jest.", [inContext], 1);
+
+        Assert.Empty(check.SuspiciousArticles);
+        Assert.True(check.IsClean);
+    }
+
+    [Fact] // Normalizacja NIE MOZE przepuscic zmyslonego numeru artykulu - inaczej bramka staje sie
+           // bezuzyteczna. Rdzen numeru musi byc obecny w kontekscie, samo obcięcie sufiksu nie wystarcza.
+    public void Normalization_still_catches_wrong_article_number()
+    {
+        var ctx = new[] { "Art. 5. 1. Przepis stanowi, że…" };
+        var check = CitationValidator.Validate("Zgodnie z art. 7 ust. 1 [1].", ctx, 1);
+
+        Assert.Contains(check.SuspiciousArticles, s => s.Contains('7'));
+        Assert.False(check.IsClean);
+    }
+
+    [Fact] // Numer artykulu z litera (art. 1a u.p.o.l., art. 43bb) - realny przypadek z korpusu,
+           // rdzen nie moze zgubic litery, bo art. 1a to INNY przepis niz art. 1.
+    public void Article_number_with_letter_is_not_confused_with_bare_number()
+    {
+        var ctx = new[] { "Art. 1. Ustawa reguluje opodatkowanie nieruchomości." };
+        var check = CitationValidator.Validate("Zgodnie z art. 1a ust. 1 pkt 2 [1].", ctx, 1);
+
+        Assert.Contains(check.SuspiciousArticles, s => s.Contains("1a"));
+    }
 }
 
 /// <summary>AKT-4: AmendmentEffectiveDate z RetrievedChunk trafia do SourceRef (chip w UI).</summary>
