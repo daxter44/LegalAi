@@ -61,6 +61,14 @@ if (args.Contains("--refusals"))
     return;
 }
 
+// Raport z żywego ruchu (Zadanie 16 planu ROU): metryka odmów i zachowanie bramek policzone na
+// historii tabeli messages — także wstecz. Zero wywołań LLM, więc darmowy i powtarzalny.
+if (args.Contains("--live-report"))
+{
+    await LiveReportRunner.RunAsync(host.Services, default);
+    return;
+}
+
 // JAK-0/1: pomiar + neutralizacja chunków zdegenerowanych (placeholdery, szum anonimizacyjny).
 // Dry-run domyślnie; --apply zeruje embeddingi zakwalifikowanych.
 if (args.Contains("--sanitize-chunks"))

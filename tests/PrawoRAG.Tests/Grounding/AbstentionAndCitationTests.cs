@@ -115,11 +115,11 @@ public class CitationValidatorTests
         var ctx = new[] { "Wyrok dotyczył wykroczenia drogowego." };
         var check = CitationValidator.Validate("Zgodnie z art. 999 oraz wyrokiem I ACa 123/45 [1].", ctx, 1);
 
-        Assert.Contains(check.SuspiciousArticles, s => s.Contains("999"));
-        Assert.Contains(check.SuspiciousCaseNumbers, s => s.Contains("I ACa 123/45"));
+        Assert.Contains(check.Articles, s => s.Contains("999"));
+        Assert.Contains(check.CaseNumbers, s => s.Contains("I ACa 123/45"));
         // Suma zostaje jako kompatybilność wstecz (czyta ją UI i eval).
         Assert.Equal(
-            check.SuspiciousArticles.Count + check.SuspiciousCaseNumbers.Count,
+            check.Articles.Count + check.CaseNumbers.Count,
             check.SuspiciousReferences.Count);
     }
 
@@ -134,7 +134,7 @@ public class CitationValidatorTests
     {
         var check = CitationValidator.Validate($"Zgodnie z {inAnswer} [1] tak właśnie jest.", [inContext], 1);
 
-        Assert.Empty(check.SuspiciousArticles);
+        Assert.Empty(check.Articles);
         Assert.True(check.IsClean);
     }
 
@@ -145,7 +145,7 @@ public class CitationValidatorTests
         var ctx = new[] { "Art. 5. 1. Przepis stanowi, że…" };
         var check = CitationValidator.Validate("Zgodnie z art. 7 ust. 1 [1].", ctx, 1);
 
-        Assert.Contains(check.SuspiciousArticles, s => s.Contains('7'));
+        Assert.Contains(check.Articles, s => s.Contains('7'));
         Assert.False(check.IsClean);
     }
 
@@ -156,7 +156,7 @@ public class CitationValidatorTests
         var ctx = new[] { "Art. 1. Ustawa reguluje opodatkowanie nieruchomości." };
         var check = CitationValidator.Validate("Zgodnie z art. 1a ust. 1 pkt 2 [1].", ctx, 1);
 
-        Assert.Contains(check.SuspiciousArticles, s => s.Contains("1a"));
+        Assert.Contains(check.Articles, s => s.Contains("1a"));
     }
 }
 
