@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
@@ -16,6 +17,13 @@ namespace PrawoRAG.Llm;
 public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalLlmOptions> options) : ILlmProvider
 {
     private readonly LocalLlmOptions _opt = options.Value;
+
+    /// <summary>
+    /// Serwer odrzucił `tools`/`tool_choice` — nie próbujemy więcej w tym procesie. Pole instancji,
+    /// bo provider jest singletonem: jedno odrzucenie wystarczy, żeby przestać marnować round-tripy.
+    /// Świadomie NIE persystowane — restart procesu spróbuje ponownie (serwer mógł zostać podmieniony).
+    /// </summary>
+    private bool _toolsUnsupported;
 
     public string ModelId => _opt.Model;
 
@@ -35,6 +43,11 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
             try { await File.AppendAllTextAsync(dumpPath, $"\n\n########## {DateTime.Now:HH:mm:ss} ##########\n{dump}\n", ct); } catch { /* diagnostyka nie może wywalić żądania */ }
         }
 
+        // Narzędzia lecą TYLKO gdy wołający je podał ORAZ serwer ich nie odrzucił wcześniej w tym
+        // procesie (patrz `_toolsUnsupported`). Null ⇒ pola pominięte w JSON ⇒ ciało identyczne
+        // jak przed wprowadzeniem tool callingu.
+        var useTools = request.Tools is { Count: > 0 } && !_toolsUnsupported;
+
         var body = new ApiRequest
         {
             Model = _opt.Model,
@@ -45,6 +58,8 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
             // Finalny chunk z usage (prompt_tokens/completion_tokens) — Ollama i llama.cpp wspierają;
             // serwer, który nie zna pola, po prostu je ignoruje (wtedy fallback = szacunek).
             StreamOptions = new ApiStreamOptions(IncludeUsage: true),
+            Tools = useTools ? request.Tools!.Select(ToApiTool).ToList() : null,
+            ToolChoice = useTools ? request.ToolChoice : null,
         };
 
         using var httpReq = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
@@ -58,6 +73,32 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
         if (!resp.IsSuccessStatusCode)
         {
             var err = await resp.Content.ReadAsStringAsync(ct);
+
+            // DEGRADACJA (Zadanie 14 planu ROU): serwer odrzucił żądanie Z narzędziami. Gemma bywa
+            // serwowana stosami, które `tools`/`tool_choice` w ogóle nie znają (tool calling
+            // realizowany promptem, nie polem API) — i to jest scenariusz, w którym musimy działać
+            // dalej, a nie wywalić odpowiedź. Oznaczamy możliwość jako niedostępną na czas życia
+            // procesu, logujemy RAZ i ponawiamy BEZ narzędzi.
+            //
+            // Kierunek degradacji jest świadomy: wołający (ToolLoop) zobaczy brak wywołań narzędzia
+            // i zejdzie na ścieżkę z bezwarunkowym retrievalem. Brak wsparcia NIGDY nie może
+            // oznaczać odpowiedzi bez źródeł.
+            if (useTools && (int)resp.StatusCode is >= 400 and < 500)
+            {
+                if (!_toolsUnsupported)
+                {
+                    _toolsUnsupported = true;
+                    Console.WriteLine(
+                        $"[llm] serwer odrzucil tools/tool_choice ({(int)resp.StatusCode}) — " +
+                        "tool calling wylaczony na czas zycia procesu, ponawiam bez narzedzi");
+                }
+
+                await foreach (var delta in StreamCompletionAsync(
+                    request with { Tools = null, ToolChoice = null }, ct))
+                    yield return delta;
+                yield break;
+            }
+
             throw new HttpRequestException($"LLM lokalny {(int)resp.StatusCode}: {err}");
         }
 
@@ -74,6 +115,7 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
         // OnReasoningDelta idzie do splittera (nie do gołej delty SSE): tam rozumowanie jest już
         // rozpoznane w OBU trybach (flaga google.thought i gołe <think>) i pozbawione tagów-delimiterów.
         var splitter = new ReasoningSplitter(request.OnReasoningDelta);
+        var toolCalls = useTools ? new ToolCallAccumulator() : null;
         LlmUsage? usage = null;
         var outputChars = 0;
         string? line;
@@ -99,6 +141,10 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
                     {
                         if (d.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)
                             delta = content.GetString();
+                        // Wywołania narzędzi przychodzą przyrostowo — akumulator składa je w całość.
+                        if (toolCalls is not null &&
+                            d.TryGetProperty("tool_calls", out var tc) && tc.ValueKind == JsonValueKind.Array)
+                            toolCalls.Push(tc);
                         // Flaga Google: delta.extra_content.google.thought=true ⇒ ta delta to rozumowanie.
                         if (d.TryGetProperty("extra_content", out var ec) && ec.ValueKind == JsonValueKind.Object &&
                             ec.TryGetProperty("google", out var g) && g.ValueKind == JsonValueKind.Object &&
@@ -127,6 +173,11 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
         var tail = splitter.Finish();
         if (tail.Length > 0) { outputChars += tail.Length; yield return tail; }
 
+        // Wywołania narzędzi — po domknięciu strumienia, bo dopiero wtedy argumenty są kompletne.
+        if (toolCalls is not null && request.OnToolCall is { } onToolCall)
+            foreach (var call in toolCalls.Completed())
+                onToolCall(call);
+
         // Rozumowanie (jeśli model „myślał") — raz, na końcu, jak OnUsage.
         if (splitter.HasReasoning) request.OnReasoning?.Invoke(splitter.Reasoning);
 
@@ -145,6 +196,68 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
         [JsonPropertyName("messages")] public required IReadOnlyList<ApiMessage> Messages { get; init; }
         [JsonPropertyName("stream")] public bool Stream { get; init; }
         [JsonPropertyName("stream_options")] public ApiStreamOptions? StreamOptions { get; init; }
+
+        // Pola narzędzi (Zadanie 14). Null ⇒ pominięte w serializacji ⇒ ciało żądania identyczne
+        // jak przed wprowadzeniem tool callingu (test równoważności tego pilnuje).
+        [JsonPropertyName("tools")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public IReadOnlyList<ApiTool>? Tools { get; init; }
+
+        [JsonPropertyName("tool_choice")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? ToolChoice { get; init; }
+    }
+
+    private sealed record ApiTool(
+        [property: JsonPropertyName("type")] string Type,
+        [property: JsonPropertyName("function")] ApiToolFunction Function);
+
+    private sealed record ApiToolFunction(
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("description")] string Description,
+        [property: JsonPropertyName("parameters")] JsonElement Parameters);
+
+    private static ApiTool ToApiTool(LlmTool t) => new(
+        "function",
+        new ApiToolFunction(t.Name, t.Description, JsonDocument.Parse(t.ParametersJsonSchema).RootElement.Clone()));
+
+    /// <summary>
+    /// Składa wywołania narzędzia rozłożone na delty strumienia. OpenAI-compat wysyła `tool_calls`
+    /// przyrostowo: pierwsza delta niesie `id` i `name`, kolejne dokładają fragmenty `arguments`
+    /// (często pojedyncze znaki JSON-a), a identyfikuje je `index`. Bez akumulacji dostalibyśmy
+    /// pokawałkowany, niesparsowalny JSON.
+    /// </summary>
+    private sealed class ToolCallAccumulator
+    {
+        private readonly Dictionary<int, (string Id, string Name, StringBuilder Args)> _calls = [];
+
+        public void Push(JsonElement toolCalls)
+        {
+            foreach (var call in toolCalls.EnumerateArray())
+            {
+                var index = call.TryGetProperty("index", out var i) && i.ValueKind == JsonValueKind.Number
+                    ? i.GetInt32() : 0;
+
+                if (!_calls.TryGetValue(index, out var acc))
+                    acc = _calls[index] = ("", "", new StringBuilder());
+
+                if (call.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String)
+                    acc = _calls[index] = (id.GetString() ?? "", acc.Name, acc.Args);
+
+                if (call.TryGetProperty("function", out var fn) && fn.ValueKind == JsonValueKind.Object)
+                {
+                    if (fn.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
+                        acc = _calls[index] = (acc.Id, name.GetString() ?? "", acc.Args);
+                    if (fn.TryGetProperty("arguments", out var args) && args.ValueKind == JsonValueKind.String)
+                        acc.Args.Append(args.GetString());
+                }
+            }
+        }
+
+        /// <summary>Wywołania z nazwą — bez niej nie ma czego wołać (delta samych argumentów).</summary>
+        public IEnumerable<LlmToolCall> Completed() => _calls.Values
+            .Where(c => c.Name.Length > 0)
+            .Select(c => new LlmToolCall(c.Id, c.Name, c.Args.ToString()));
     }
 
     private sealed record ApiStreamOptions([property: JsonPropertyName("include_usage")] bool IncludeUsage);

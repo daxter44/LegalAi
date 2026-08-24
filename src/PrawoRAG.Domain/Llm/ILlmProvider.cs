@@ -49,7 +49,38 @@ public sealed record LlmRequest
     /// Null = wołający nie jest zainteresowany (Eval, testy) — zero kosztu.
     /// </summary>
     public Action<string>? OnReasoningDelta { get; init; }
+
+    /// <summary>
+    /// Narzędzia udostępnione modelowi (Zadanie 14 planu ROU). Null/pusto = żądanie identyczne
+    /// bajt w bajt jak dotąd (ciało JSON bez pól `tools`/`tool_choice`).
+    /// </summary>
+    public IReadOnlyList<LlmTool>? Tools { get; init; }
+
+    /// <summary>
+    /// <c>"required"</c> — model MUSI zawołać narzędzie; <c>"auto"</c> — decyduje sam; null = pole
+    /// nie leci w żądaniu.
+    ///
+    /// Dlaczego domyślnie chcemy <c>required</c> (sekcja 3.1 planu): model NIE MOŻE być właścicielem
+    /// decyzji „czy potrzebuję źródeł" — ma decydować, CZEGO szukać. To przenosi jego swobodę
+    /// z polityki gruntowania (tam LLM-y są zawodne, a błąd oznacza odpowiedź prawną z pamięci
+    /// parametrycznej) na sformułowanie zapytania (tam są dobre).
+    /// </summary>
+    public string? ToolChoice { get; init; }
+
+    /// <summary>
+    /// Wywoływany dla każdego wywołania narzędzia zgłoszonego przez model. Wołający wykonuje
+    /// narzędzie i decyduje, co dalej — provider zostaje cienkim transportem.
+    /// </summary>
+    public Action<LlmToolCall>? OnToolCall { get; init; }
 }
+
+/// <summary>Definicja narzędzia dla modelu. <paramref name="ParametersJsonSchema"/> to JSON Schema
+/// argumentów — provider wstawia je bez interpretacji.</summary>
+public sealed record LlmTool(string Name, string Description, string ParametersJsonSchema);
+
+/// <summary>Wywołanie narzędzia zgłoszone przez model. <paramref name="ArgumentsJson"/> bywa
+/// składane z wielu delt strumienia, więc provider oddaje je dopiero jako całość.</summary>
+public sealed record LlmToolCall(string Id, string Name, string ArgumentsJson);
 
 /// <summary>
 /// Dostawca LLM (wymienny). MVP: Claude/OpenAI (cloud). Później Bielik lokalnie (pakiet Diamond) —
