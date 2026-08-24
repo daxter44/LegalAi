@@ -28,11 +28,14 @@ public sealed class OpenAiCompatibleLlmProviderTests
         }
     }
 
-    private static OpenAiCompatibleLlmProvider Provider(string sse, out StubHandler handler)
+    private static OpenAiCompatibleLlmProvider Provider(string sse, out StubHandler handler) =>
+        Provider(sse, new LocalLlmOptions { Model = "bielik-test" }, out handler);
+
+    private static OpenAiCompatibleLlmProvider Provider(string sse, LocalLlmOptions opt, out StubHandler handler)
     {
         handler = new StubHandler(sse);
         var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434/v1/") };
-        return new OpenAiCompatibleLlmProvider(http, Options.Create(new LocalLlmOptions { Model = "bielik-test" }));
+        return new OpenAiCompatibleLlmProvider(http, Options.Create(opt));
     }
 
     [Fact]
@@ -135,6 +138,46 @@ public sealed class OpenAiCompatibleLlmProviderTests
         Assert.Contains("\"role\":\"system\"", handler.Body);
         Assert.Contains("\"role\":\"user\"", handler.Body);
         Assert.Contains("\"stream\":true", handler.Body);
+    }
+
+    // --- 2026-08-24: reasoning_effort — wyłączenie "myślenia" (patrz AuxLlmOptions.ReasoningEffort) ---
+
+    [Fact] // Ustawione (Aux, domyślnie "none") -> pole leci w żądaniu, żeby serwer w ogóle NIE myślał.
+    public async Task Sends_reasoning_effort_when_configured()
+    {
+        var provider = Provider("data: [DONE]",
+            new LocalLlmOptions { Model = "gemma-test", ReasoningEffort = "none" }, out var handler);
+        var req = new LlmRequest { Messages = [new ChatMessage(ChatRole.User, "pytanie")] };
+
+        await foreach (var _ in provider.StreamCompletionAsync(req, default)) { }
+
+        Assert.Contains("\"reasoning_effort\":\"none\"", handler.Body);
+    }
+
+    [Fact] // Nieustawione (domyślnie dla modelu głównego I dla Aux — patrz AuxLlmOptions) -> pole
+    // w ogóle NIE wchodzi do JSON-a, zero zmiany zachowania dla serwerów/modeli, które go nie znają.
+    public async Task Omits_reasoning_effort_when_not_configured()
+    {
+        var provider = Provider("data: [DONE]", out var handler); // domyślny LocalLlmOptions, ReasoningEffort=null
+        var req = new LlmRequest { Messages = [new ChatMessage(ChatRole.User, "pytanie")] };
+
+        await foreach (var _ in provider.StreamCompletionAsync(req, default)) { }
+
+        Assert.DoesNotContain("reasoning_effort", handler.Body);
+    }
+
+    [Fact] // Pusty string (np. `Llm__Aux__ReasoningEffort=` w env, jako wyłącznik bez usuwania zmiennej)
+    // traktowany jak null — NIE jak "wyślij puste pole". Zmierzone 2026-08-24: gemma-4-26b-a4b-it przez
+    // Gemini zwraca HTTP 400 na SAMĄ OBECNOŚĆ pola reasoning_effort, więc "wyłącz" musi znaczyć "pomiń".
+    public async Task Empty_reasoning_effort_is_treated_as_omitted()
+    {
+        var provider = Provider("data: [DONE]",
+            new LocalLlmOptions { Model = "gemma-test", ReasoningEffort = "" }, out var handler);
+        var req = new LlmRequest { Messages = [new ChatMessage(ChatRole.User, "pytanie")] };
+
+        await foreach (var _ in provider.StreamCompletionAsync(req, default)) { }
+
+        Assert.DoesNotContain("reasoning_effort", handler.Body);
     }
 
     // --- Zadanie 1: delty rozumowania płyną W TRAKCIE strumienia, nie po nim ---

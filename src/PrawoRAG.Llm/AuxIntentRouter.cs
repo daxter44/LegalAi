@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using PrawoRAG.Domain;
 using PrawoRAG.Domain.Llm;
 
 namespace PrawoRAG.Llm;
@@ -75,7 +76,15 @@ public sealed class AuxIntentRouter(
             var raw = new StringBuilder();
             await foreach (var delta in aux.StreamCompletionAsync(request, ct)) raw.Append(delta);
 
-            return Parse(raw.ToString());
+            var decision = Parse(raw.ToString());
+            // Diagnostyka (PRAWORAG_LOG_TIMING): surowa odpowiedź + decyzja NA OBU ścieżkach (true
+            // i false), nie tylko false jak NoRetrievalEvent w ChatService. Bez tego "poszło do
+            // retrievalu" nie da się z uruchomionej apki odróżnić od "model naprawdę tak ocenił"
+            // (2026-08-24 — pierwsze żywe użycie z routerem na Gemini ujawniło tę dziurę).
+            LatencyLog.Note("router.raw", raw.ToString());
+            LatencyLog.Note("router.decision",
+                $"potrzebne_przepisy={decision.PotrzebnePrzepisy} uzasadnienie=\"{decision.Uzasadnienie}\"");
+            return decision;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -84,6 +93,7 @@ public sealed class AuxIntentRouter(
         catch (Exception ex)
         {
             // Timeout klienta pomocniczego (skończony, patrz AuxLlmOptions), brak serwera, 5xx…
+            LatencyLog.Note("router.error", $"{ex.GetType().Name}: {ex.Message}");
             return RouteDecision.Retrieval($"awaria routera ({ex.GetType().Name}) — fallback do bazy");
         }
     }

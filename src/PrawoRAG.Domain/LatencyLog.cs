@@ -42,4 +42,17 @@ public static class LatencyLog
     /// <summary>Czy diagnostyka jest włączona — dla callerów, którym samo <see cref="TimeAsync{T}"/>
     /// nie wystarcza (np. Stopwatch obejmujący nie-async fragment kodu).</summary>
     public static bool IsEnabled => Enabled;
+
+    /// <summary>Wolny wpis diagnostyczny — NIE czas, tekst (np. surowa odpowiedź modelu pomocniczego
+    /// przy decyzji routera, żeby odróżnić "model naprawdę tak zdecydował" od "parser się pomylił").
+    /// Prefiks `[diag]`, celowo INNY niż `[timing]` — ten drugi ma zawsze liczbę + "ms" po `=` i coś,
+    /// co to parsuje (człowiek grepujący, przyszłe narzędzie sizingu), nie powinno dostać tekstu tam,
+    /// gdzie spodziewa się liczby. Ucina długie teksty (modele rozumujące potrafią być gadatliwe),
+    /// żeby nie zalewać konsoli.</summary>
+    public static void Note(string stage, string message)
+    {
+        if (!Enabled) return;
+        var trimmed = message.Length > 500 ? message[..500] + "…" : message;
+        Console.WriteLine($"[diag] {stage} = {trimmed}");
+    }
 }

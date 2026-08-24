@@ -80,6 +80,7 @@ public static class LlmServiceCollectionExtensions
                 Model = opt.Model,
                 ApiKey = opt.ApiKey,
                 MaxTokens = opt.MaxTokens,
+                ReasoningEffort = opt.ReasoningEffort,
             }));
         });
         return services;

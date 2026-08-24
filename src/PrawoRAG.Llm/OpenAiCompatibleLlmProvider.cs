@@ -60,6 +60,13 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
             StreamOptions = new ApiStreamOptions(IncludeUsage: true),
             Tools = useTools ? request.Tools!.Select(ToApiTool).ToList() : null,
             ToolChoice = useTools ? request.ToolChoice : null,
+            // Patrz AuxLlmOptions.ReasoningEffort — null/pusty (domyślnie) = pole pominięte w JSON-ie
+            // (JsonIgnoreCondition.WhenWritingNull), zero zmiany zachowania. Pusty string traktowany
+            // jak null (nie samo `""`), żeby `Llm__Aux__ReasoningEffort=` w env dało się użyć jako
+            // wyłącznik bez usuwania zmiennej — niektóre modele (zmierzone: gemma-4-26b-a4b-it przez
+            // Gemini) zwracają HTTP 400 na SAMĄ OBECNOŚĆ tego pola, więc "wyłącz" musi znaczyć "nie
+            // wysyłaj w ogóle", nie "wyślij pustą wartość".
+            ReasoningEffort = string.IsNullOrWhiteSpace(_opt.ReasoningEffort) ? null : _opt.ReasoningEffort,
         };
 
         using var httpReq = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
@@ -206,6 +213,10 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
         [JsonPropertyName("tool_choice")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? ToolChoice { get; init; }
+
+        [JsonPropertyName("reasoning_effort")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? ReasoningEffort { get; init; }
     }
 
     private sealed record ApiTool(

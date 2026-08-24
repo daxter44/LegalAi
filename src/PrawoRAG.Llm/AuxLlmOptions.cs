@@ -40,4 +40,24 @@ public sealed class AuxLlmOptions
     /// w stronę retrievalu, więc krótki timeout to degradacja, nie błąd.
     /// </summary>
     public int TimeoutSeconds { get; set; } = 10;
+
+    /// <summary>
+    /// Parametr OpenAI-compat <c>reasoning_effort</c>. Domyślnie <c>null</c> (NIE wysyłany) — świadomie,
+    /// po dwóch sprzecznych pomiarach 2026-08-24 na tym samym dniu:
+    /// 1. Bez tego parametru: model, który całą odpowiedź oznacza jako „myślenie" (flaga
+    ///    google.thought), potrafi wyczerpać <see cref="MaxTokens"/> ZANIM wyemituje choć jeden znak
+    ///    widocznej treści — <c>router.raw</c> wychodzi pusty, router fail-safe'uje do retrievalu przy
+    ///    KAŻDYM pytaniu, po cichu, bez błędu.
+    /// 2. Z tym parametrem ustawionym na <c>"none"</c>, dla modelu <c>gemma-4-26b-a4b-it</c> przez
+    ///    <c>generativelanguage.googleapis.com</c>: Gemini API zwraca HTTP 400 <c>INVALID_ARGUMENT</c>
+    ///    „Thinking budget is not supported for this model" — czyli NIE każdy model z rodziny
+    ///    Gemini/Gemma na tym endpoincie go honoruje; dla niektórych to twardy błąd, nie cichy no-op.
+    /// Wniosek: to pole trzeba ustawiać PER MODEL, nie zakładać uniwersalnego bezpiecznego defaultu.
+    /// Dla modeli, które faktycznie wspierają <c>"none"</c> (część klasy Gemini 2.5 — potwierdź
+    /// w dokumentacji swojego modelu), ustaw jawnie przez <c>Llm__Aux__ReasoningEffort=none</c>. Jeśli
+    /// model w ogóle nie daje się wyłączyć z myślenia, jedyne dźwignie to: podniesienie
+    /// <see cref="MaxTokens"/> (kosztem latencji/ceny Aux — wraca to, co miał oszczędzać) albo zmiana
+    /// modelu Aux na lżejszy/nie-rozumujący (patrz komentarz klasy — stąd był domyślnie lokalny Bielik).
+    /// </summary>
+    public string? ReasoningEffort { get; set; }
 }
