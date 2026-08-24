@@ -438,6 +438,22 @@ public sealed class RetrievalOptions
     /// albo słownik synonimów — nie liczba prób.
     /// </summary>
     public int MaxExtraRounds { get; set; } = 1;
+
+    /// <summary>
+    /// Tool calling (Faza 5 planu ROU): model sam formułuje zapytania do bazy przez narzędzie
+    /// <c>szukaj_w_przepisach</c>.
+    ///
+    /// Domyślnie WYŁĄCZONY i taki ma zostać także po integracji — reguła R1 planu. Dla POJEDYNCZEGO
+    /// pytania („Czy aplikant adwokacki może zastępować radcę prawnego?") tool calling nie dodaje
+    /// wartości: zapytanie, które model by sformułował, jest praktycznie tożsame z pytaniem
+    /// użytkownika. Dodaje natomiast jedno pełne wywołanie modelu głównego, czyli przy ~41 s
+    /// rozumowania podwaja najdroższą operację w systemie. Zarabia na siebie dopiero tam, gdzie model
+    /// ITERUJE — czyli w przyszłej pracy agentowej (analiza i generowanie pism), nie w typowym Q&amp;A.
+    /// </summary>
+    public bool ToolCallingEnabled { get; set; }
+
+    /// <summary>Górny limit wywołań narzędzia w turze — twardy hamulec na koszt.</summary>
+    public int MaxToolCalls { get; set; } = 2;
 }
 
 /// <summary>Ugruntowanie odpowiedzi — bramki chroniące rdzeń wartości produktu.</summary>

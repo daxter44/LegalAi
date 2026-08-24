@@ -83,10 +83,27 @@ public sealed class ChatService(
         // Follow-upy: dopytanie („a co z § 2?") samo embeduje się bezwartościowo, więc retrieval liczony
         // 2x (surowy vs kontekstowy) i wybór wariantu — CAŁOŚĆ w FollowUpSelector, wspólnym dla /api/chat,
         // tego serwisu i evalu. Nie kopiować tej logiki z powrotem: rozjazd kopii = rozjazd metryki.
+        // TOOL CALLING (Zadanie 15) — model sam formułuje zapytanie do bazy. Jeśli je zawoła,
+        // JEGO zapytanie zasila retrieval; jeśli nie (albo serwer nie wspiera `tools` i provider
+        // zdegradował), lecimy dalej z pytaniem użytkownika. Brak wywołania NIGDY nie prowadzi do
+        // odpowiedzi bez źródeł — po prostu wracamy do ścieżki klasycznej.
+        var retrievalQuestion = question;
+        if (o.ToolCallingEnabled)
+        {
+            yield return new StageEvent("tool_call", "Ustalam, czego szukać w przepisach…", null);
+            var (toolPrompt, _) = GroundedPrompt.Build(question, [], history);
+            var loop = await ToolLoop.CollectQueriesAsync(llm, toolPrompt.Messages, o.MaxToolCalls, ct);
+            if (!loop.NoToolCall)
+            {
+                retrievalQuestion = loop.Queries[0];
+                yield return new RetryingRetrievalEvent(retrievalQuestion, "zapytanie sformułowane przez model");
+            }
+        }
+
         // GapClosingRetrieval (Zadanie 12): jedno wejście retrievalu dla czatu, /api/chat i evalu.
         // Gdy runda 1 nie daje pokrycia — druga runda z przeformułowanym zapytaniem, zamiast odmowy.
         var selectionTask = GapClosingRetrieval.RetrieveAsync(
-            retriever, Query, question, history, o.FollowUpSignalMargin, o.RerankSignalMargin,
+            retriever, Query, retrievalQuestion, history, o.FollowUpSignalMargin, o.RerankSignalMargin,
             o.AbstentionThreshold, o.GapClosingEnabled ? reformulator : null, o.MaxExtraRounds, ct);
 
         // Etapy retrievalu płyną do UI W TRAKCIE — bez tego użytkownik ma kilkadziesiąt sekund ciszy.
