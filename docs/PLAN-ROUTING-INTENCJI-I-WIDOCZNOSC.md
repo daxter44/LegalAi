@@ -549,16 +549,45 @@ stawkach self-host/Sherlock (€0,56/1M) jest pomijalny — walutą decyzji jest
 
 ## Status implementacji (2026-08-24)
 
-**Fazy 1–4 ZROBIONE — Zadania 1–13, 627/627 testów zielone** (było 493 przed sesją; +134 nowe).
-Commity `49b2586`..`d9501b0` na `feat/halfvec-retriever`.
+**KOD GOTOWY — Zadania 1–16, 652/652 testów zielone** (było 493 przed sesją; +159 nowych).
+Commity `49b2586`..`05bf2ea` na `feat/halfvec-retriever`. **Zadanie 17 (integracja) czeka na
+maszynę z pełnym korpusem** — patrz „Co zostało do zrobienia" niżej.
 
-Stan flag: `RouterEnabled` OFF (czeka na weryfikację E2E — jedyna zmiana mogąca dać odpowiedź bez
-źródeł), `CitationGateEnabled` ON, `GapClosingEnabled` ON z `MaxExtraRounds=1`. Dwie ostatnie są
-włączone, bo poprawiają bezpieczeństwo albo mogą tylko DODAĆ kontekst — żadna nie wnosi nowego
-trybu halucynacji.
+### Stan flag w `appsettings.json`
 
-Zostają Zadania 14–17: tool calling (`tools`/`tool_choice` + `ToolLoop`), raport `--live-report`,
-integracja z testami manualnymi i pomiarami.
+| flaga | wartość | dlaczego |
+|---|---|---|
+| `Grounding:CitationGateEnabled` | **true** | poprawa bezpieczeństwa; wyłączenie przywraca dzisiejsze zachowanie (badge ⚠, odpowiedź wychodzi) |
+| `Retrieval:GapClosingEnabled` | **true** | może tylko DODAĆ kontekst, bramki działają na końcu bez zmian ⇒ zero nowego ryzyka halucynacji |
+| `Retrieval:MaxExtraRounds` | **1** | trzecia runda to tura licząca się w minutach; próg zabicia planu mówi, że przy <20% uratowanych odmów problemem jest korpus, nie liczba prób |
+| `Retrieval:RouterEnabled` | **false** | JEDYNA zmiana, która może dać odpowiedź bez źródeł — wymaga testów manualnych T3/T4/T5 na korpusie |
+| `Retrieval:ToolCallingEnabled` | **false** | reguła R1: dla pojedynczego pytania nie dodaje wartości, a dodaje pełne wywołanie Gemmy (~+40 s) |
+
+### Obserwacja z integracji, wymagająca Twojej decyzji
+
+`Retrieval:AbstentionThreshold` w configu to **0.0** (ustawienie sprzed tej sesji). Przy tej wartości
+`AbstentionPolicy.ShouldAbstain` jest prawdziwe wyłącznie dla ZEROWEJ liczby fragmentów, czyli bramka
+progowa faktycznie nie działa. Konsekwencja dla Fazy 4: **wyzwalacz progowy pętli domykającej prawie
+nigdy nie odpali — pracować będzie niemal wyłącznie wyzwalacz treściowy** (Zadanie 13). To spójne
+z tym, co wiemy o tym projekcie („odmowy są treściowe, nie progowe"), więc nie jest to błąd — ale
+warto wiedzieć, że przy progu 0.0 połowa mechanizmu z Zadania 12 jest uśpiona. Jeśli próg ma wrócić
+do 0,55, trzeba to zrobić świadomie i zmierzyć osobno.
+
+### Co zostało do zrobienia (Zadanie 17)
+
+Wymaga maszyny z pełnym korpusem i żywym modelem, więc **nie mogłem tego wykonać**:
+
+1. `dotnet ef database update` na bazie z korpusem (migracja `AddMessageRouteAndRegenerated`).
+2. Ustawić `Llm:Aux` na realny endpoint modelu pomocniczego (bez niego router i pętla domykająca są
+   nieaktywne — degradują do dzisiejszego zachowania, więc nic się nie psuje, ale i nic nie zyskuje).
+3. Testy manualne T1–T12 (sekcja wyżej). **T4 jest warunkiem włączenia routera**: pytanie prawne
+   w luźnej formie musi za każdym razem trafić do bazy.
+4. Pomiary z tabeli „Metody pomiaru", w szczególności pierwszy przebieg `--live-report` na historii.
+5. Dopiero po tym: `RouterEnabled=true`.
+
+Co zostało zweryfikowane empirycznie tutaj: `--live-report` odpalony na lokalnej bazie (pusta → komunikat
+bez wyjątku; z zasianymi danymi → poprawny rozdział odmów progowych i treściowych, rozkład `Route`,
+odtworzone pytanie odmówione).
 
 Znaleziska z implementacji, których plan nie przewidział (wszystkie złapane testami, nie lekturą):
 
@@ -847,7 +876,7 @@ prawnych + atrapa routera zawsze-false + `forceRetrieval=true` ⇒ retrieval wyk
       z `AnswerGate` + wyzwalacz treściowy ⇒ budżet respektowany; brak frazy ⇒ zero retry.
 - [ ] Commit: `feat(chat): odmowa tresciowa wyzwala druga runde - wspolny budzet naprawczy tury`
 
-## Zadanie 14: tools/tool_choice w warstwie providera (Faza 5)
+## Zadanie 14 ✅ ZROBIONE: tools/tool_choice w warstwie providera (Faza 5)
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Domain/Llm/ILlmProvider.cs` (`LlmRequest.Tools`, `ToolChoice`;
@@ -866,7 +895,7 @@ prawnych + atrapa routera zawsze-false + `forceRetrieval=true` ⇒ retrieval wyk
       `Tools == null` ⇒ ciało żądania bajt w bajt jak dziś (równoważność).
 - [ ] Commit: `feat(llm): tool calling w OpenAiCompatibleLlmProvider z degradacja przy braku wsparcia`
 
-## Zadanie 15: ToolLoop — szukaj_w_przepisach (Faza 5)
+## Zadanie 15 ✅ ZROBIONE: ToolLoop — szukaj_w_przepisach (Faza 5)
 
 **Pliki:**
 - Create: `src/PrawoRAG.Domain/Llm/ToolLoop.cs`
@@ -889,7 +918,7 @@ prawnych + atrapa routera zawsze-false + `forceRetrieval=true` ⇒ retrieval wyk
       narzędzia przy sprawnym tool callingu = FAIL testu; flaga OFF = zero zmian.
 - [ ] Commit: `feat(chat): ToolLoop - szukaj_w_przepisach z wymuszonym pierwszym wywolaniem, za flaga`
 
-## Zadanie 16: raport --live-report (Faza 6)
+## Zadanie 16 ✅ ZROBIONE: raport --live-report (Faza 6)
 
 **Pliki:**
 - Create: `src/PrawoRAG.Eval/LiveReportRunner.cs`
@@ -907,7 +936,7 @@ prawnych + atrapa routera zawsze-false + `forceRetrieval=true` ⇒ retrieval wyk
       `user` poza mianownikiem; pusta baza ⇒ pusty raport bez wyjątku.
 - [ ] Commit: `feat(eval): --live-report - metryka odmow i bramek policzona na historii messages`
 
-## Zadanie 17: integracja — włączenie flag + pełna weryfikacja
+## Zadanie 17 ⏳ CZEKA NA CIEBIE: integracja — włączenie flag + pełna weryfikacja
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Api/appsettings.json` (`Retrieval:RouterEnabled=true`;
