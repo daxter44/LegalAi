@@ -106,4 +106,81 @@ public class ReasoningSplitterTests
         Assert.Equal("widoczna odpowiedź", vis);
         Assert.Equal("myślę bez tagów", reasoning);
     }
+
+    // --- Zadanie 1: delty rozumowania NA ŻYWO (callback), a nie tylko całość na końcu ---
+    // Powód: 41 z 85 s odpowiedzi to rozumowanie, które fizycznie leci po drucie, a użytkownik
+    // dostawał je dopiero po zakończeniu strumienia (ChatService emitował ReasoningEvent po pętli).
+
+    /// <summary>Jak <see cref="Run"/>, ale zbiera też delty rozumowania przez callback splittera.</summary>
+    private static (string Visible, string Reasoning, List<string> Deltas) RunWithDeltas(
+        IEnumerable<(string Content, bool Thought)> deltas)
+    {
+        var captured = new List<string>();
+        var s = new ReasoningSplitter(captured.Add);
+        var vis = "";
+        foreach (var (c, t) in deltas) vis += s.Push(c, t);
+        vis += s.Finish();
+        return (vis, s.Reasoning, captured);
+    }
+
+    [Fact] // Rownowaznosc: konkatenacja delt == Reasoning. Dowod, ze zapis do historii sie NIE zmienia.
+    public void Reasoning_deltas_concatenate_to_full_reasoning_google_mode()
+    {
+        var (vis, reasoning, deltas) = RunWithDeltas(
+        [
+            ("<thought>Rozważam, czy niebo", true),
+            (" jest niebieskie.", true),
+            ("</thought>Tak, niebo jest niebieskie [1].", false),
+        ]);
+
+        Assert.Equal("Tak, niebo jest niebieskie [1].", vis);
+        Assert.Equal(reasoning, string.Concat(deltas));
+        Assert.NotEmpty(deltas);
+    }
+
+    [Fact] // Tryb self-hosted (gole <think>) MUSI tez dawac delty — inaczej Bielik/Ollama nie pokaza myslenia.
+    public void Reasoning_deltas_work_for_bare_think_tags()
+    {
+        var (vis, reasoning, deltas) = RunWithDeltas(
+        [
+            ("<think>krok pierwszy", false),
+            (" krok drugi</think>Odpowiedź [1].", false),
+        ]);
+
+        Assert.Equal("Odpowiedź [1].", vis);
+        Assert.Equal(reasoning, string.Concat(deltas));
+        Assert.Equal("krok pierwszy krok drugi", reasoning);
+    }
+
+    [Fact] // Delty WIDOCZNE nie moga wyciekac do callbacku rozumowania (i odwrotnie).
+    public void Visible_deltas_never_reach_reasoning_callback()
+    {
+        var (vis, _, deltas) = RunWithDeltas([("czysta odpowiedź bez myślenia", false)]);
+
+        Assert.Equal("czysta odpowiedź bez myślenia", vis);
+        Assert.Empty(deltas);
+    }
+
+    [Fact] // Tagi sa delimiterami — nie moga trafic do delt (callback dostaje tresc, nie artefakty).
+    public void Reasoning_deltas_never_contain_tags()
+    {
+        var (_, _, deltas) = RunWithDeltas(
+        [
+            ("<thought>myśl", true),
+            ("</thought>widoczne", false),
+        ]);
+
+        Assert.DoesNotContain("<thought>", string.Concat(deltas));
+        Assert.DoesNotContain("</thought>", string.Concat(deltas));
+    }
+
+    [Fact] // Brak callbacku (null) = zachowanie identyczne jak dotad — zero kosztu, zero regresji.
+    public void Null_callback_keeps_today_behaviour()
+    {
+        var withCb = RunWithDeltas([("<think>m</think>widoczne", false)]);
+        var without = Run([("<think>m</think>widoczne", false)]);
+
+        Assert.Equal(without.Visible, withCb.Visible);
+        Assert.Equal(without.Reasoning, withCb.Reasoning);
+    }
 }

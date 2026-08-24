@@ -71,7 +71,9 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
             try { await File.AppendAllTextAsync(dumpResp, $"\n\n########## RESP {DateTime.Now:HH:mm:ss} ##########\n", ct); } catch { }
 
         // Wydziela „rozumowanie" (Gemini/Gemma) z widocznej treści — emitujemy tylko widoczne delty.
-        var splitter = new ReasoningSplitter();
+        // OnReasoningDelta idzie do splittera (nie do gołej delty SSE): tam rozumowanie jest już
+        // rozpoznane w OBU trybach (flaga google.thought i gołe <think>) i pozbawione tagów-delimiterów.
+        var splitter = new ReasoningSplitter(request.OnReasoningDelta);
         LlmUsage? usage = null;
         var outputChars = 0;
         string? line;

@@ -38,6 +38,17 @@ public sealed record LlmRequest
     /// Null / brak rozumowania → nie wołany (Claude/Bielik: zero zmian).
     /// </summary>
     public Action<string>? OnReasoning { get; init; }
+
+    /// <summary>
+    /// Wywoływany dla KAŻDEJ delty rozumowania, w trakcie strumienia (Zadanie 1 planu ROU).
+    /// Powód pomiarowy: rozumowanie to ~41 z ~85 s odpowiedzi (PRAWORAG_LOG_TIMING) i fizycznie
+    /// leci po drucie token po tokenie — a użytkownik dostawał je dopiero po zakończeniu generacji,
+    /// więc przez większość czekania UI nie miało CO pokazać.
+    /// Konkatenacja wszystkich wywołań == argument <see cref="OnReasoning"/> na końcu (test
+    /// równoważności) — emisja na żywo NIE zmienia tego, co trafia do historii.
+    /// Null = wołający nie jest zainteresowany (Eval, testy) — zero kosztu.
+    /// </summary>
+    public Action<string>? OnReasoningDelta { get; init; }
 }
 
 /// <summary>

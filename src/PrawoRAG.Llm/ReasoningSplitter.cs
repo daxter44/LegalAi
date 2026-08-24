@@ -16,7 +16,14 @@ namespace PrawoRAG.Llm;
 ///
 /// Brak flagi i brak tagów (Claude, Bielik) → pass-through: całość widoczna, rozumowanie puste (zero regresji).
 /// </summary>
-public sealed class ReasoningSplitter
+/// <remarks>
+/// <paramref name="onReasoningDelta"/> (Zadanie 1 planu ROU): wywoływany dla KAŻDEGO fragmentu
+/// trafiającego do rozumowania, w miejscu routowania — więc (a) obsługuje oba warianty naraz
+/// (flaga Google i gołe tagi), (b) dostaje treść BEZ tagów-delimiterów. Konkatenacja wszystkich
+/// wywołań jest równa <see cref="Reasoning"/> (test równoważności), dzięki czemu emisja na żywo
+/// nie zmienia tego, co trafia do historii. Null = zero kosztu (Eval, testy, Claude/Bielik bez myślenia).
+/// </remarks>
+public sealed class ReasoningSplitter(Action<string>? onReasoningDelta = null)
 {
     // (marker, czy WCHODZI w rozumowanie). Kolejność bez znaczenia — szukamy najwcześniejszego wystąpienia.
     private static readonly (string Tag, bool Enter)[] Markers =
@@ -80,7 +87,11 @@ public sealed class ReasoningSplitter
     private void Route(string text, StringBuilder visible)
     {
         if (text.Length == 0) return;
-        if (_inReasoning) _reasoning.Append(text);
+        if (_inReasoning)
+        {
+            _reasoning.Append(text);
+            onReasoningDelta?.Invoke(text); // na żywo; suma wywołań == Reasoning
+        }
         else visible.Append(text);
     }
 

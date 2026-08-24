@@ -136,4 +136,72 @@ public sealed class OpenAiCompatibleLlmProviderTests
         Assert.Contains("\"role\":\"user\"", handler.Body);
         Assert.Contains("\"stream\":true", handler.Body);
     }
+
+    // --- Zadanie 1: delty rozumowania płyną W TRAKCIE strumienia, nie po nim ---
+
+    /// <summary>SSE z rozumowaniem Gemmy: delty z flagą google.thought, potem widoczna treść.</summary>
+    private const string ThinkingSse = """
+        data: {"choices":[{"delta":{"content":"<thought>Sprawdzam art. ","extra_content":{"google":{"thought":true}}}}]}
+        data: {"choices":[{"delta":{"content":"37 ustawy","extra_content":{"google":{"thought":true}}}}]}
+        data: {"choices":[{"delta":{"content":"</thought>Odpowiedź: tak [1]."}}]}
+        data: [DONE]
+        """;
+
+    [Fact] // Delty rozumowania musza dotrzec PRZED zakonczeniem strumienia — inaczej UI nie ma co pokazac.
+    public async Task Reasoning_deltas_arrive_during_stream_not_after()
+    {
+        var provider = Provider(ThinkingSse, out _);
+        var reasoningDeltas = new List<string>();
+        var visibleSoFar = new StringBuilder();
+        // Znacznik: ile delt rozumowania widzielismy, gdy przyszla PIERWSZA widoczna delta.
+        var deltasBeforeFirstVisible = -1;
+
+        var req = new LlmRequest
+        {
+            Messages = [new ChatMessage(ChatRole.User, "pytanie")],
+            OnReasoningDelta = d => reasoningDeltas.Add(d),
+        };
+
+        await foreach (var visible in provider.StreamCompletionAsync(req, default))
+        {
+            if (deltasBeforeFirstVisible < 0) deltasBeforeFirstVisible = reasoningDeltas.Count;
+            visibleSoFar.Append(visible);
+        }
+
+        Assert.Equal("Odpowiedź: tak [1].", visibleSoFar.ToString());
+        Assert.Equal(2, deltasBeforeFirstVisible); // oba fragmenty myslenia PRZED pierwszym widocznym tokenem
+        Assert.Equal("Sprawdzam art. 37 ustawy", string.Concat(reasoningDeltas));
+    }
+
+    [Fact] // Rownowaznosc na poziomie providera: suma delt == to, co dostaje OnReasoning (zapis do historii).
+    public async Task Reasoning_deltas_equal_final_reasoning()
+    {
+        var provider = Provider(ThinkingSse, out _);
+        var deltas = new List<string>();
+        string? whole = null;
+
+        var req = new LlmRequest
+        {
+            Messages = [new ChatMessage(ChatRole.User, "pytanie")],
+            OnReasoningDelta = deltas.Add,
+            OnReasoning = r => whole = r,
+        };
+
+        await foreach (var _ in provider.StreamCompletionAsync(req, default)) { }
+
+        Assert.NotNull(whole);
+        Assert.Equal(whole, string.Concat(deltas));
+    }
+
+    [Fact] // Brak callbacku = dzisiejsze zachowanie bajt w bajt (Eval, testy, Claude/Bielik bez myslenia).
+    public async Task Without_delta_callback_visible_stream_is_unchanged()
+    {
+        var provider = Provider(ThinkingSse, out _);
+        var req = new LlmRequest { Messages = [new ChatMessage(ChatRole.User, "pytanie")] };
+
+        var sb = new StringBuilder();
+        await foreach (var d in provider.StreamCompletionAsync(req, default)) sb.Append(d);
+
+        Assert.Equal("Odpowiedź: tak [1].", sb.ToString());
+    }
 }
