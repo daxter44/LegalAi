@@ -19,6 +19,7 @@ public static class LlmServiceCollectionExtensions
         // każde nieudane wywołanie degraduje w stronę retrievalu (decyzja przekrojowa 3 planu ROU).
         services.AddAuxLlm(config);
         services.AddSingleton<IIntentRouter, AuxIntentRouter>();
+        services.AddSingleton<IQueryReformulator, AuxQueryReformulator>();
 
         var provider = (config["Llm:Provider"] ?? "claude").ToLowerInvariant();
         return provider switch
