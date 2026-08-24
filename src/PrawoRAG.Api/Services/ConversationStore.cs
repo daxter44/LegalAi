@@ -20,8 +20,12 @@ public interface IConversationStore
 {
     Task<Guid> CreateConversationAsync(string userId, string title, CancellationToken ct);
     Task<Guid> AddUserMessageAsync(Guid conversationId, string content, CancellationToken ct);
+    /// <param name="route">Ścieżka tury (Zadanie 8 planu ROU): <c>retrieval</c> albo <c>smalltalk</c> —
+    /// materiał do pomiaru trafności routera na żywym ruchu. Null = nie dotyczy.</param>
+    /// <param name="regenerated">Czy bramka anty-fabrykacji regenerowała odpowiedź (Zadanie 10).</param>
     Task<Guid> AddAssistantMessageAsync(Guid conversationId, string content,
-        IReadOnlyList<ChatSource> sources, bool abstained, bool? citationClean, string? model, CancellationToken ct);
+        IReadOnlyList<ChatSource> sources, bool abstained, bool? citationClean, string? model,
+        CancellationToken ct, string? route = null, bool regenerated = false);
     Task AddFeedbackAsync(Guid messageId, string userId, string verdict, string? note, CancellationToken ct);
 
     /// <summary>Rozmowy użytkownika, najnowsze pierwsze.</summary>
@@ -55,13 +59,15 @@ public sealed class ConversationStore(IServiceScopeFactory scopeFactory) : IConv
         => await AddMessageAsync(conversationId, "user", content, sources: null, abstained: false, citationClean: null, model: null, ct);
 
     public async Task<Guid> AddAssistantMessageAsync(Guid conversationId, string content,
-        IReadOnlyList<ChatSource> sources, bool abstained, bool? citationClean, string? model, CancellationToken ct)
+        IReadOnlyList<ChatSource> sources, bool abstained, bool? citationClean, string? model,
+        CancellationToken ct, string? route = null, bool regenerated = false)
     {
         // Pełny ChatSource (nie tylko Index/Label/Url jak dawniej) — żeby wczytana rozmowa miała
         // kompletny panel źródeł (snippet, tytuł, chip nowelizacji). Stare wpisy czyta tolerancyjnie
         // ParseSources (brakujące pola → puste).
         var json = sources.Count == 0 ? null : JsonSerializer.SerializeToDocument(sources);
-        return await AddMessageAsync(conversationId, "assistant", content, json, abstained, citationClean, model, ct);
+        return await AddMessageAsync(conversationId, "assistant", content, json, abstained, citationClean, model,
+            ct, route, regenerated);
     }
 
     public async Task<IReadOnlyList<ConversationSummary>> ListConversationsAsync(string userId, int limit, CancellationToken ct)
@@ -140,7 +146,8 @@ public sealed class ConversationStore(IServiceScopeFactory scopeFactory) : IConv
     }
 
     private async Task<Guid> AddMessageAsync(Guid conversationId, string role, string content,
-        JsonDocument? sources, bool abstained, bool? citationClean, string? model, CancellationToken ct)
+        JsonDocument? sources, bool abstained, bool? citationClean, string? model, CancellationToken ct,
+        string? route = null, bool regenerated = false)
     {
         await using var db = Db();
         var now = DateTimeOffset.UtcNow;
@@ -148,6 +155,7 @@ public sealed class ConversationStore(IServiceScopeFactory scopeFactory) : IConv
         {
             Id = Guid.CreateVersion7(), ConversationId = conversationId, Role = role, Content = content,
             CreatedAt = now, RetrievedSources = sources, Abstained = abstained, CitationClean = citationClean, Model = model,
+            Route = route, Regenerated = regenerated,
         };
         db.Messages.Add(m);
         await db.Conversations.Where(c => c.Id == conversationId).ExecuteUpdateAsync(

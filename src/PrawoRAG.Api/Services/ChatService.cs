@@ -16,14 +16,20 @@ namespace PrawoRAG.Api.Services;
 /// </summary>
 public sealed class ChatService(
     IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> options,
-    IEmbeddingProvider embedder, IOptions<DocumentsOptions> documents) : IChatService
+    IEmbeddingProvider embedder, IOptions<DocumentsOptions> documents,
+    IIntentRouter? router = null) : IChatService
 {
     private readonly bool _documentsEnabled = documents.Value.Enabled;
 
+    /// <summary>Domyślna ścieżka (router decyduje) — jawnie na klasie, nie tylko jako domyślna metoda
+    /// interfejsu, żeby istniejące wywołania po typie konkretnym (UI, testy) działały bez zmian.</summary>
+    public IAsyncEnumerable<ChatEvent> AskAsync(
+        string question, IReadOnlyList<ChatTurn> history, DocumentContext? document, CancellationToken ct)
+        => AskAsync(question, history, document, forceRetrieval: false, ct);
 
     public async IAsyncEnumerable<ChatEvent> AskAsync(
         string question, IReadOnlyList<ChatTurn> history, DocumentContext? document,
-        [EnumeratorCancellation] CancellationToken ct)
+        bool forceRetrieval, [EnumeratorCancellation] CancellationToken ct)
     {
         var chatSw = System.Diagnostics.Stopwatch.StartNew();
         var o = options.Value;
@@ -47,6 +53,28 @@ public sealed class ChatService(
             MinChunkTokens = o.MinChunkTokens,
             Progress = progress,
         };
+
+        // ROUTER INTENCJI (Zadanie 8 planu ROU) — jedyne miejsce, w którym tura może pominąć bazę.
+        // Trzy warunki muszą być spełnione JEDNOCZEŚNIE, żeby do tego doszło; każdy z nich jest
+        // samodzielną linią obrony:
+        //   (1) flaga włączona,               (2) wołający nie wymusił retrievalu (analiza pism!),
+        //   (3) brak jawnego odwołania prawnego w wiadomości  → i dopiero wtedy pytamy model.
+        // Bezpiecznik z (3) jest sprawdzany PRZED routerem także dlatego, że oszczędza wywołanie modelu.
+        if (o.RouterEnabled && !forceRetrieval && router is not null &&
+            !LegalTokenDetector.ContainsLegalReference(question))
+        {
+            yield return new StageEvent("router", "Rozpoznaję pytanie…", null);
+            var decision = await router.RouteAsync(question, history, ct);
+            if (!decision.PotrzebnePrzepisy)
+            {
+                // Ścieżka BEZ retrievalu: własny prompt, ZERO źródeł, więc świadomie bez bramki
+                // abstynencji i bez walidacji cytatów — nie ma czego walidować. Dlatego prompt sam
+                // pilnuje, żeby model nie zaczął tu udzielać porad prawnych z pamięci.
+                yield return new NoRetrievalEvent(decision.Uzasadnienie);
+                await foreach (var e in SmalltalkAsync(question, ct)) yield return e;
+                yield break;
+            }
+        }
 
         // Follow-upy: dopytanie („a co z § 2?") samo embeduje się bezwartościowo, więc retrieval liczony
         // 2x (surowy vs kontekstowy) i wybór wariantu — CAŁOŚĆ w FollowUpSelector, wspólnym dla /api/chat,
@@ -151,6 +179,41 @@ public sealed class ChatService(
             docFragments.Select(f => f.Text).ToList(), docFragments.Count);
         LatencyLog.Mark("chat.total", chatSw.ElapsedMilliseconds);
         yield return new DoneEvent(Abstained: false, Model: llm.ModelId, Check: check, Usage: usage);
+    }
+
+    /// <summary>
+    /// Ścieżka BEZ retrievalu (router orzekł, że przepisy nie są potrzebne). Świadomie NIE przechodzi
+    /// przez <see cref="GroundedPrompt"/>, bramkę abstynencji ani <see cref="CitationValidator"/> —
+    /// przy zerowej liczbie źródeł te mechanizmy nie mają na czym pracować (reguły cytowania [n]
+    /// kazałyby modelowi cytować coś, czego nie ma). Zamiast nich pilnuje tego
+    /// <see cref="SmalltalkPrompt"/>, tematycznie zamknięty.
+    ///
+    /// Niski limit tokenów: reguła R2 planu — rozumowanie tylko przy PISANIU odpowiedzi na źródłach,
+    /// a nie przy „siema". Odpowiedź ma paść w ~2 s, nie po 40 s myślenia.
+    /// </summary>
+    private async IAsyncEnumerable<ChatEvent> SmalltalkAsync(
+        string question, [EnumeratorCancellation] CancellationToken ct)
+    {
+        var request = new LlmRequest
+        {
+            Messages =
+            [
+                new ChatMessage(ChatRole.System, SmalltalkPrompt.SystemPrompt),
+                new ChatMessage(ChatRole.User, question),
+            ],
+            Temperature = 0,
+            MaxTokens = 256,
+        };
+
+        LlmUsage? usage = null;
+        request = request with { OnUsage = u => usage = u };
+
+        await foreach (var delta in llm.StreamCompletionAsync(request, ct))
+            yield return new TokenEvent(delta);
+
+        // Check = null: nie ma źródeł, więc nie ma czego walidować. UI po tym (i po NoRetrievalEvent)
+        // wie, że nie może pokazać badge'a „cytaty zgodne" — bo nie było cytatów.
+        yield return new DoneEvent(Abstained: false, Model: llm.ModelId, Check: null, Usage: usage);
     }
 
     private static string Snippet(string text, int max = 300) =>

@@ -130,7 +130,13 @@ public sealed class AnalysisRunner(
         string? abstainMessage = null;
         string? error = null;
 
-        await foreach (var e in chat.AskAsync(AnalysisPrompts.MapQuestion(userPrompt, unit), [], null, ct))
+        // forceRetrieval: jednostka analizowanego dokumentu NIGDY nie jest small-talkiem, a jej treść
+        // (preambuła, komparycja, dane stron) często nie zawiera żadnego tokenu prawnego — czyli
+        // bezpiecznik by nie zadziałał i decyzja spadłaby na router. Jego pomyłka dałaby WERDYKT
+        // ANALIZY bez retrievalu, nieugruntowany, w dokumencie o charakterze audytowym. Pytanie
+        // routera o to jest bezcelowe, a ryzykowne — więc go tu nie pytamy.
+        await foreach (var e in chat.AskAsync(
+            AnalysisPrompts.MapQuestion(userPrompt, unit), [], null, forceRetrieval: true, ct))
             switch (e)
             {
                 case SourcesEvent s: sources = s.Sources; break;

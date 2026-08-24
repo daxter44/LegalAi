@@ -27,6 +27,22 @@ public class MessageEntity
     /// <summary>Wynik anty-fabrykacji: true=czyste cytaty, false=podejrzane, null=nie dotyczy (odmowa).</summary>
     public bool? CitationClean { get; set; }
 
+    /// <summary>
+    /// Którą ścieżką poszła tura (Zadanie 8 planu ROU): <c>retrieval</c> = przeszukano bazę,
+    /// <c>smalltalk</c> = router uznał, że przepisy nie są potrzebne (odpowiedź NIE jest oparta
+    /// na źródłach). Null = wiadomość zapisana przed wprowadzeniem routera.
+    /// Bez tego pola raport z żywego ruchu nie odróżni ścieżek, a trafność routera byłaby
+    /// niemierzalna — czyli włączenie go na produkcji byłoby wiarą, nie decyzją.
+    /// </summary>
+    public string? Route { get; set; }
+
+    /// <summary>
+    /// Czy odpowiedź była REGENEROWANA przez bramkę anty-fabrykacji (Zadanie 10 planu ROU) — pierwsza
+    /// wersja powołała się na artykuł/sygnaturę nieobecne w kontekście. Materiał do pomiaru
+    /// fałszywych alarmów bramki (próg zabicia: >10% regeneracji na poprawnych odpowiedziach).
+    /// </summary>
+    public bool Regenerated { get; set; }
+
     public string? Model { get; set; }
 
     public FeedbackEntity? Feedback { get; set; }

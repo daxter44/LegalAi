@@ -86,7 +86,18 @@
                         </div>
                     }
 
-                    @if (ex.Done && !IsRefusal(ex))
+                    @* Router uznał, że pytanie nie wymaga przepisów — baza NIE była przeglądana.
+                       Etykieta jest JAWNA i niezwijalna: to jedyne miejsce w systemie, gdzie
+                       odpowiedź nie jest oparta na źródłach, i użytkownik musi to wiedzieć. *@
+                    @if (ex.Done && ex.NoRetrievalReason is not null)
+                    {
+                        <div class="verify-banner no-retrieval" role="note">
+                            💬 Nie przeglądałem bazy — ta odpowiedź NIE jest oparta na źródłach.
+                            Zadaj pytanie prawne, żeby poszukać w przepisach i orzeczeniach.
+                        </div>
+                    }
+
+                    @if (ex.Done && !IsRefusal(ex) && ex.NoRetrievalReason is null)
                     {
                         <div class="verify-banner" role="note">
                             ⚖️ Wstępny research do weryfikacji — sprawdź w źródłach poniżej.
@@ -471,6 +482,7 @@
                 switch (evt)
                 {
                     case StageEvent st: ex.SetStage(st); break;
+                    case NoRetrievalEvent nr: ex.NoRetrievalReason = nr.Reason; break;
                     case SourcesEvent s: ex.Sources = s.Sources; break;
                     case DocSourcesEvent d: ex.DocFileName = d.FileName; ex.DocFragments = d.Fragments; break;
                     case TokenEvent t: ex.Answer += t.Text; break;
@@ -496,8 +508,12 @@
             if (_conversationId is { } cid2)
             {
                 var content = ex.Abstained ? (ex.AbstainMessage ?? "") : ex.Answer;
+                // Route zapisywany zawsze — bez niego raport z żywego ruchu (Zadanie 16) nie odróżni
+                // ścieżek, a trafność routera byłaby niemierzalna.
+                var route = ex.NoRetrievalReason is null ? ChatRoutes.Retrieval : ChatRoutes.Smalltalk;
                 ex.MessageId = await Try(() => Store.AddAssistantMessageAsync(
-                    cid2, content, ex.Sources, ex.Abstained, ex.Check?.IsClean, ex.Model, CancellationToken.None));
+                    cid2, content, ex.Sources, ex.Abstained, ex.Check?.IsClean, ex.Model,
+                    CancellationToken.None, route));
             }
             _busy = false;
             await RefreshConversationsAsync(); // nowa rozmowa/tytuł pojawia się w sidebarze
@@ -557,6 +573,10 @@
         /// <summary>Bieżący etap pracy (Zadanie 2/3 planu ROU) — null przed pierwszym raportem
         /// i po zakończeniu tury.</summary>
         public StageEvent? Stage { get; private set; }
+
+        /// <summary>Uzasadnienie routera, gdy tura poszła ścieżką BEZ retrievalu (Zadanie 8) —
+        /// niepuste ⇒ odpowiedź nie jest oparta na źródłach i UI musi to jawnie pokazać.</summary>
+        public string? NoRetrievalReason { get; set; }
 
         private DateTimeOffset _stageStarted = DateTimeOffset.UtcNow;
 

@@ -412,6 +412,15 @@ public sealed class RetrievalOptions
     /// Reranker:Enabled=true i OBA warianty mają score). Inna skala niż
     /// <see cref="FollowUpSignalMargin"/> — patrz <see cref="FollowUpQuery.DefaultRerankSignalMargin"/>.</summary>
     public double RerankSignalMargin { get; set; } = FollowUpQuery.DefaultRerankSignalMargin;
+
+    /// <summary>
+    /// Router intencji (Faza 2 planu ROU): gdy <c>false</c> — KAŻDA wiadomość idzie do retrievalu,
+    /// czyli zachowanie bajt w bajt jak przed wprowadzeniem routera. Domyślnie WYŁĄCZONY do czasu
+    /// pełnej weryfikacji E2E (Zadanie 17), bo to jedyna zmiana w tym planie, która może sprawić,
+    /// że odpowiedź powstanie bez źródeł — jego trafność po stronie krytycznej musi być zmierzona
+    /// (100% pytań prawnych do bazy), a nie założona.
+    /// </summary>
+    public bool RouterEnabled { get; set; }
 }
 
 /// <summary>Przełączniki diagnostyczne (domyślnie wszystko wyłączone — zero śladu w UI/SSE).</summary>

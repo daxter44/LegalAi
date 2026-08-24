@@ -48,6 +48,27 @@ public sealed record ReasoningEvent(string Text) : ChatEvent;
 /// <summary>Bramka abstynencji: brak pokrycia w źródłach — nie generujemy odpowiedzi.</summary>
 public sealed record AbstainEvent(string Message, double MaxSimilarity) : ChatEvent;
 
+/// <summary>
+/// Router uznał, że wiadomość nie wymaga przepisów (Zadanie 8 planu ROU) — baza NIE była
+/// przeglądana. UI musi to pokazać JAWNIE i nieusuwalnie: ta odpowiedź nie jest ugruntowana
+/// w źródłach, więc nie obowiązuje jej ani bramka abstynencji, ani walidacja cytatów.
+/// </summary>
+public sealed record NoRetrievalEvent(string Reason) : ChatEvent;
+
+/// <summary>
+/// Wartości kolumny <c>messages.Route</c> — którą ścieżką poszła tura. Osobna klasa, nie stałe na
+/// <c>ChatService</c>, bo w <c>Chat.razor</c> nazwa <c>ChatService</c> jest zajęta przez wstrzykniętą
+/// właściwość (kolizja nazw przy odwołaniu do stałej).
+/// </summary>
+public static class ChatRoutes
+{
+    /// <summary>Przeszukano bazę przepisów i orzeczeń.</summary>
+    public const string Retrieval = "retrieval";
+
+    /// <summary>Router uznał, że przepisy nie są potrzebne — odpowiedź NIE jest oparta na źródłach.</summary>
+    public const string Smalltalk = "smalltalk";
+}
+
 /// <summary>Koniec: wynik kontroli anty-fabrykacji (cytaty) + model. <see cref="Usage"/> = tokeny
 /// in/out z providera (zbierane zawsze; widoczność w UI steruje flaga Diagnostics:ShowTokenUsage).</summary>
 public sealed record DoneEvent(bool Abstained, string? Model, CitationCheck? Check, LlmUsage? Usage = null) : ChatEvent;

@@ -98,6 +98,10 @@ body {
     background: var(--c-warn-weak); color: var(--c-warn); font-size: var(--fs-14);
     display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap;
 }
+/* Odpowiedź BEZ retrievalu (router: to nie pytanie prawne). Mocniejszy kontur niż zwykły baner —
+   to jedyna odpowiedź w systemie nieoparta na źródłach, więc nie może wyglądać jak reszta. */
+.verify-banner.no-retrieval { border: 1px dashed var(--c-warn); font-weight: 600; }
+
 .badge { font-size: var(--fs-12); padding: 1px var(--s-2); border-radius: 999px; font-weight: 600; }
 .badge-ok { background: var(--c-ok-weak); color: var(--c-ok); }
 .badge-danger { background: var(--c-danger-weak); color: var(--c-danger); }
