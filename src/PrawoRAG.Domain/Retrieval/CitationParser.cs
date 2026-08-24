@@ -67,7 +67,7 @@ public static class CitationParser
         }
         if (articles.Count == 0) return [];
 
-        var actHint = ActHint(text);
+        var actHint = ExtractActHint(text);
         var refs = new List<CitationRef>(articles.Count);
         for (var i = 0; i < articles.Count; i++)
         {
@@ -78,8 +78,15 @@ public static class CitationParser
         return refs;
     }
 
-    private static string? ActHint(string text)
+    /// <summary>
+    /// Sama wskazówka aktu, BEZ wymogu artykułu („ustawa o ochronie danych osobowych", „ordynacja
+    /// podatkowa", „KC"). <see cref="Parse"/> zwraca <see cref="CitationRef"/> tylko gdy jest artykuł —
+    /// a <see cref="LegalTokenDetector"/> musi rozpoznać też gołą nazwę aktu jako odwołanie prawne.
+    /// Publiczne, żeby nie powstała druga kopia tych wzorców (blizna: „rozjazd kopii = rozjazd metryki").
+    /// </summary>
+    public static string? ExtractActHint(string? text)
     {
+        if (string.IsNullOrWhiteSpace(text)) return null;
         var k = KodeksRe.Match(text);
         if (k.Success) return Ws.Replace(k.Value, " ").Trim();
         foreach (var (norm, re) in Abbrevs)
