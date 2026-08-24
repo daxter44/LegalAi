@@ -46,6 +46,29 @@ body {
 .answer pre { background: var(--c-bg); padding: var(--s-2); border-radius: var(--radius-sm); overflow-x: auto; }
 .typing { color: var(--c-text-muted); }
 
+/* Pasek etapu pracy (Zadanie 2/3 planu ROU): odpowiedź trwa dziesiątki sekund, a jedynym sygnałem
+   było „…" na przycisku. Etykieta + liczba + licznik sekund = dowód, że system pracuje. */
+.work-stage {
+    display: flex; align-items: center; gap: var(--s-2);
+    font-size: var(--fs-13); color: var(--c-text-muted);
+    padding: var(--s-2) var(--s-3); margin: var(--s-2) 0;
+    background: var(--c-surface); border-left: 3px solid var(--c-accent);
+    border-radius: var(--radius-sm);
+}
+.work-stage-label { flex: 1 1 auto; }
+.work-stage-count, .work-stage-time {
+    font-variant-numeric: tabular-nums; /* licznik nie skacze przy zmianie cyfr */
+    flex: 0 0 auto; opacity: .75;
+}
+.work-stage-count::before { content: "≈ "; }
+.work-spinner {
+    flex: 0 0 auto; width: .75rem; height: .75rem; border-radius: 50%;
+    border: 2px solid var(--c-border); border-top-color: var(--c-accent);
+    animation: work-spin 900ms linear infinite;
+}
+@keyframes work-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .work-spinner { animation: none; } }
+
 /* Klikalne cytowania [n] → karta źródła (cite.js otwiera panel, scrolluje i podświetla) */
 .answer a.cite {
     color: var(--c-accent); font-weight: 700; text-decoration: none;

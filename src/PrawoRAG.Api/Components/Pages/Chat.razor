@@ -71,6 +71,21 @@
                         }
                     </div>
 
+                    @* Pasek etapu pracy: pytanie prawne trwa dziesiątki sekund, a wcześniej jedynym
+                       sygnałem było „…" na przycisku Wyślij. Licznik sekund pokazuje, że system żyje. *@
+                    @if (ex.Streaming && ex.Stage is { } stage)
+                    {
+                        <div class="work-stage" role="status" aria-live="polite">
+                            <span class="work-spinner" aria-hidden="true"></span>
+                            <span class="work-stage-label">@stage.Label</span>
+                            @if (stage.Count is { } n)
+                            {
+                                <span class="work-stage-count">@n.ToString("N0")</span>
+                            }
+                            <span class="work-stage-time">@ex.StageSeconds s</span>
+                        </div>
+                    }
+
                     @if (ex.Done && !IsRefusal(ex))
                     {
                         <div class="verify-banner" role="note">
@@ -92,10 +107,12 @@
                         </div>
                     }
 
+                    @* W trakcie generacji akordeon jest OTWARTY: rozumowanie to ~połowa czasu odpowiedzi
+                       i jest jedyną treścią, jaką da się wtedy pokazać. Po zakończeniu zwija się sam. *@
                     @if (!string.IsNullOrEmpty(ex.Reasoning))
                     {
-                        <details class="sources reasoning">
-                            <summary>🧠 Rozumowanie modelu (@(ex.Reasoning.Length) zn.)</summary>
+                        <details class="sources reasoning" open="@ex.Streaming">
+                            <summary>🧠 Rozumowanie modelu (@(ex.Reasoning.Length) zn.)@(ex.Streaming ? " — myśli…" : "")</summary>
                             <div class="reasoning-body">@ex.Reasoning</div>
                             <p class="empty-hint">To wewnętrzny tok modelu — pomocniczy, NIE część odpowiedzi ani źródło. Rozstrzygają teza i cytowane źródła.</p>
                         </details>
@@ -433,15 +450,33 @@
         _conversationId ??= await Try(() => Store.CreateConversationAsync(_userId, question, ct));
         if (_conversationId is { } cid) await Try(() => Store.AddUserMessageAsync(cid, question, ct));
 
+        // Tykający licznik etapu. Bez niego czas zamarza między zdarzeniami, a najdłuższy etap
+        // (ocena trafności kandydatów) potrafi trwać dziesiątki sekund bez ani jednego eventu —
+        // czyli dokładnie tam, gdzie użytkownik najbardziej potrzebuje dowodu, że system żyje.
+        var ticker = Task.Run(async () =>
+        {
+            try
+            {
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+                while (await timer.WaitForNextTickAsync(ct)) await InvokeAsync(StateHasChanged);
+            }
+            catch (OperationCanceledException) { /* koniec tury */ }
+            catch (ObjectDisposedException) { /* komponent zniknął */ }
+        }, ct);
+
         try
         {
             await foreach (var evt in ChatService.AskAsync(question, history, _document, ct))
             {
                 switch (evt)
                 {
+                    case StageEvent st: ex.SetStage(st); break;
                     case SourcesEvent s: ex.Sources = s.Sources; break;
                     case DocSourcesEvent d: ex.DocFileName = d.FileName; ex.DocFragments = d.Fragments; break;
                     case TokenEvent t: ex.Answer += t.Text; break;
+                    // Delta rozumowania dopisuje (na żywo), ReasoningEvent na końcu NADPISUJE całością —
+                    // to on jest źródłem prawdy (delty mogą się zgubić, jeśli klient dołączył później).
+                    case ReasoningDeltaEvent rd: ex.Reasoning += rd.Text; break;
                     case ReasoningEvent r: ex.Reasoning = r.Text; break;
                     case AbstainEvent a: ex.Abstained = true; ex.AbstainMessage = a.Message; break;
                     case DoneEvent d: ex.Done = true; ex.Check = d.Check; ex.Model = d.Model; ex.Usage = d.Usage; break;
@@ -455,6 +490,8 @@
         finally
         {
             ex.Streaming = false;
+            _cts?.Cancel();          // zatrzymuje ticker (jego jedyne zadanie skończone)
+            await Try(() => ticker); // domknięcie bez wyjątku w tle
             CostGuard.Record(_userId, ex.Answer.Length); // dolicz wyjście do dziennego budżetu
             if (_conversationId is { } cid2)
             {
@@ -516,6 +553,22 @@
         public string? Model { get; set; }
         public bool Streaming { get; set; }
         public bool Done { get; set; }
+
+        /// <summary>Bieżący etap pracy (Zadanie 2/3 planu ROU) — null przed pierwszym raportem
+        /// i po zakończeniu tury.</summary>
+        public StageEvent? Stage { get; private set; }
+
+        private DateTimeOffset _stageStarted = DateTimeOffset.UtcNow;
+
+        /// <summary>Ile sekund trwa BIEŻĄCY etap. Liczone od jego rozpoczęcia, nie od początku tury —
+        /// użytkownik ma widzieć, że praca postępuje, a nie jeden rosnący licznik przez 85 s.</summary>
+        public int StageSeconds => (int)(DateTimeOffset.UtcNow - _stageStarted).TotalSeconds;
+
+        public void SetStage(StageEvent stage)
+        {
+            Stage = stage;
+            _stageStarted = DateTimeOffset.UtcNow;
+        }
         public string? Error { get; set; }
         public Guid? MessageId { get; set; }
         public string? FeedbackGiven { get; set; }
