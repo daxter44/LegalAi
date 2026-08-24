@@ -245,3 +245,46 @@ i `ConnectionStrings__Db` wskazują na maszynę z 3060 zamiast `localhost`).
    `pg_dump` i przenieś dalej, wg `RUNBOOK-EMBEDDING-ZDALNY.md` §K4).
 3. Firewall: jeśli maszyna z 3060 ma zostać w sieci na dłużej, rozważ zawężenie reguł z kroku 2 tylko
    do konkretnego IP MacBooka zamiast całej podsieci.
+
+## 13. Reranker na GPU (2026-08-24 — przeniesienie z CPU MacBooka)
+
+Zmierzone 2026-08-23: reranker (`sdadas/polish-reranker-roberta-v3`, cross-encoder, 355M parametrów)
+uruchomiony na CPU MacBooka (Apple M4, brak GPU obsługiwanego przez `text-embeddings-inference`) —
+**15,3-35,3 s** na batch 32 kandydatów realnej długości (~500 tokenów/pasaż). To 35-90% czasu
+pojedynczej odpowiedzi czatu (`rerank.main` w `PRAWORAG_LOG_TIMING`, patrz `src/PrawoRAG.Domain/LatencyLog.cs`).
+Ten sam batch embeddingów na `tei` (GPU, `.11`) — **0,67 s**. ~23x różnicy — GPU, nie CPU, jest właściwym
+miejscem dla tego modelu.
+
+Ta sama maszyna z 3060 już serwuje embeddingi na GPU (krok 3) — reranker to DRUGA, niezależna instancja
+TEI, tym samym wzorcem (obraz `86-latest`, GPU passthrough), inny port i model:
+
+```bash
+docker run -d --name tei-reranker --gpus all -p 0.0.0.0:8081:80 \
+  -v tei-reranker-cache:/data -e HUGGINGFACE_HUB_CACHE=/data \
+  ghcr.io/huggingface/text-embeddings-inference:86-latest \
+  --model-id sdadas/polish-reranker-roberta-v3 --port 80 --auto-truncate
+```
+
+Jedna fizyczna karta obsługuje oba kontenery jednocześnie bez problemu — oba modele są małe
+(~355M parametrów, ~0,7 GB VRAM fp16 każdy), razem to ułamek 12 GB VRAM karty 3060.
+
+Weryfikacja (z dowolnej maszyny w LAN):
+```bash
+curl http://192.168.100.11:8081/health     # 200 OK
+curl -s -X POST http://192.168.100.11:8081/rerank -H 'Content-Type: application/json' \
+  -d '{"query":"test","texts":["a","b"]}'   # lista {index, score}
+```
+
+**Sprawdź, że kontener faktycznie chodzi na GPU** — `docker logs tei-reranker` powinien wspominać CUDA,
+nie CPU (ta sama pułapka co w kroku 4 dla `tei`).
+
+Firewall: jeśli krok 2 zawężał reguły do konkretnych portów, dodaj **8081** (reranker) obok 5432/8080.
+
+Konfiguracja aplikacji (dowolne środowisko, które ma łączyć się z tym rerankerem zamiast lokalnego):
+```bash
+Reranker__Enabled=true
+Reranker__BaseUrl=http://192.168.100.11:8081
+```
+
+Rollback: `docker rm -f tei-reranker` — nic w bazie/embeddingach się nie zmienia, to czysto dodatkowa,
+niezależna usługa.
