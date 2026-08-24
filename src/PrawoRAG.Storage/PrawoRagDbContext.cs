@@ -51,6 +51,22 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options) : Db
             e.HasIndex(x => x.InForce);
             e.Property(x => x.CaseNumber).HasMaxLength(64);
             e.HasIndex(x => x.CaseNumber); // exact-match po sygnaturze (retrieval strukturalny)
+
+            // P6/AKT-2: TemporalAugmenter.BuildUnabsorbedDatesAsync filtruje DOKŁADNIE tym predykatem
+            // (DocType='act' + EF.Functions.JsonExists, czyli operator jsonb `?`) PRZY KAŻDEJ turze
+            // czatu, która zwróciła choć jeden chunk aktu. Zmierzone 2026-08-24
+            // (docs/PLAN-SIZING-DEPLOY-2026-08-24.md, "Odkrycie 2"): bez indeksu to sekwencyjny skan
+            // 533k wierszy (TypedMetadata to duże, czasem TOASTowane jsonb) — 700ms solo, ale 18-22s
+            // pod 16 równoległymi zapytaniami czatu. To NIE jest problem mocy CPU/RAM (żaden większy
+            // serwer tego nie naprawi) — to brak indeksu pod predykat. Indeks częściowy, zawężony
+            // dokładnie do tego predykatu (ten sam operator `?`, żeby planner rozpoznał implikację):
+            // dziś to garstka aktów z niewchłoniętymi nowelami, więc zapytanie staje się Index Scan
+            // po kilku wierszach zamiast Seq Scan po całej tabeli. Kolumna nośna (`Id`) jest
+            // nieistotna dla wyniku — cały filtr siedzi w `HasFilter`, standardowy idiom Postgresa dla
+            // indeksu "czy w ogóle istnieje pasujący wiersz".
+            e.HasIndex(x => x.Id)
+                .HasDatabaseName("IX_documents_UnabsorbedAmendments")
+                .HasFilter("\"DocType\" = 'act' AND \"TypedMetadata\" IS NOT NULL AND \"TypedMetadata\" ? 'unabsorbedAmendments'");
         });
 
         b.Entity<ChunkEntity>(e =>

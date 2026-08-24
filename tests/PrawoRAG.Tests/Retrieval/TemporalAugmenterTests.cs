@@ -180,4 +180,41 @@ public class TemporalAugmenterTests
 
         Assert.Same(retrieved, result);
     }
+
+    /// <summary>
+    /// IDX-AKT — schemat MUSI mieć indeks częściowy pod predykat prywatnej
+    /// <c>TemporalAugmenter.BuildUnabsorbedDatesAsync</c> (filtr <c>documents</c> po <c>DocType</c>
+    /// i obecności klucza <c>unabsorbedAmendments</c> w <c>TypedMetadata</c>). Ten sam wzorzec
+    /// zagrożenia co <c>HalfvecIndexTests</c>: bez tego indeksu regresja jest CICHA — żaden test
+    /// funkcjonalny jej nie złapie, bo augmenter dalej zwraca poprawny wynik, tylko wolno pod
+    /// obciążeniem. Zmierzone 2026-08-24 (docs/PLAN-SIZING-DEPLOY-2026-08-24.md, „Odkrycie 2"):
+    /// 700ms solo → 18,5-22s pod 16 równoległymi zapytaniami czatu, bo bez indeksu to sekwencyjny skan
+    /// 533k wierszy `documents`. Nie mierzymy tu planu zapytania (jak HalfvecIndexTests — wymagałoby
+    /// korpusu na tyle dużego, żeby planner w ogóle rozważył indeks), tylko że definicja indeksu
+    /// istnieje i zawiera dokładnie ten filtr, którego szuka planner.
+    /// </summary>
+    [Fact] // IDX-AKT1: indeks częściowy documents istnieje z oczekiwanym filtrem
+    public async Task Unabsorbed_amendments_index_exists_with_expected_filter()
+    {
+        await using var db = NewDb();
+        var definition = await IndexDefinitionAsync(db, "documents", "IX_documents_UnabsorbedAmendments");
+
+        Assert.NotNull(definition); // brak indeksu = seq scan po całej tabeli documents przy każdej turze
+        Assert.Contains("WHERE", definition);
+        Assert.Contains("'act'", definition);
+        Assert.Contains("unabsorbedAmendments", definition);
+    }
+
+    private static async Task<string?> IndexDefinitionAsync(PrawoRagDbContext db, string table, string indexName)
+    {
+        var rows = await db.Database
+            .SqlQueryRaw<string?>(
+                """
+                SELECT indexdef AS "Value" FROM pg_indexes
+                WHERE schemaname = current_schema() AND tablename = {0} AND indexname = {1}
+                """,
+                table, indexName)
+            .ToListAsync();
+        return rows.FirstOrDefault();
+    }
 }
