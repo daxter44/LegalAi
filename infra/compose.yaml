@@ -43,6 +43,11 @@ services:
 
   # Reranker (opcjonalny, 5.4) — DRUGA instancja TEI z cross-encoderem (osobny model niż embeddingi).
   # Włącz przez Reranker:Enabled=true w API/Eval i Reranker:BaseUrl wskazujący na tę usługę.
+  # CPU (poniżej) = wariant lokalny/dev na maszynie bez GPU. Zmierzone 2026-08-23 na Apple M4:
+  # 15,3-35,3 s na batch 32 kandydatów realnej długości — 35-90% czasu odpowiedzi czatu
+  # (patrz PRAWORAG_LOG_TIMING, src/PrawoRAG.Domain/LatencyLog.cs). Na maszynie z GPU (patrz
+  # docs/RUNBOOK-3060-DOCKER.md §13) użyj obrazu `:86-latest` (Ampere/RTX 3060) + `deploy.resources.
+  # reservations.devices` jak w usłudze `tei` z tamtego runbooka — zmierzone tam ~23x szybciej.
   # tei-reranker:
   #   image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
   #   command: ["--model-id", "sdadas/polish-reranker-roberta-v3", "--port", "80", "--auto-truncate"]
