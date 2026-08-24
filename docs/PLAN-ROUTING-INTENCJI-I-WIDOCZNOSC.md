@@ -549,9 +549,16 @@ stawkach self-host/Sherlock (€0,56/1M) jest pomijalny — walutą decyzji jest
 
 ## Status implementacji (2026-08-24)
 
-**Fazy 1 i 2 ZROBIONE — Zadania 1–8, 573/573 testów zielone** (było 493 przed sesją; +80 nowych).
-Commity `49b2586`..`1177e07` na `feat/halfvec-retriever`. Flagi nowych zachowań domyślnie OFF,
-więc produkcja zachowuje się jak przed sesją.
+**Fazy 1–4 ZROBIONE — Zadania 1–13, 627/627 testów zielone** (było 493 przed sesją; +134 nowe).
+Commity `49b2586`..`d9501b0` na `feat/halfvec-retriever`.
+
+Stan flag: `RouterEnabled` OFF (czeka na weryfikację E2E — jedyna zmiana mogąca dać odpowiedź bez
+źródeł), `CitationGateEnabled` ON, `GapClosingEnabled` ON z `MaxExtraRounds=1`. Dwie ostatnie są
+włączone, bo poprawiają bezpieczeństwo albo mogą tylko DODAĆ kontekst — żadna nie wnosi nowego
+trybu halucynacji.
+
+Zostają Zadania 14–17: tool calling (`tools`/`tool_choice` + `ToolLoop`), raport `--live-report`,
+integracja z testami manualnymi i pomiarami.
 
 Znaleziska z implementacji, których plan nie przewidział (wszystkie złapane testami, nie lekturą):
 
@@ -570,8 +577,14 @@ Znaleziska z implementacji, których plan nie przewidział (wszystkie złapane t
 5. **Licznik sekund wymaga tickera 1 s** — bez niego czas zamarza między zdarzeniami, a najdłuższy
    etap (~35 s) nie emituje żadnego, czyli zamarzałby dokładnie tam, gdzie dowód życia jest potrzebny.
 
-Do zrobienia: Zadania 9–17 (bramka anty-fabrykacji, pętla domykająca lukę, tool calling, raport,
-integracja).
+6. **`CitationParser.Parse` wymaga artykułu** (znalezisko 3) miało bliźniaka w walidatorze: dosłowne
+   porównanie odwołania z kontekstem produkowało FAŁSZYWE ALARMY na wariantach zapisu, które
+   w aktach są normą — model pisze „art. 5 ust. 1", a tekst jednolity ma „Art. 5. 1.". Bez
+   normalizacji bramka z Zadania 10 zawracałaby poprawne odpowiedzi, czyli zamieniałaby halucynacje
+   na odmowy. Rdzeń numeru porównywany z granicą, żeby „art. 1" nie zaliczyło się jako pokrycie dla
+   „art. 1a" (to inny przepis).
+7. **Nazwy `outcome`/`newQuery` kolidowały** z istniejącymi zmiennymi w `RefusalEvalRunner`
+   i `ChatService` — drobiazg, ale oba wyszły dopiero z kompilatora, nie z lektury.
 
 > **Dla agentów:** kroki mają checkboxy (`- [ ]`). Kolejność zadań = kolejność commitów; każde
 > zadanie zostawia zielony `dotnet test` i działający system (flagi nowych zachowań domyślnie
@@ -739,7 +752,7 @@ prawnych + atrapa routera zawsze-false + `forceRetrieval=true` ⇒ retrieval wyk
       `LegalTokenDetector` + atrapę routera zawsze-false — każde MUSI skończyć w retrievalu.
 - [ ] Commit: `feat(chat): router intencji za flaga - small-talk bez retrievalu, jawnie nieugruntowany`
 
-## Zadanie 9: rozdzielenie i normalizacja sygnału CitationValidator (Faza 3)
+## Zadanie 9 ✅ ZROBIONE: rozdzielenie i normalizacja sygnału CitationValidator (Faza 3)
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Llm/Grounding/CitationValidator.cs`
@@ -755,7 +768,7 @@ prawnych + atrapa routera zawsze-false + `forceRetrieval=true` ⇒ retrieval wyk
       bez modyfikacji asercji.
 - [ ] Commit: `refactor(grounding): rozdziel sygnaly walidatora + normalizacja wariantow zapisu artykulu`
 
-## Zadanie 10: AnswerGate — bramka anty-fabrykacji (Faza 3)
+## Zadanie 10 ✅ ZROBIONE: AnswerGate — bramka anty-fabrykacji (Faza 3)
 
 **Pliki:**
 - Create: `src/PrawoRAG.Llm/Grounding/AnswerGate.cs` (obok `CitationValidator` — konsumuje
@@ -776,7 +789,7 @@ prawnych + atrapa routera zawsze-false + `forceRetrieval=true` ⇒ retrieval wyk
       ⇒ zero regeneracji; flaga OFF ⇒ dzisiejsze zachowanie; `Regenerated` zapisane.
 - [ ] Commit: `feat(grounding): AnswerGate - halucynowane odwolanie nie wychodzi, regeneracja albo odmowa`
 
-## Zadanie 11: IQueryReformulator (Faza 4)
+## Zadanie 11 ✅ ZROBIONE: IQueryReformulator (Faza 4)
 
 **Pliki:**
 - Create: `src/PrawoRAG.Domain/Llm/IQueryReformulator.cs`
@@ -792,7 +805,7 @@ prawnych + atrapa routera zawsze-false + `forceRetrieval=true` ⇒ retrieval wyk
       wyjście == wejście (po trim/case) ⇒ null.
 - [ ] Commit: `feat(llm): IQueryReformulator - pytanie na terminologie ustawowa dla drugiej rundy`
 
-## Zadanie 12: GapClosingRetrieval — wyzwalacz progowy (Faza 4)
+## Zadanie 12 ✅ ZROBIONE: GapClosingRetrieval — wyzwalacz progowy (Faza 4)
 
 **Pliki:**
 - Create: `src/PrawoRAG.Domain/Retrieval/GapClosingRetrieval.cs`
@@ -816,7 +829,7 @@ prawnych + atrapa routera zawsze-false + `forceRetrieval=true` ⇒ retrieval wyk
       `MaxExtraRounds=0` ⇒ dzisiejsze zachowanie.
 - [ ] Commit: `feat(retrieval): GapClosingRetrieval - druga runda po przeformulowaniu zamiast odmowy progowej`
 
-## Zadanie 13: wyzwalacz treściowy + wspólny licznik naprawczy (Faza 4)
+## Zadanie 13 ✅ ZROBIONE: wyzwalacz treściowy + wspólny licznik naprawczy (Faza 4)
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Api/Services/ChatService.cs`
