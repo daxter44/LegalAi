@@ -9,9 +9,24 @@ public sealed record ChatSource(int Index, string Label, string Title, string? U
 
 /// <summary>
 /// Zdarzenia strumienia czatu (in-process, odpowiednik zdarzeń SSE z /api/chat). Kolejność:
-/// (Abstain) | (Sources → Token* → Done). Error może wystąpić w dowolnym momencie.
+/// (Stage* → Abstain) | (Stage* → Sources → (Token | ReasoningDelta)* → Done).
+/// Error może wystąpić w dowolnym momencie.
 /// </summary>
 public abstract record ChatEvent;
+
+/// <summary>
+/// Etap pracy systemu (Zadanie 2/3 planu ROU) — retrieval trwa dziesiątki sekund i bez tego UI
+/// nie miało czym pokazać, że coś się dzieje. <see cref="Stage"/> to nazwa techniczna zgodna
+/// z <c>LatencyLog</c> (dla diagnostyki), <see cref="Label"/> to tekst dla użytkownika.
+/// </summary>
+public sealed record StageEvent(string Stage, string Label, int? Count = null) : ChatEvent;
+
+/// <summary>
+/// Kolejny fragment „rozumowania" modelu, W TRAKCIE generacji (Zadanie 1/3 planu ROU) — w odróżnieniu
+/// od <see cref="ReasoningEvent"/>, który przychodzi RAZ na końcu. Suma delt == treść tego eventu.
+/// UI dopisuje delty do akordeonu, żeby użytkownik widział pracę modelu, a nie 40 s ciszy.
+/// </summary>
+public sealed record ReasoningDeltaEvent(string Text) : ChatEvent;
 
 /// <summary>Retrieval zwrócił źródła — pokazujemy je PRZED generacją (transparentność).</summary>
 public sealed record SourcesEvent(IReadOnlyList<ChatSource> Sources) : ChatEvent;

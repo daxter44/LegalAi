@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Channels;
 using Microsoft.Extensions.Options;
 using PrawoRAG.Domain;
 using PrawoRAG.Domain.Embeddings;
@@ -26,19 +27,46 @@ public sealed class ChatService(
     {
         var chatSw = System.Diagnostics.Stopwatch.StartNew();
         var o = options.Value;
+
+        // Kanał zdarzeń z CALLBACKÓW (Zadanie 3 planu ROU). AskAsync jest iteratorem asynchronicznym,
+        // więc z callbacku (IProgress retrievalu, OnReasoningDelta providera) NIE DA SIĘ zrobić
+        // `yield return` — a oba powstają wewnątrz `await`owanych wywołań. Callbacki piszą tutaj,
+        // a główna pętla drenuje kanał w miejscach, gdzie może emitować.
+        var side = Channel.CreateUnbounded<ChatEvent>(
+            new UnboundedChannelOptions { SingleReader = true });
+        // SyncProgress, NIE Progress<T>: ten drugi dyspozycjonuje callback asynchronicznie, więc etapy
+        // docierały po pracy, którą opisują, i w losowej kolejności (patrz SyncProgress).
+        var progress = new SyncProgress<RetrievalStage>(s =>
+            side.Writer.TryWrite(new StageEvent(s.Name, s.Label, s.Count)));
+
         RetrievalQuery Query(string text) => new()
         {
             Text = text,
             TopK = o.TopK,
             CandidatesPerPath = o.CandidatesPerPath,
             MinChunkTokens = o.MinChunkTokens,
+            Progress = progress,
         };
 
         // Follow-upy: dopytanie („a co z § 2?") samo embeduje się bezwartościowo, więc retrieval liczony
         // 2x (surowy vs kontekstowy) i wybór wariantu — CAŁOŚĆ w FollowUpSelector, wspólnym dla /api/chat,
         // tego serwisu i evalu. Nie kopiować tej logiki z powrotem: rozjazd kopii = rozjazd metryki.
-        var selection = await FollowUpSelector.SelectAsync(
+        var selectionTask = FollowUpSelector.SelectAsync(
             retriever, Query, question, history, o.FollowUpSignalMargin, o.RerankSignalMargin, ct);
+
+        // Etapy retrievalu płyną do UI W TRAKCIE — bez tego użytkownik ma kilkadziesiąt sekund ciszy.
+        // Jeden oczekujący waiter naraz (odtwarzany po każdym odczycie), żeby nie zostawiać za sobą
+        // porzuconych rejestracji na kanale.
+        var waitForStage = side.Reader.WaitToReadAsync(ct).AsTask();
+        while (true)
+        {
+            var finished = await Task.WhenAny(selectionTask, waitForStage);
+            while (side.Reader.TryRead(out var pending)) yield return pending;
+            if (finished == (Task)selectionTask) break;
+            waitForStage = side.Reader.WaitToReadAsync(ct).AsTask();
+        }
+
+        var selection = await selectionTask;
         var (query, result) = (selection.Query, selection.Result);
 
         // BRAMKA ABSTYNENCJI — brak pokrycia w źródłach → nie generujemy.
@@ -53,6 +81,7 @@ public sealed class ChatService(
         // dotyczące pytanych artykułów (best-effort — awaria nie blokuje odpowiedzi). Dostaje EFEKTYWNE
         // zapytanie (może być sklejone z historią) — to ono niesie cytaty z poprzednich tur.
         var chunks = result.Chunks;
+        yield return new StageEvent("augment", "Sprawdzam nowelizacje…", result.Chunks.Count);
         try { chunks = await LatencyLog.TimeAsync("augment", () => augmenter.AugmentAsync(query, result.Chunks, ct)); }
         catch { /* best-effort */ }
 
@@ -83,17 +112,32 @@ public sealed class ChatService(
         // je wystawił (Gemini/Gemma) — provider oddaje je osobno, poza widocznym strumieniem.
         LlmUsage? usage = null;
         string? reasoning = null;
-        request = request with { OnUsage = u => usage = u, OnReasoning = r => reasoning = r };
+        request = request with
+        {
+            OnUsage = u => usage = u,
+            OnReasoning = r => reasoning = r,
+            // Rozumowanie NA ŻYWO (Zadanie 1): ~41 z ~85 s odpowiedzi. Leci tym samym kanałem co etapy,
+            // bo callback providera też nie może `yield return`.
+            OnReasoningDelta = d => side.Writer.TryWrite(new ReasoningDeltaEvent(d)),
+        };
+
+        yield return new StageEvent("llm", "Piszę odpowiedź…", sources.Count);
 
         var full = new StringBuilder();
         var llmSw = System.Diagnostics.Stopwatch.StartNew();
         var firstTokenMs = -1L;
         await foreach (var delta in llm.StreamCompletionAsync(request, ct))
         {
+            // Delty rozumowania wyprzedzają widoczny tekst (model najpierw myśli) — drenaż PRZED
+            // tokenem zachowuje realną kolejność zdarzeń w UI.
+            while (side.Reader.TryRead(out var thought)) yield return thought;
             if (firstTokenMs < 0) firstTokenMs = llmSw.ElapsedMilliseconds;
             full.Append(delta);
             yield return new TokenEvent(delta);
         }
+        // Model, który TYLKO myślał (albo domknął myślenie po ostatnim widocznym tokenie) — bez tego
+        // ogona ostatnie delty rozumowania zginęłyby.
+        while (side.Reader.TryRead(out var lastThought)) yield return lastThought;
         LatencyLog.Mark("llm.first_token", firstTokenMs);
         LatencyLog.Mark("llm.total", llmSw.ElapsedMilliseconds);
 

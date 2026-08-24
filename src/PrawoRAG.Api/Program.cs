@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -254,9 +255,43 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
             .Select(t => new ChatTurn(t.Question, t.Answer))
             .ToList();
 
+        // Etapy pracy na żywo (Zadanie 2/3 planu ROU) — parytet z ChatService. Tu prościej niż tam:
+        // Send jest zwykłą metodą async, więc callback może pisać wprost do strumienia SSE (nie ma
+        // ograniczenia `yield return` z iteratora). Kolejność zdarzeń pilnuje semafor: SSE to jeden
+        // strumień, a callbacki mogą wpaść w trakcie innego zapisu.
+        // Zdarzenia informacyjne (etap pracy, delta rozumowania) powstają w CALLBACKACH, w środku
+        // `await`owanych wywołań — nie da się ich stąd awaitować. Kolejka + jedna pompa: kolejność
+        // zachowana (Task.Run per zdarzenie ją gubi), zapisy nie przeplatają się z `Send` z głównego
+        // toru, a błędy są połykane — informacyjny event nie może wywalić odpowiedzi ani zostawić
+        // niezaobserwowanego wyjątku, gdy klient już odszedł.
+        var info = Channel.CreateUnbounded<(string Ev, object Data)>(
+            new UnboundedChannelOptions { SingleReader = true });
+        var sendLock = new SemaphoreSlim(1, 1);
+        async Task SendSafe(string ev, object data)
+        {
+            await sendLock.WaitAsync(ct);
+            try { await Send(ev, data); }
+            finally { sendLock.Release(); }
+        }
+        var infoPump = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var (ev, data) in info.Reader.ReadAllAsync(ct))
+                    try { await SendSafe(ev, data); } catch { /* informacyjne — nigdy nie psuje odpowiedzi */ }
+            }
+            catch (OperationCanceledException) { /* klient odszedł */ }
+        }, CancellationToken.None);
+        void SendInfo(string ev, object data) => info.Writer.TryWrite((ev, data));
+
+        // SyncProgress, NIE Progress<T> — ten drugi dyspozycjonuje asynchronicznie i miesza kolejność.
+        var stageSink = new SyncProgress<RetrievalStage>(s =>
+            SendInfo("stage", new { stage = s.Name, label = s.Label, count = s.Count }));
+
         // Follow-upy: podwójny retrieval + wybór wariantu — wspólny FollowUpSelector (parytet z UI/evalem).
         var selection = await FollowUpSelector.SelectAsync(
-            retriever, text => ToQuery(text, req.Filters, o.TopK, o), req.Question, history,
+            retriever, text => ToQuery(text, req.Filters, o.TopK, o) with { Progress = stageSink },
+            req.Question, history,
             o.FollowUpSignalMargin, o.RerankSignalMargin, ct);
         var (q, result) = (selection.Query, selection.Result);
 
@@ -284,7 +319,14 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
 
         // Tokeny in/out (parytet z UI): zbierane zawsze, w evencie done tylko przy włączonej fladze.
         LlmUsage? usage = null;
-        request = request with { OnUsage = u => usage = u };
+        request = request with
+        {
+            OnUsage = u => usage = u,
+            // Rozumowanie na żywo (parytet z ChatService) — ~41 z ~85 s odpowiedzi.
+            OnReasoningDelta = d => SendInfo("reasoning_delta", new { text = d }),
+        };
+
+        await SendSafe("stage", new { stage = "llm", label = "Piszę odpowiedź…", count = (int?)sources.Count });
 
         var full = new StringBuilder();
         var llmSw = System.Diagnostics.Stopwatch.StartNew();
@@ -293,10 +335,15 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
         {
             if (firstTokenMs < 0) firstTokenMs = llmSw.ElapsedMilliseconds;
             full.Append(delta);
-            await Send("token", new { text = delta });
+            await SendSafe("token", new { text = delta });
         }
         LatencyLog.Mark("llm.first_token", firstTokenMs);
         LatencyLog.Mark("llm.total", llmSw.ElapsedMilliseconds);
+
+        // Domknięcie pompy PRZED „done": inaczej zaległa delta rozumowania albo etap wypadłyby PO
+        // zdarzeniu końcowym, a klient (Chat.razor) traktuje „done" jako koniec tury.
+        info.Writer.TryComplete();
+        await infoPump;
 
         // ANTY-FABRYKACJA — czy cytaty istnieją w dostarczonym kontekście.
         var contextTexts = chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
