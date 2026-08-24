@@ -167,10 +167,13 @@ public sealed class ChatService(
             .Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
         var docTexts = docFragments.Select(f => f.Text).ToList();
 
-        // Pętla generacji z JEDNĄ próbą naprawy (Zadanie 10). Budżet naprawczy tury jest wspólny —
-        // patrz `regenerated`; Zadania 12/13 dokładają do niego dodatkową rundę retrievalu, więc
-        // licznik musi być JEDEN, inaczej mechanizmy naprawcze skumulują się i tura puchnie do minut.
+        // WSPÓLNY BUDŻET NAPRAWCZY TURY (Zadania 10/12/13) — jeden licznik dla wszystkich mechanizmów
+        // naprawczych, bo inaczej by się skumulowały: regeneracja bramki + druga runda retrievalu
+        // + regeneracja po odmowie treściowej to trzy dodatkowe wywołania modelu, czyli tura licząca
+        // się w minutach. `extraRoundUsed` startuje jako true, gdy GapClosingRetrieval już swoją
+        // dodatkową rundę wykorzystał (Zadanie 12) — wtedy wyzwalacz treściowy nie odpala kolejnej.
         var regenerated = false;
+        var extraRoundUsed = outcome.ExtraRound;
         var gateEnabled = _grounding.CitationGateEnabled;
         CitationCheck check;
         string answer;
@@ -200,6 +203,48 @@ public sealed class ChatService(
 
             answer = full.ToString();
             check = CitationValidator.Validate(answer, contextTexts, sources.Count, docTexts, docFragments.Count);
+
+            // WYZWALACZ TREŚCIOWY (Zadanie 13) — WAŻNIEJSZY z dwóch wyzwalaczy pętli domykającej.
+            // Bramka abstynencji patrzy na sygnał retrievalu, ale odmowa z reguły 3 promptu żyje
+            // w TREŚCI odpowiedzi: model dostał źródła ponad progiem i sam orzekł, że nie odpowiadają
+            // na pytanie. Ten przypadek jest u nas normą, nie wyjątkiem — odmowy są treściowe,
+            // nie progowe — a bez tego wyzwalacza pętla domykająca w ogóle by go nie widziała.
+            if (o.GapClosingEnabled && !extraRoundUsed && o.MaxExtraRounds > 0 && reformulator is not null
+                && answer.Contains(AbstentionPolicy.Message, StringComparison.Ordinal))
+            {
+                var retryQuery = await reformulator.ReformulateAsync(question, ct);
+                if (retryQuery is not null)
+                {
+                    extraRoundUsed = true;
+                    yield return new RetryingRetrievalEvent(retryQuery,
+                        "model uznał, że źródła nie odpowiadają na pytanie");
+
+                    var retryOutcome = await GapClosingRetrieval.RetrieveAsync(
+                        retriever, Query, retryQuery, history, o.FollowUpSignalMargin, o.RerankSignalMargin,
+                        o.AbstentionThreshold, reformulator: null, maxExtraRounds: 0, ct);
+                    while (side.Reader.TryRead(out var stage)) yield return stage;
+
+                    // Nowe źródła TYLKO jeśli faktycznie mają pokrycie — inaczej druga próba
+                    // generowałaby na gorszym kontekście niż pierwsza.
+                    if (!AbstentionPolicy.ShouldAbstain(retryOutcome.Result, o.AbstentionThreshold))
+                    {
+                        chunks = GroundedPrompt.OrderForGrounding(retryOutcome.Result.Chunks);
+                        (request, sources) = GroundedPrompt.Build(question, chunks, history, docTexts);
+                        contextTexts = chunks
+                            .Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
+                        request = request with
+                        {
+                            OnUsage = u => usage = u,
+                            OnReasoning = r => reasoning = r,
+                            OnReasoningDelta = d => side.Writer.TryWrite(new ReasoningDeltaEvent(d)),
+                        };
+                        yield return new SourcesEvent(sources
+                            .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet,
+                                s.AmendmentEffectiveDate, s.LegalBases)).ToList());
+                        continue; // druga generacja, na NOWYM kontekście
+                    }
+                }
+            }
 
             if (!gateEnabled) break; // flaga OFF = dzisiejsze zachowanie (badge, odpowiedź wychodzi)
 

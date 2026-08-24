@@ -1,0 +1,228 @@
+using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Options;
+using PrawoRAG.Api.Services;
+using PrawoRAG.Domain;
+using PrawoRAG.Domain.Llm;
+using PrawoRAG.Domain.Retrieval;
+using PrawoRAG.Tests.Fakes;
+
+namespace PrawoRAG.Tests.Chat;
+
+/// <summary>
+/// T-CONTENT-RETRY (Zadanie 13 planu ROU) — wyzwalacz TREŚCIOWY pętli domykającej + WSPÓLNY BUDŻET
+/// naprawczy tury.
+///
+/// Dlaczego ten wyzwalacz jest WAŻNIEJSZY od progowego: bramka abstynencji patrzy na sygnał
+/// retrievalu, ale odmowa z reguły 3 promptu żyje w TREŚCI odpowiedzi — model dostał źródła ponad
+/// progiem i sam orzekł, że nie odpowiadają na pytanie. W tym projekcie to norma, nie wyjątek
+/// („odmowy są treściowe, nie progowe"), więc bez tego wyzwalacza pętla domykająca w ogóle by tych
+/// przypadków nie widziała.
+///
+/// Drugi temat tego pliku to budżet: regeneracja bramki + druga runda retrievalu + regeneracja po
+/// odmowie treściowej to trzy dodatkowe wywołania modelu. Bez wspólnego licznika tura liczyłaby
+/// się w minutach.
+/// </summary>
+public class ContentRefusalRetryTests
+{
+    private static RetrievedChunk Chunk(string text) => new()
+    {
+        ChunkId = Guid.CreateVersion7(), DocumentId = Guid.CreateVersion7(), Text = text,
+        Source = "ELI", DocType = DocTypes.Act, Title = "Ustawa", Score = 1.0, Similarity = 0.9,
+    };
+
+    private sealed class CountingRetriever(params RetrievalResult[] results) : IRetriever
+    {
+        public int Calls { get; private set; }
+
+        public Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, CancellationToken ct)
+        {
+            var index = Math.Min(Calls++, results.Length - 1);
+            return Task.FromResult(results[index]);
+        }
+    }
+
+    private sealed class NoOpAugmenter : ITemporalAugmenter
+    {
+        public Task<IReadOnlyList<RetrievedChunk>> AugmentAsync(
+            RetrievalQuery query, IReadOnlyList<RetrievedChunk> retrieved, CancellationToken ct)
+            => Task.FromResult(retrieved);
+    }
+
+    private sealed class SequenceLlm(params string[] answers) : ILlmProvider
+    {
+        private int _call;
+        public int Calls => _call;
+        public string ModelId => "fake";
+
+        public async IAsyncEnumerable<string> StreamCompletionAsync(
+            LlmRequest request, [EnumeratorCancellation] CancellationToken ct)
+        {
+            yield return answers[Math.Min(_call++, answers.Length - 1)];
+            await Task.CompletedTask;
+        }
+    }
+
+    private sealed class CountingReformulator(string? result) : IQueryReformulator
+    {
+        public int Calls { get; private set; }
+
+        public Task<string?> ReformulateAsync(string question, CancellationToken ct)
+        {
+            Calls++;
+            return Task.FromResult(result);
+        }
+    }
+
+    private static ChatService Service(
+        IRetriever retriever, ILlmProvider llm, IQueryReformulator? reformulator,
+        bool gapClosing = true, int maxExtraRounds = 1) =>
+        new(retriever, new NoOpAugmenter(), llm,
+            Options.Create(new RetrievalOptions
+            {
+                GapClosingEnabled = gapClosing,
+                MaxExtraRounds = maxExtraRounds,
+            }),
+            new FakeEmbeddingProvider(), Options.Create(new DocumentsOptions { Enabled = false }),
+            router: null, Options.Create(new GroundingOptions()), reformulator);
+
+    private static async Task<List<ChatEvent>> Drain(IAsyncEnumerable<ChatEvent> events)
+    {
+        var list = new List<ChatEvent>();
+        await foreach (var e in events) list.Add(e);
+        return list;
+    }
+
+    /// <summary>Wynik z pokryciem — bramka progowa go przepuszcza, więc odmowa może przyjść
+    /// wyłącznie z TREŚCI odpowiedzi.</summary>
+    private static RetrievalResult Covered(string text) => new([Chunk(text)], 0.9);
+
+    [Fact] // Odmowa TRESCIOWA => przeformulowanie, druga runda, druga generacja na NOWYCH zrodlach.
+    public async Task Content_refusal_triggers_second_round()
+    {
+        var retriever = new CountingRetriever(
+            Covered("nietrafiony przepis"),
+            Covered("Prezes UODO — zgłoszenie naruszenia"));
+        var llm = new SequenceLlm(AbstentionPolicy.Message, "Zgłaszasz Prezesowi UODO [1].");
+        var reformulator = new CountingReformulator("zgłoszenie naruszenia Prezesowi UODO");
+
+        var events = await Drain(Service(retriever, llm, reformulator)
+            .AskAsync("komu zgłosić wyciek?", [], null, default));
+
+        Assert.Equal(1, reformulator.Calls);
+        Assert.Equal(2, retriever.Calls);
+        Assert.Equal(2, llm.Calls);
+        Assert.Contains(events, e => e is RetryingRetrievalEvent);
+        // Drugie źródła pokazane użytkownikowi — inaczej panel nie zgadzałby się z odpowiedzią.
+        Assert.Equal(2, events.OfType<SourcesEvent>().Count());
+        Assert.DoesNotContain(AbstentionPolicy.Message,
+            string.Concat(events.OfType<TokenEvent>().Select(t => t.Text))[^30..]);
+    }
+
+    [Fact] // Odpowiedz BEZ frazy odmowy => zero przeformulowania i zero dodatkowej rundy.
+    public async Task Normal_answer_does_not_trigger_retry()
+    {
+        var retriever = new CountingRetriever(Covered("art. 415"));
+        var llm = new SequenceLlm("Ponosisz odpowiedzialność [1].");
+        var reformulator = new CountingReformulator("inne");
+
+        await Drain(Service(retriever, llm, reformulator).AskAsync("pytanie", [], null, default));
+
+        Assert.Equal(0, reformulator.Calls);
+        Assert.Equal(1, retriever.Calls);
+        Assert.Equal(1, llm.Calls);
+    }
+
+    [Fact] // BUDZET: gdy GapClosingRetrieval juz zuzyl dodatkowa runde (odmowa PROGOWA), wyzwalacz
+           // tresciowy NIE odpala kolejnej. Inaczej tura mialaby trzy rundy retrievalu.
+    public async Task Budget_shared_with_threshold_trigger()
+    {
+        var retriever = new CountingRetriever(
+            new RetrievalResult([Chunk("słaby")], 0.20),   // runda 1: pod progiem → GapClosing działa
+            Covered("po przeformułowaniu"));               // runda 2: pokrycie jest
+        var llm = new SequenceLlm(AbstentionPolicy.Message); // ale model i tak odmawia treściowo
+        var reformulator = new CountingReformulator("inne zapytanie");
+
+        var events = await Drain(Service(retriever, llm, reformulator)
+            .AskAsync("pytanie", [], null, default));
+
+        Assert.Equal(2, retriever.Calls);      // DOKŁADNIE dwie rundy, nie trzy
+        Assert.Equal(1, reformulator.Calls);   // przeformułowanie tylko raz
+        Assert.Equal(1, llm.Calls);            // i jedna generacja
+        Assert.Contains(events, e => e is RetryingRetrievalEvent);
+    }
+
+    [Fact] // Reformulator zwrocil null => dzisiejsze zachowanie (odmowa tresciowa wychodzi jak dotad).
+    public async Task Null_reformulation_keeps_content_refusal()
+    {
+        var retriever = new CountingRetriever(Covered("x"));
+        var llm = new SequenceLlm(AbstentionPolicy.Message);
+        var reformulator = new CountingReformulator(null);
+
+        var events = await Drain(Service(retriever, llm, reformulator)
+            .AskAsync("pytanie", [], null, default));
+
+        Assert.Equal(1, retriever.Calls);
+        Assert.Equal(1, llm.Calls);
+        Assert.DoesNotContain(events, e => e is RetryingRetrievalEvent);
+        Assert.Contains(AbstentionPolicy.Message,
+            string.Concat(events.OfType<TokenEvent>().Select(t => t.Text)));
+    }
+
+    [Fact] // Druga runda BEZ pokrycia => nie podmieniamy kontekstu na gorszy; odmowa zostaje.
+    public async Task Second_round_without_coverage_keeps_first_context()
+    {
+        var retriever = new CountingRetriever(
+            Covered("pierwszy kontekst"),
+            new RetrievalResult([Chunk("gorszy")], 0.10)); // pod progiem
+        var llm = new SequenceLlm(AbstentionPolicy.Message);
+        var reformulator = new CountingReformulator("inne");
+
+        var events = await Drain(Service(retriever, llm, reformulator)
+            .AskAsync("pytanie", [], null, default));
+
+        Assert.Equal(2, retriever.Calls);
+        Assert.Equal(1, llm.Calls);                                   // druga generacja nie ma sensu
+        Assert.Single(events.OfType<SourcesEvent>());                  // panel źródeł bez zmian
+    }
+
+    [Fact] // Flaga GapClosingEnabled=false => wyzwalacz tresciowy nieaktywny (wylacznik dziala na oba).
+    public async Task Flag_off_disables_content_trigger()
+    {
+        var retriever = new CountingRetriever(Covered("x"));
+        var llm = new SequenceLlm(AbstentionPolicy.Message);
+        var reformulator = new CountingReformulator("inne");
+
+        await Drain(Service(retriever, llm, reformulator, gapClosing: false)
+            .AskAsync("pytanie", [], null, default));
+
+        Assert.Equal(0, reformulator.Calls);
+        Assert.Equal(1, retriever.Calls);
+    }
+
+    [Fact] // MaxExtraRounds=0 => tak samo, bez dodatkowej rundy.
+    public async Task Zero_extra_rounds_disables_content_trigger()
+    {
+        var retriever = new CountingRetriever(Covered("x"));
+        var llm = new SequenceLlm(AbstentionPolicy.Message);
+        var reformulator = new CountingReformulator("inne");
+
+        await Drain(Service(retriever, llm, reformulator, maxExtraRounds: 0)
+            .AskAsync("pytanie", [], null, default));
+
+        Assert.Equal(0, reformulator.Calls);
+        Assert.Equal(1, retriever.Calls);
+    }
+
+    [Fact] // Brak reformulatora w kontenerze => zero zmian wzgledem dzisiejszego zachowania.
+    public async Task Missing_reformulator_keeps_today_behaviour()
+    {
+        var retriever = new CountingRetriever(Covered("x"));
+        var llm = new SequenceLlm(AbstentionPolicy.Message);
+
+        var events = await Drain(Service(retriever, llm, reformulator: null)
+            .AskAsync("pytanie", [], null, default));
+
+        Assert.Equal(1, retriever.Calls);
+        Assert.DoesNotContain(events, e => e is RetryingRetrievalEvent);
+    }
+}
