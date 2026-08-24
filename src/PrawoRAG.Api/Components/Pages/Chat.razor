@@ -101,7 +101,13 @@
                     {
                         <div class="verify-banner" role="note">
                             ⚖️ Wstępny research do weryfikacji — sprawdź w źródłach poniżej.
-                            @if (ex.Check is { IsClean: false })
+                            @* Po Zadaniu 10 ⚠ znaczy „odpowiedź była poprawiana", nie „wypuściliśmy
+                               brudną" — brudna po drugiej próbie w ogóle nie wychodzi (odmowa). *@
+                            @if (ex.Regenerated)
+                            {
+                                <span class="badge badge-ok" title="Pierwsza wersja przywołała odwołania nieobecne w źródłach — odpowiedź została napisana ponownie na tych samych źródłach">↻ odpowiedź poprawiona</span>
+                            }
+                            else if (ex.Check is { IsClean: false })
                             {
                                 <span class="badge badge-danger" title="Model mógł przywołać coś spoza źródeł">⚠ cytaty do sprawdzenia</span>
                             }
@@ -483,6 +489,9 @@
                 {
                     case StageEvent st: ex.SetStage(st); break;
                     case NoRetrievalEvent nr: ex.NoRetrievalReason = nr.Reason; break;
+                    // Bramka zawróciła odpowiedź: czyścimy tekst, żeby druga wersja nie dopisała się
+                    // do pierwszej (brudnej) — użytkownik ma zobaczyć poprawioną odpowiedź, nie sklejkę.
+                    case RegeneratingEvent: ex.Answer = ""; ex.Regenerated = true; break;
                     case SourcesEvent s: ex.Sources = s.Sources; break;
                     case DocSourcesEvent d: ex.DocFileName = d.FileName; ex.DocFragments = d.Fragments; break;
                     case TokenEvent t: ex.Answer += t.Text; break;
@@ -513,7 +522,7 @@
                 var route = ex.NoRetrievalReason is null ? ChatRoutes.Retrieval : ChatRoutes.Smalltalk;
                 ex.MessageId = await Try(() => Store.AddAssistantMessageAsync(
                     cid2, content, ex.Sources, ex.Abstained, ex.Check?.IsClean, ex.Model,
-                    CancellationToken.None, route));
+                    CancellationToken.None, route, ex.Regenerated));
             }
             _busy = false;
             await RefreshConversationsAsync(); // nowa rozmowa/tytuł pojawia się w sidebarze
@@ -577,6 +586,9 @@
         /// <summary>Uzasadnienie routera, gdy tura poszła ścieżką BEZ retrievalu (Zadanie 8) —
         /// niepuste ⇒ odpowiedź nie jest oparta na źródłach i UI musi to jawnie pokazać.</summary>
         public string? NoRetrievalReason { get; set; }
+
+        /// <summary>Czy bramka anty-fabrykacji zawróciła odpowiedź do poprawy (Zadanie 10).</summary>
+        public bool Regenerated { get; set; }
 
         private DateTimeOffset _stageStarted = DateTimeOffset.UtcNow;
 

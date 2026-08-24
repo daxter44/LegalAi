@@ -17,9 +17,12 @@ namespace PrawoRAG.Api.Services;
 public sealed class ChatService(
     IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> options,
     IEmbeddingProvider embedder, IOptions<DocumentsOptions> documents,
-    IIntentRouter? router = null) : IChatService
+    IIntentRouter? router = null, IOptions<GroundingOptions>? groundingOptions = null) : IChatService
 {
     private readonly bool _documentsEnabled = documents.Value.Enabled;
+
+    /// <summary>Brak wstrzykniętych opcji (starsze testy) = bramka WŁĄCZONA, jak w produkcji.</summary>
+    private readonly GroundingOptions _grounding = groundingOptions?.Value ?? new GroundingOptions();
 
     /// <summary>Domyślna ścieżka (router decyduje) — jawnie na klasie, nie tylko jako domyślna metoda
     /// interfejsu, żeby istniejące wywołania po typie konkretnym (UI, testy) działały bez zmian.</summary>
@@ -149,36 +152,75 @@ public sealed class ChatService(
             OnReasoningDelta = d => side.Writer.TryWrite(new ReasoningDeltaEvent(d)),
         };
 
-        yield return new StageEvent("llm", "Piszę odpowiedź…", sources.Count);
+        // ANTY-FABRYKACJA — czy cytaty [n]/[Dk]/artykuły/sygnatury istnieją w dostarczonym kontekście.
+        var contextTexts = chunks
+            .Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
+        var docTexts = docFragments.Select(f => f.Text).ToList();
 
-        var full = new StringBuilder();
-        var llmSw = System.Diagnostics.Stopwatch.StartNew();
-        var firstTokenMs = -1L;
-        await foreach (var delta in llm.StreamCompletionAsync(request, ct))
+        // Pętla generacji z JEDNĄ próbą naprawy (Zadanie 10). Budżet naprawczy tury jest wspólny —
+        // patrz `regenerated`; Zadania 12/13 dokładają do niego dodatkową rundę retrievalu, więc
+        // licznik musi być JEDEN, inaczej mechanizmy naprawcze skumulują się i tura puchnie do minut.
+        var regenerated = false;
+        var gateEnabled = _grounding.CitationGateEnabled;
+        CitationCheck check;
+        string answer;
+
+        while (true)
         {
-            // Delty rozumowania wyprzedzają widoczny tekst (model najpierw myśli) — drenaż PRZED
-            // tokenem zachowuje realną kolejność zdarzeń w UI.
-            while (side.Reader.TryRead(out var thought)) yield return thought;
-            if (firstTokenMs < 0) firstTokenMs = llmSw.ElapsedMilliseconds;
-            full.Append(delta);
-            yield return new TokenEvent(delta);
+            yield return new StageEvent("llm", regenerated ? "Poprawiam odpowiedź…" : "Piszę odpowiedź…",
+                sources.Count);
+
+            var full = new StringBuilder();
+            var llmSw = System.Diagnostics.Stopwatch.StartNew();
+            var firstTokenMs = -1L;
+            await foreach (var delta in llm.StreamCompletionAsync(request, ct))
+            {
+                // Delty rozumowania wyprzedzają widoczny tekst (model najpierw myśli) — drenaż PRZED
+                // tokenem zachowuje realną kolejność zdarzeń w UI.
+                while (side.Reader.TryRead(out var thought)) yield return thought;
+                if (firstTokenMs < 0) firstTokenMs = llmSw.ElapsedMilliseconds;
+                full.Append(delta);
+                yield return new TokenEvent(delta);
+            }
+            // Model, który TYLKO myślał (albo domknął myślenie po ostatnim widocznym tokenie) — bez tego
+            // ogona ostatnie delty rozumowania zginęłyby.
+            while (side.Reader.TryRead(out var lastThought)) yield return lastThought;
+            LatencyLog.Mark(regenerated ? "llm.first_token.retry" : "llm.first_token", firstTokenMs);
+            LatencyLog.Mark(regenerated ? "llm.total.retry" : "llm.total", llmSw.ElapsedMilliseconds);
+
+            answer = full.ToString();
+            check = CitationValidator.Validate(answer, contextTexts, sources.Count, docTexts, docFragments.Count);
+
+            if (!gateEnabled) break; // flaga OFF = dzisiejsze zachowanie (badge, odpowiedź wychodzi)
+
+            var decision = AnswerGate.Decide(check, alreadyRegenerated: regenerated);
+            if (decision.Verdict == AnswerVerdict.Pass) break;
+
+            if (decision.Verdict == AnswerVerdict.Refuse)
+            {
+                // Druga próba też cytuje coś, czego nie ma w źródłach — NIE wypuszczamy.
+                if (!string.IsNullOrWhiteSpace(reasoning)) yield return new ReasoningEvent(reasoning);
+                yield return new AbstainEvent(decision.Text, result.MaxSimilarity);
+                LatencyLog.Mark("chat.total", chatSw.ElapsedMilliseconds);
+                yield return new DoneEvent(Abstained: true, Model: llm.ModelId, Check: check, Usage: usage);
+                yield break;
+            }
+
+            // Regeneracja na TYM SAMYM kontekście — dodatkowa runda retrievalu to Zadanie 12, nie tutaj.
+            regenerated = true;
+            yield return new RegeneratingEvent(decision.Text);
+            request = request with
+            {
+                Messages = [.. request.Messages, new ChatMessage(ChatRole.User, decision.Text)],
+            };
         }
-        // Model, który TYLKO myślał (albo domknął myślenie po ostatnim widocznym tokenie) — bez tego
-        // ogona ostatnie delty rozumowania zginęłyby.
-        while (side.Reader.TryRead(out var lastThought)) yield return lastThought;
-        LatencyLog.Mark("llm.first_token", firstTokenMs);
-        LatencyLog.Mark("llm.total", llmSw.ElapsedMilliseconds);
 
         if (!string.IsNullOrWhiteSpace(reasoning))
             yield return new ReasoningEvent(reasoning);
 
-        // ANTY-FABRYKACJA — czy cytaty [n]/[Dk]/artykuły/sygnatury istnieją w dostarczonym kontekście.
-        var contextTexts = chunks
-            .Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
-        var check = CitationValidator.Validate(full.ToString(), contextTexts, sources.Count,
-            docFragments.Select(f => f.Text).ToList(), docFragments.Count);
         LatencyLog.Mark("chat.total", chatSw.ElapsedMilliseconds);
-        yield return new DoneEvent(Abstained: false, Model: llm.ModelId, Check: check, Usage: usage);
+        yield return new DoneEvent(Abstained: false, Model: llm.ModelId, Check: check, Usage: usage,
+            Regenerated: regenerated);
     }
 
     /// <summary>

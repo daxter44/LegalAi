@@ -29,6 +29,7 @@ builder.Services.AddScoped<IRetriever, HybridRetriever>();
 builder.Services.AddScoped<ITemporalAugmenter, TemporalAugmenter>(); // AKT-2: dokłada świeże nowele
 builder.Services.Configure<RetrievalOptions>(builder.Configuration.GetSection("Retrieval"));
 builder.Services.Configure<DiagnosticsOptions>(builder.Configuration.GetSection("Diagnostics"));
+builder.Services.Configure<GroundingOptions>(builder.Configuration.GetSection("Grounding"));
 builder.Services.Configure<DocumentsOptions>(builder.Configuration.GetSection(DocumentsOptions.SectionName));
 
 // --- Analiza dokumentów (spike SPK) — map-reduce per jednostka; Analysis:Enabled=false (domyślnie)
@@ -421,6 +422,18 @@ public sealed class RetrievalOptions
     /// (100% pytań prawnych do bazy), a nie założona.
     /// </summary>
     public bool RouterEnabled { get; set; }
+}
+
+/// <summary>Ugruntowanie odpowiedzi — bramki chroniące rdzeń wartości produktu.</summary>
+public sealed class GroundingOptions
+{
+    /// <summary>
+    /// Bramka anty-fabrykacji (Zadanie 10 planu ROU): odpowiedź powołująca się na artykuł/sygnaturę
+    /// nieobecne w dostarczonym kontekście jest REGENEROWANA, a gdy druga próba też jest brudna —
+    /// nie wychodzi. Domyślnie WŁĄCZONA: to poprawa bezpieczeństwa, a jej wyłączenie przywraca
+    /// dzisiejsze zachowanie (badge ⚠ obok odpowiedzi, która i tak wychodzi).
+    /// </summary>
+    public bool CitationGateEnabled { get; set; } = true;
 }
 
 /// <summary>Przełączniki diagnostyczne (domyślnie wszystko wyłączone — zero śladu w UI/SSE).</summary>

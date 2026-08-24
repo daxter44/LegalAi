@@ -69,9 +69,19 @@ public static class ChatRoutes
     public const string Smalltalk = "smalltalk";
 }
 
+/// <summary>
+/// Bramka anty-fabrykacji zawróciła odpowiedź do poprawy (Zadanie 10 planu ROU) — pierwsza wersja
+/// powołała się na artykuł/sygnaturę nieobecne w kontekście. UI pokazuje, że trwa druga próba,
+/// zamiast w ciszy podmienić tekst pod użytkownikiem.
+/// </summary>
+public sealed record RegeneratingEvent(string Reason) : ChatEvent;
+
 /// <summary>Koniec: wynik kontroli anty-fabrykacji (cytaty) + model. <see cref="Usage"/> = tokeny
-/// in/out z providera (zbierane zawsze; widoczność w UI steruje flaga Diagnostics:ShowTokenUsage).</summary>
-public sealed record DoneEvent(bool Abstained, string? Model, CitationCheck? Check, LlmUsage? Usage = null) : ChatEvent;
+/// in/out z providera (zbierane zawsze; widoczność w UI steruje flaga Diagnostics:ShowTokenUsage).
+/// <see cref="Regenerated"/> = odpowiedź przeszła regenerację bramki (materiał do pomiaru fałszywych
+/// alarmów; próg zabicia bramki: >10% regeneracji na poprawnych odpowiedziach).</summary>
+public sealed record DoneEvent(
+    bool Abstained, string? Model, CitationCheck? Check, LlmUsage? Usage = null, bool Regenerated = false) : ChatEvent;
 
 /// <summary>Błąd przetwarzania.</summary>
 public sealed record ChatErrorEvent(string Message) : ChatEvent;
