@@ -547,13 +547,39 @@ stawkach self-host/Sherlock (€0,56/1M) jest pomijalny — walutą decyzji jest
 
 # Rozbicie implementacyjne
 
+## Status implementacji (2026-08-24)
+
+**Fazy 1 i 2 ZROBIONE — Zadania 1–8, 573/573 testów zielone** (było 493 przed sesją; +80 nowych).
+Commity `49b2586`..`1177e07` na `feat/halfvec-retriever`. Flagi nowych zachowań domyślnie OFF,
+więc produkcja zachowuje się jak przed sesją.
+
+Znaleziska z implementacji, których plan nie przewidział (wszystkie złapane testami, nie lekturą):
+
+1. **`ReasoningSplitter` rozpoznaje rozumowanie w DWÓCH trybach** (flaga `google.thought` ORAZ gołe
+   tagi `<think>`), a plan zakładał podpięcie callbacku po samej fladze. Podpięcie w `Route` splittera
+   obsługuje oba i oddaje treść bez tagów-delimiterów.
+2. **`Progress<T>` z BCL dyspozycjonuje callbacki ASYNCHRONICZNIE** — etapy retrievalu docierały PO
+   etapie „Piszę odpowiedź" i w losowej kolejności (zmierzone: `augment, llm, embed, rerank.main`).
+   Powstał `SyncProgress<T>`. Ten sam błąd dotyczył SSE (fire-and-forget `Task.Run` per zdarzenie) —
+   zamieniony na kolejkę z jedną pompą, domykaną przed `done`.
+3. **`CitationParser.Parse` zwraca `CitationRef` tylko gdy jest ARTYKUŁ** — goła nazwa aktu
+   („ustawa o ochronie danych osobowych", „ordynacja podatkowa") i goły paragraf nie były wykrywane.
+   Prywatna `ActHint` wystawiona jako `ExtractActHint`, zamiast pisać drugą kopię wzorców.
+4. **Kolizja nazw w Blazorze:** stałe `Route*` nie mogą stać na `ChatService`, bo w `Chat.razor`
+   ta nazwa jest zajęta przez wstrzykniętą właściwość → osobna klasa `ChatRoutes`.
+5. **Licznik sekund wymaga tickera 1 s** — bez niego czas zamarza między zdarzeniami, a najdłuższy
+   etap (~35 s) nie emituje żadnego, czyli zamarzałby dokładnie tam, gdzie dowód życia jest potrzebny.
+
+Do zrobienia: Zadania 9–17 (bramka anty-fabrykacji, pętla domykająca lukę, tool calling, raport,
+integracja).
+
 > **Dla agentów:** kroki mają checkboxy (`- [ ]`). Kolejność zadań = kolejność commitów; każde
 > zadanie zostawia zielony `dotnet test` i działający system (flagi nowych zachowań domyślnie
 > OFF do Zadania 17). Testy piszemy PRZED implementacją. Commity: treść ASCII bez polskich
 > znaków, trailer `Co-Authored-By` z nazwą modelu. Fake'i `FakeRetriever`, `FakeReranker`
 > i wzorce `FakeLlm`/`ScriptedLlm` są w `tests/PrawoRAG.Tests/{Fakes,Chat,Analysis}`.
 
-## Zadanie 1: delty rozumowania z providera (Faza 1)
+## Zadanie 1 ✅ ZROBIONE: delty rozumowania z providera (Faza 1)
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Domain/Llm/ILlmProvider.cs` (nowe pole w `LlmRequest`, po `OnReasoning`)
@@ -573,7 +599,7 @@ stawkach self-host/Sherlock (€0,56/1M) jest pomijalny — walutą decyzji jest
 - [ ] Implementacja: `request.OnReasoningDelta?.Invoke(delta)` obok `splitter.Push`, tylko dla `isThought`.
 - [ ] Commit: `feat(llm): OnReasoningDelta - delty rozumowania na zywo z providera OpenAI-compat`
 
-## Zadanie 2: etapy retrievalu przy istniejących punktach LatencyLog (Faza 1)
+## Zadanie 2 ✅ ZROBIONE: etapy retrievalu przy istniejących punktach LatencyLog (Faza 1)
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Domain/Retrieval/Retrieval.cs` (typ `RetrievalStage`, pole w `RetrievalQuery`)
@@ -593,7 +619,7 @@ stawkach self-host/Sherlock (€0,56/1M) jest pomijalny — walutą decyzji jest
 - [ ] Implementacja; etykiety PL i liczby (`Count`) tam, gdzie znane (kandydaci, chunki).
 - [ ] Commit: `feat(retrieval): IProgress<RetrievalStage> - etapy retrievalu z punktow LatencyLog`
 
-## Zadanie 3: kanał zdarzeń w ChatService + transport SSE (Faza 1)
+## Zadanie 3 ✅ ZROBIONE: kanał zdarzeń w ChatService + transport SSE (Faza 1)
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Api/Services/ChatEvents.cs` (`StageEvent`, `ReasoningDeltaEvent`)
@@ -613,7 +639,7 @@ stawkach self-host/Sherlock (€0,56/1M) jest pomijalny — walutą decyzji jest
 - [ ] Implementacja.
 - [ ] Commit: `feat(chat): kanal zdarzen - etapy retrievalu i delty rozumowania w strumieniu SSE`
 
-## Zadanie 4: UI — pasek etapu i rozumowanie na żywo (Faza 1)
+## Zadanie 4 ✅ ZROBIONE: UI — pasek etapu i rozumowanie na żywo (Faza 1)
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Api/Components/Pages/Chat.razor`
@@ -625,7 +651,7 @@ stawkach self-host/Sherlock (€0,56/1M) jest pomijalny — walutą decyzji jest
 - [ ] Ręczna weryfikacja na dev-bazie (39 orzeczeń wystarczy, żeby zobaczyć etapy).
 - [ ] Commit: `feat(ui): pasek etapu pracy + rozumowanie modelu na zywo w akordeonie`
 
-## Zadanie 5: rejestracja modelu pomocniczego (Faza 2)
+## Zadanie 5 ✅ ZROBIONE: rejestracja modelu pomocniczego (Faza 2)
 
 **Pliki:**
 - Create: `src/PrawoRAG.Llm/AuxLlmOptions.cs`
@@ -643,7 +669,7 @@ stawkach self-host/Sherlock (€0,56/1M) jest pomijalny — walutą decyzji jest
       brak sekcji `Llm:Aux` ⇒ wartości domyślne (Bielik).
 - [ ] Commit: `feat(llm): model pomocniczy - keyed ILlmProvider "aux" z krotkim timeoutem`
 
-## Zadanie 6: LegalTokenDetector — bezpiecznik jednokierunkowy (Faza 2)
+## Zadanie 6 ✅ ZROBIONE: LegalTokenDetector — bezpiecznik jednokierunkowy (Faza 2)
 
 **Pliki:**
 - Create: `src/PrawoRAG.Domain/Retrieval/LegalTokenDetector.cs`
@@ -659,7 +685,7 @@ stawkach self-host/Sherlock (€0,56/1M) jest pomijalny — walutą decyzji jest
       o kotach"); graniczny: „dzięki, a co z terminem art. 300?" ⇒ true.
 - [ ] Commit: `feat(retrieval): LegalTokenDetector - deterministyczny bezpiecznik z istniejacych parserow`
 
-## Zadanie 7: IIntentRouter na modelu pomocniczym (Faza 2)
+## Zadanie 7 ✅ ZROBIONE: IIntentRouter na modelu pomocniczym (Faza 2)
 
 **Pliki:**
 - Create: `src/PrawoRAG.Domain/Llm/IIntentRouter.cs` (+ `RouteDecision`)
@@ -679,7 +705,7 @@ stawkach self-host/Sherlock (€0,56/1M) jest pomijalny — walutą decyzji jest
       timeout ⇒ true; wyjątek providera ⇒ true.
 - [ ] Commit: `feat(llm): IIntentRouter - lekki model orzeka intencje, fail-safe w strone retrievalu`
 
-## Zadanie 8: ścieżka small-talk w ChatService + telemetria Route (Faza 2)
+## Zadanie 8 ✅ ZROBIONE: ścieżka small-talk w ChatService + telemetria Route (Faza 2)
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Api/Services/ChatService.cs` (router+bezpiecznik przed `FollowUpSelector`)
