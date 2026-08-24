@@ -2,6 +2,16 @@ using PrawoRAG.Domain.Documents;
 
 namespace PrawoRAG.Domain.Retrieval;
 
+/// <summary>
+/// Etap retrievalu raportowany na bieżąco do UI (Zadanie 2 planu ROU). Raportowany PRZED wykonaniem
+/// etapu — użytkownik ma widzieć, co się ZACZYNA, nie co się skończyło.
+/// </summary>
+/// <param name="Name">Techniczna nazwa etapu — TA SAMA co w <see cref="LatencyLog"/>
+/// (<c>embed</c>, <c>dense</c>, <c>rerank.main</c>…), żeby instrumentacja i UI nie mogły się rozjechać.</param>
+/// <param name="Label">Etykieta dla użytkownika, po polsku.</param>
+/// <param name="Count">Liczba, jeśli znana (kandydaci, chunki) — liczba buduje zaufanie do czekania.</param>
+public sealed record RetrievalStage(string Name, string Label, int? Count = null);
+
 /// <summary>Zapytanie do retrievera: tekst + filtry metadanych + parametry top-K.</summary>
 public sealed record RetrievalQuery
 {
@@ -64,6 +74,24 @@ public sealed record RetrievalQuery
     /// (415: 3 niezależne dokumenty w top-30; act-only lane obalony — wygrywała pułapka art. 149).
     /// </summary>
     public int CitationBridgeArticles { get; init; } = 2;
+
+    /// <summary>
+    /// Raportowanie etapów na bieżąco (Zadanie 2 planu ROU) — ten sam wzorzec opcjonalnego
+    /// wzbogacenia zapytania co <see cref="RerankText"/>/<see cref="ExactMatchText"/>.
+    /// Null = nikt nie słucha (Eval, <c>/api/search</c>, testy) i retrieval zachowuje się bajt
+    /// w bajt jak dotąd. Powód: pytanie prawne trwa ~85 s, a UI nie miało czym pokazać, że pracuje.
+    /// </summary>
+    public IProgress<RetrievalStage>? Progress { get; init; }
+
+    /// <summary>Prefiks etykiet etapów — przy follow-upie retrieval leci DWA razy (wariant surowy
+    /// i kontekstowy), więc bez rozróżnienia UI pokazuje te same etapy dwukrotnie bez wyjaśnienia,
+    /// dlaczego odpowiedź trwa dwa razy dłużej. Null = bez prefiksu (pojedynczy przebieg).</summary>
+    public string? ProgressLabelPrefix { get; init; }
+
+    /// <summary>Raportuje etap, jeśli ktoś słucha. Bezpieczne przy null (zero kosztu).</summary>
+    public void ReportStage(string name, string label, int? count = null) =>
+        Progress?.Report(new RetrievalStage(
+            name, ProgressLabelPrefix is { Length: > 0 } p ? $"{p}{label}" : label, count));
 }
 
 /// <summary>Pojedynczy trafiony chunk z lokalizatorem cytatu i wynikiem.</summary>

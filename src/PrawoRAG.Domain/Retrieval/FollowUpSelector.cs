@@ -27,6 +27,10 @@ public static class FollowUpSelector
         CancellationToken ct)
     {
         var rawQuery = queryFactory(question);
+        // Prefiks etapów TYLKO przy follow-upie: bez historii jest jeden przebieg i „(1/2)" w UI byłoby
+        // kłamstwem. Z historią użytkownik musi wiedzieć, że retrieval leci DWA razy — inaczej widzi
+        // te same etapy dwukrotnie bez wyjaśnienia, dlaczego odpowiedź trwa dwa razy dłużej.
+        if (history.Count > 0) rawQuery = rawQuery with { ProgressLabelPrefix = "(1/2) " };
         var rawResult = await LatencyLog.TimeAsync("retrieval.raw", () => retriever.RetrieveAsync(rawQuery, ct));
         if (history.Count == 0) return new Selection(rawQuery, rawResult, UsedContextual: false);
 
@@ -38,6 +42,7 @@ public static class FollowUpSelector
             ExactMatchText = FollowUpQuery.ContextualizeForExactMatch(history, question),
             // SĘDZIA: surowe pytanie — inaczej sklejka ocenia samą siebie (patrz RetrievalQuery.RerankText).
             RerankText = question,
+            ProgressLabelPrefix = "(2/2) ",
         };
         // Follow-up: DRUGIE pełne wywołanie RetrieveAsync (sekwencyjnie, patrz komentarz wyżej) —
         // podwaja koszt każdego etapu toru (embedding, SQL, reranker) względem pytania bez historii.

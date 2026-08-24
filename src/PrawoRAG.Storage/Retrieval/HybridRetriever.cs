@@ -45,6 +45,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     public async Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, CancellationToken ct)
     {
         var totalSw = System.Diagnostics.Stopwatch.StartNew();
+        query.ReportStage("embed", "Zamieniam pytanie na wektor…");
         var qvec = new Vector(await LatencyLog.TimeAsync("embed", () => embedder.EmbedQueryAsync(query.Text, ct)));
         var k = query.CandidatesPerPath;
 
@@ -59,6 +60,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // round-tripy HTTP do cross-encodera (sekundy) — to zjada pulę połączeń przy równoległych
         // użytkownikach i blokuje autovacuum na chunks/documents.
         List<DenseHit> dense;
+        query.ReportStage("dense", "Szukam znaczeniowo w bazie…", k);
         var denseSw = System.Diagnostics.Stopwatch.StartNew();
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
@@ -69,6 +71,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         LatencyLog.Mark("dense", denseSw.ElapsedMilliseconds);
 
         // Tor rzadki: BM25 po tsvector (konfiguracja zgodna z kolumną generowaną).
+        query.ReportStage("sparse", "Szukam po słowach kluczowych…", k);
         var sparse = await LatencyLog.TimeAsync("sparse", () => ApplyFilters(db.Chunks, query)
             .Where(c => c.SearchVector!.Matches(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, query.Text)))
             .Select(c => new { c.Id, Rank = c.SearchVector!.Rank(EF.Functions.WebSearchToTsQuery(PrawoRagDbContext.TextSearchConfig, query.Text)) })
@@ -96,6 +99,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         var acronymSw = System.Diagnostics.Stopwatch.StartNew();
         if (acronyms.Count > 0)
         {
+            query.ReportStage("acronym", "Sprawdzam skróty i akronimy…", acronyms.Count);
             // Krótki timeout TYLKO na czas toru akronimowego — przywrócony niezależnie od wyniku,
             // żeby finalny fetch chunków (poniżej) miał normalny, pełny limit.
             var originalTimeout = db.Database.GetCommandTimeout();
@@ -147,6 +151,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         if (candidateIds.Count == 0)
             return new RetrievalResult([], 0);
 
+        query.ReportStage("fetch_candidates", "Pobieram treść kandydatów…", candidateIds.Count);
         var rows = await LatencyLog.TimeAsync("fetch_candidates",
             () => Project(db.Chunks.Where(c => candidateIds.Contains(c.Id))).ToListAsync(ct));
 
@@ -184,6 +189,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         double? rerankTop = null;
         if (reranker is not null && deduped.Count > 0)
         {
+            query.ReportStage("rerank.main", "Oceniam trafność kandydatów…", deduped.Count);
             var scores = await LatencyLog.TimeAsync("rerank.main",
                 () => reranker.RerankAsync(query.EffectiveRerankText, deduped.Select(c => c.Text).ToList(), ct));
             var byIndex = scores.ToDictionary(x => x.Index, x => x.Score);
@@ -202,16 +208,19 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // orzeczenie po znormalizowanym kluczu i wstaw na SAM WIERZCH. Sygnatura to identyfikator,
         // nie zapytanie semantyczne — similarity nigdy tego nie gwarantuje (własna sygnatura ląduje
         // w tekście chunka tylko przypadkiem). DOKŁADA, nie usuwa; brak sygnatury → zero kosztu.
+        query.ReportStage("lane.signature", "Sprawdzam sygnatury orzeczeń…");
         var signature = await LatencyLog.TimeAsync("lane.signature", () => SignatureAsync(query, ct));
 
         // Lane odwołania do aktu: pytanie zawiera numer Dziennika Ustaw („Dz.U. 2025 poz. 1815"
         // albo bezpośrednio ELI „DU/2025/1815") → pobierz DOKŁADNIE ten akt. Sam poziom co sygnatura
         // orzeczenia (identyfikator dokumentu, nie zapytanie semantyczne) — bez re-embeddingu.
+        query.ReportStage("lane.act_reference", "Sprawdzam odwołania do aktów…");
         var actReference = await LatencyLog.TimeAsync("lane.act_reference", () => ActReferenceAsync(query, ct));
 
         // QU-3: retrieval strukturalny — gdy pytanie zawiera cytat („art. 94 KW"), pobierz DOKŁADNIE ten
         // artykuł po metadanych i wstaw na górę (gwarantowane sloty). DOKŁADA, nigdy nie usuwa semantycznych;
         // brak rozpoznania aktu → zachowanie jak dziś (zero regresji).
+        query.ReportStage("lane.structural", "Sprawdzam cytowane artykuły…");
         var structural = await LatencyLog.TimeAsync("lane.structural", () => StructuralAsync(query, ct));
 
         // Cap dominacji jednego dokumentu w torach DOKŁADNYCH: sygnatura/akt/cytat dociągają po
@@ -229,6 +238,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         var voters = voterFloor is { } floor
             ? ranked.Where(c => c.RerankScore >= floor).ToList()
             : ranked;
+        query.ReportStage("citation_bridge", "Dociągam przepisy z cytowań…");
         var bridge = await LatencyLog.TimeAsync("citation_bridge", () => CitationBridgeAsync(query, voters, ct));
 
         // Most NIE dostaje już gwarantowanego slotu przed semantyką: dociągnięty przepis przechodzi przez
@@ -238,6 +248,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // BridgeChunksPerArticle) i tylko gdy most cokolwiek zwrócił.
         if (reranker is not null && bridge.Count > 0)
         {
+            query.ReportStage("rerank.bridge", "Oceniam przepisy z cytowań…", bridge.Count);
             var bridgeScores = await LatencyLog.TimeAsync("rerank.bridge", () => reranker.RerankAsync(
                 query.EffectiveRerankText, bridge.Select(c => c.Text).ToList(), ct));
             var byIndex = bridgeScores.ToDictionary(x => x.Index, x => x.Score);
