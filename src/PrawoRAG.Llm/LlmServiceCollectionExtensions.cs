@@ -18,6 +18,7 @@ public static class LlmServiceCollectionExtensions
         // rejestracja nie wykonuje żadnego żądania, więc brak serwera pomocniczego niczego nie psuje:
         // każde nieudane wywołanie degraduje w stronę retrievalu (decyzja przekrojowa 3 planu ROU).
         services.AddAuxLlm(config);
+        services.AddSingleton<IIntentRouter, AuxIntentRouter>();
 
         var provider = (config["Llm:Provider"] ?? "claude").ToLowerInvariant();
         return provider switch
