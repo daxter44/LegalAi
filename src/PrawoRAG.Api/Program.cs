@@ -406,6 +406,12 @@ public sealed class RetrievalOptions
     public int CandidatesPerPath { get; set; } = 50;
     public double AbstentionThreshold { get; set; } = AbstentionPolicy.DefaultThreshold;
 
+    /// <summary>Próg wyzwalający DRUGĄ rundę <see cref="PrawoRAG.Domain.Retrieval.GapClosingRetrieval"/> —
+    /// celowo osobny od <see cref="AbstentionThreshold"/> (patrz doc parametru
+    /// <c>gapClosingThreshold</c> w tamtej klasie: dzielenie jednej zmiennej ustawionej na 0
+    /// unieruchomiło drugą rundę niemal całkowicie, 2026-08-25).</summary>
+    public double GapClosingTriggerThreshold { get; set; } = AbstentionPolicy.DefaultThreshold;
+
     /// <summary>Minimalna liczba tokenów chunka w retrievalu (odsiew zdegenerowanych mini-chunków).</summary>
     public int MinChunkTokens { get; set; } = 20;
 

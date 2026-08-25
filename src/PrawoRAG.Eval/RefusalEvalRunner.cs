@@ -44,6 +44,10 @@ public static class RefusalEvalRunner
         var generate = cfg.GetValue<bool?>("Eval:RefusalsGenerate") ?? true;
         var topK = cfg.GetValue<int?>("Retrieval:TopK") ?? 8;
         var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
+        // Osobny od `threshold` (odmowy) — patrz doc parametru gapClosingThreshold w
+        // GapClosingRetrieval.RetrieveAsync. Parytet z produkcją: to samo wejście, ta sama para progów.
+        var gapClosingThreshold = cfg.GetValue<double?>("Retrieval:GapClosingTriggerThreshold")
+                                   ?? AbstentionPolicy.DefaultThreshold;
         var minChunkTokens = cfg.GetValue<int?>("Retrieval:MinChunkTokens") ?? 20;
         var margin = cfg.GetValue<double?>("Retrieval:FollowUpSignalMargin") ?? FollowUpQuery.DefaultSignalMargin;
         var rerankMargin = cfg.GetValue<double?>("Retrieval:RerankSignalMargin")
@@ -94,7 +98,7 @@ public static class RefusalEvalRunner
         {
             var item = items[i];
             using var scope = services.CreateScope();
-            var r = await ReplayAsync(scope.ServiceProvider, item, generate, topK, threshold, minChunkTokens, margin, rerankMargin, ct);
+            var r = await ReplayAsync(scope.ServiceProvider, item, generate, topK, threshold, gapClosingThreshold, minChunkTokens, margin, rerankMargin, ct);
             results.Add(r);
 
             Console.WriteLine($"[{i + 1,3}/{items.Count}] BYŁO={r.Baseline,-16} JEST={r.Outcome,-16} " +
@@ -152,7 +156,8 @@ public static class RefusalEvalRunner
     /// mierzyła inny pipeline niż czat.</summary>
     private static async Task<ReplayResult> ReplayAsync(
         IServiceProvider sp, ReplayItem item, bool generate,
-        int topK, double threshold, int minChunkTokens, double margin, double rerankMargin, CancellationToken ct)
+        int topK, double threshold, double gapClosingThreshold, int minChunkTokens, double margin,
+        double rerankMargin, CancellationToken ct)
     {
         var retriever = sp.GetRequiredService<IRetriever>();
         RetrievalQuery Query(string text) => new() { Text = text, TopK = topK, MinChunkTokens = minChunkTokens };
@@ -160,9 +165,10 @@ public static class RefusalEvalRunner
         // TO SAMO wejście retrievalu co czat (Zadanie 12 planu ROU) — inaczej metryka odmów mierzyłaby
         // pipeline, którego produkcja nie używa. Blizna: commit 1de510b, „rozjazd kopii = rozjazd
         // metryki". Reformulator brany z kontenera; gdy go nie ma (brak modelu pomocniczego), pętla
-        // domykająca jest wyłączona i eval mierzy dokładnie to, co dotąd.
+        // domykająca jest wyłączona i eval mierzy dokładnie to, co dotąd. `gapClosingThreshold` ≠
+        // `threshold` (odmowy) — patrz GapClosingRetrieval.RetrieveAsync, param gapClosingThreshold.
         var retrieval = await GapClosingRetrieval.RetrieveAsync(
-            retriever, Query, item.Question, item.History, margin, rerankMargin, threshold,
+            retriever, Query, item.Question, item.History, margin, rerankMargin, gapClosingThreshold,
             sp.GetService<IQueryReformulator>(), maxExtraRounds: 1, ct);
         var (query, result) = (retrieval.Query, retrieval.Result);
 

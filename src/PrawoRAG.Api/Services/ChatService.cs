@@ -121,9 +121,8 @@ public sealed class ChatService(
         // UWAGA: reformulator w środku dostaje PEŁNĄ `history` (rozwiązanie odwołania), nie
         // `retrievalHistory` — te dwie rzeczy służą do czego innego.
         var selectionTask = GapClosingRetrieval.RetrieveAsync(
-            retriever, Query, retrievalQuestion, retrievalHistory, o.FollowUpSignalMargin,
-            o.RerankSignalMargin,
-            o.AbstentionThreshold, o.GapClosingEnabled ? reformulator : null, o.MaxExtraRounds, ct);
+            retriever, Query, retrievalQuestion, history, o.FollowUpSignalMargin, o.RerankSignalMargin,
+            o.GapClosingTriggerThreshold, o.GapClosingEnabled ? reformulator : null, o.MaxExtraRounds, ct);
 
         // Etapy retrievalu płyną do UI W TRAKCIE — bez tego użytkownik ma kilkadziesiąt sekund ciszy.
         // Jeden oczekujący waiter naraz (odtwarzany po każdym odczycie), żeby nie zostawiać za sobą
@@ -255,11 +254,12 @@ public sealed class ChatService(
                     yield return new RetryingRetrievalEvent(retryQuery,
                         "model uznał, że źródła nie odpowiadają na pytanie");
 
-                    // Pusta historia z tego samego powodu co w GapClosingRetrieval: `retryQuery`
-                    // jest już samodzielne, bo reformulator widział rozmowę.
+                    // maxExtraRounds: 0 => próg poniżej i tak nie jest tu sprawdzany (wczesny return
+                    // w GapClosingRetrieval), ale przekazujemy właściwy semantycznie parametr, nie
+                    // próg odmowy — na wypadek gdyby ta wartość kiedyś przestała być 0.
                     var retryOutcome = await GapClosingRetrieval.RetrieveAsync(
-                        retriever, Query, retryQuery, [], o.FollowUpSignalMargin, o.RerankSignalMargin,
-                        o.AbstentionThreshold, reformulator: null, maxExtraRounds: 0, ct);
+                        retriever, Query, retryQuery, history, o.FollowUpSignalMargin, o.RerankSignalMargin,
+                        o.GapClosingTriggerThreshold, reformulator: null, maxExtraRounds: 0, ct);
                     while (side.Reader.TryRead(out var stage)) yield return stage;
 
                     // Nowe źródła TYLKO jeśli faktycznie mają pokrycie — inaczej druga próba

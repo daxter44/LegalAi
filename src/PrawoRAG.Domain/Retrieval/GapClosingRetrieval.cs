@@ -35,11 +35,25 @@ public static class GapClosingRetrieval
     }
 
     /// <summary>
-    /// Runda 1 = dzisiejszy <see cref="FollowUpSelector"/>. Jeśli bramka abstynencji odmówiłaby na
-    /// jej wyniku, a reformulator zaproponuje INNE zapytanie — runda 2, a wyniki są scalane.
+    /// Runda 1 = dzisiejszy <see cref="FollowUpSelector"/>. Jeśli sygnał pierwszej rundy jest niski,
+    /// a reformulator zaproponuje INNE zapytanie — runda 2, a wyniki są scalane.
     /// </summary>
     /// <param name="reformulator">Null = mechanizm wyłączony (eval bez modelu pomocniczego, testy).</param>
     /// <param name="maxExtraRounds">0 = zachowanie jak przed Fazą 4 (tylko runda 1).</param>
+    /// <param name="gapClosingThreshold">
+    /// Próg decydujący, czy PRÓBOWAĆ drugiej rundy — CELOWO osobny od progu odmowy
+    /// (<see cref="AbstentionPolicy"/> wołanej PO tej metodzie, na scalonym wyniku). Zmierzone
+    /// 2026-08-25: gdy oba progi dzieliły jedną zmienną ustawioną na 0 (świadoma decyzja dot. SAMEJ
+    /// odmowy — próg similarity nie odsiewał poprawnie), druga runda przestała się odpalać
+    /// PRAKTYCZNIE NIGDY — `MaxSimilarity &lt; 0` jest fałszywe niemal zawsze, więc jedyny warunek,
+    /// który jeszcze działał, to zero chunków. Mechanizm zbudowany dokładnie pod „pewny, ale słaby
+    /// wynik" był przez to strukturalnie martwy. Ten parametr może TYLKO zwiększyć liczbę prób
+    /// (nigdy nie obniża finalnej poprzeczki odmowy) — stąd bezpieczne przywrócenie starej,
+    /// skalibrowanej wartości `AbstentionPolicy.DefaultThreshold` jako domyślnej.
+    /// Ograniczenie (zmierzone tego samego dnia): to NIE łapie przypadku „pewny, ale ZŁY" wynik
+    /// (zwycięski chunk ma wysokie MaxSimilarity, tylko to zły artykuł tego samego aktu) — na to
+    /// żaden próg similarity nie zadziała, bo sygnał pewności jest wysoki mimo błędu.
+    /// </param>
     public static async Task<Outcome> RetrieveAsync(
         IRetriever retriever,
         Func<string, RetrievalQuery> queryFactory,
@@ -47,7 +61,7 @@ public static class GapClosingRetrieval
         IReadOnlyList<ChatTurn> history,
         double cosineMargin,
         double rerankMargin,
-        double abstentionThreshold,
+        double gapClosingThreshold,
         IQueryReformulator? reformulator,
         int maxExtraRounds,
         CancellationToken ct)
@@ -57,9 +71,10 @@ public static class GapClosingRetrieval
 
         if (maxExtraRounds <= 0 || reformulator is null) return new Outcome(first);
 
-        // Druga runda TYLKO wtedy, gdy pierwsza i tak skończyłaby się odmową — inaczej płacilibyśmy
-        // ~40 s za pytania, które już mają dobrą odpowiedź.
-        if (!AbstentionPolicy.ShouldAbstain(first.Result, abstentionThreshold)) return new Outcome(first);
+        // Druga runda TYLKO wtedy, gdy pierwsza ma słaby sygnał — inaczej płacilibyśmy ~40 s za
+        // pytania, które już mają dobrą odpowiedź. `gapClosingThreshold` NIE jest progiem odmowy
+        // (ten stosuje caller PO scaleniu) — patrz dokumentacja parametru wyżej.
+        if (!AbstentionPolicy.ShouldAbstain(first.Result, gapClosingThreshold)) return new Outcome(first);
 
         // Reformulator dostaje HISTORIĘ (2026-08-27). Bez niej na follow-upie przekładał na
         // terminologię ustawową samo „a co z § 2?" — tekst bez tematu — czyli w klasie tur,

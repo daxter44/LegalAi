@@ -46,7 +46,7 @@ public class GapClosingRetrievalTests
         string question = "czy pracodawca może mnie zwolnić?", IReadOnlyList<ChatTurn>? history = null) =>
         GapClosingRetrieval.RetrieveAsync(
             retriever, text => new RetrievalQuery { Text = text, TopK = 8 }, question, history ?? [],
-            cosineMargin: 0.05, rerankMargin: 0.05, abstentionThreshold: Threshold,
+            cosineMargin: 0.05, rerankMargin: 0.05, gapClosingThreshold: Threshold,
             reformulator, maxExtraRounds, default);
 
     [Fact] // Runda 1 z pokryciem => ZERO wywolan reformulatora i JEDEN retrieval.
@@ -172,7 +172,7 @@ public class GapClosingRetrievalTests
 
         var outcome = await GapClosingRetrieval.RetrieveAsync(
             retriever, text => new RetrievalQuery { Text = text, TopK = 4 }, "pytanie", [],
-            cosineMargin: 0.05, rerankMargin: 0.05, abstentionThreshold: Threshold,
+            cosineMargin: 0.05, rerankMargin: 0.05, gapClosingThreshold: Threshold,
             new CountingReformulator("inne"), maxExtraRounds: 1, default);
 
         Assert.Equal(4, outcome.Result.Chunks.Count);
