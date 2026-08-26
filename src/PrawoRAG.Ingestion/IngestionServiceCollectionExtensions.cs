@@ -81,6 +81,23 @@ public static class IngestionServiceCollectionExtensions
             o.CircuitBreaker.SamplingDuration = attempt * 2;
         });
 
+        // Konektor treści (Faza 2) — dzieli klienta HTTP z odkrywaniem, bo to ten sam host i ta sama
+        // polityka uprzejmości. Pobiera tylko akty, które niosą własną treść i mają pełne metadane.
+        services.AddHttpClient<EurLex.EurLexConnector>((sp, c) =>
+        {
+            var opt = sp.GetRequiredService<IOptions<EurLex.EurLexOptions>>().Value;
+            c.BaseAddress = new Uri(opt.BaseUrl.TrimEnd('/') + "/");
+            c.Timeout = Timeout.InfiniteTimeSpan;
+        }).AddStandardResilienceHandler(o =>
+        {
+            var attempt = TimeSpan.FromSeconds(
+                config.GetValue<int?>($"{EurLex.EurLexOptions.SectionName}:AttemptTimeoutSeconds") ?? 45);
+            o.AttemptTimeout.Timeout = attempt;
+            o.TotalRequestTimeout.Timeout = attempt * 2 + TimeSpan.FromSeconds(30);
+            o.CircuitBreaker.SamplingDuration = attempt * 2;
+        });
+        services.AddTransient<ISourceConnector>(sp => sp.GetRequiredService<EurLex.EurLexConnector>());
+
         services.AddSingleton<Pdf.IPdfTextExtractor, Pdf.PdfPigTextExtractor>();
         services.AddSingleton<IDocumentNormalizer, JudgmentNormalizer>();
         services.AddSingleton<IDocumentNormalizer, ActNormalizer>();

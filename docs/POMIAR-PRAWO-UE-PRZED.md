@@ -49,12 +49,20 @@ na `InCorpus`, inaczej scorowanie zacznie karać system za poprawną odpowiedź.
 odpala operator na maszynie z pełnym korpusem:
 
 ```
-# 1. Recall + zachowanie bramki na zestawie (w tym 22 pozycje UE)
-dotnet run --project src/PrawoRAG.Eval -- --exam
+# 1. Golden set (tu żyją 22 pozycje UE) — BEZ żadnej flagi, domyślnie retrieval-only, bez LLM.
+dotnet run --project src/PrawoRAG.Eval
 
-# 2. Odmowy na realnym ruchu (metryka nadrzędna fazy jakości)
-dotnet run --project src/PrawoRAG.Eval -- --refusals
+# 2. Odmowy na realnym ruchu — bez generowania odpowiedzi (szybka diagnostyka składu źródeł).
+Eval__RefusalsGenerate=false dotnet run --project src/PrawoRAG.Eval -- --refusals
 ```
+
+**Czego NIE uruchamiać do tego pomiaru:** `--exam`. To osobny eval — 446 pytań ABC z egzaminów
+wstępnych, z LLM-em na każde pytanie; mierzy wiedzę modelu, nie zachowanie produktu na golden-secie,
+i chodzi godzinami (potwierdzone: przebieg 2 h zakończony błędem). Golden set to domyślna ścieżka
+`Program.cs` bez flag.
+
+Pełny przebieg z generowaniem odpowiedzi (`--chat` lub `Eval:Chat=true`) ma sens dopiero po
+transzy T1 — do pomiaru „przed" wystarczy retrieval, bo pytania UE nie mają dziś czego trafić.
 
 ## 3. Wyniki „PRZED" — do wypełnienia
 

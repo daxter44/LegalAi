@@ -36,6 +36,13 @@ public sealed class EurLexOptions
     /// 7 756 zapytań; zbiorcze schodzi do ~150 na kategorię.</summary>
     public int BatchSize { get; set; } = 50;
 
+    /// <summary>
+    /// Minimalna długość treści (bajty), by uznać odpowiedź za akt, a nie komunikat serwera. CELLAR
+    /// odpowiada na brak wersji językowej ciałem „does not hold a content datastream of the requested
+    /// type" o długości ~214 B — bez tego progu taki komunikat wjechałby do magazynu jako dokument.
+    /// </summary>
+    public int MinContentBytes { get; set; } = 2000;
+
     public EurLexDiscoverOptions Discover { get; set; } = new();
 }
 
