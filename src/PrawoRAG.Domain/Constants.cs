@@ -9,6 +9,11 @@ public static class SourceKeys
     public const string Saos = "SAOS";
     public const string Eli = "ELI";
     public const string Nsa = "NSA"; // sądownictwo administracyjne (NSA+WSA) — backfill z JuDDGES/pl-nsa, tylko wyroki
+
+    /// <summary>Prawo UE z CELLAR-a (publications.europa.eu) — rozporządzenia i dyrektywy obowiązujące,
+    /// tekst polski. Identyfikator naturalny dokumentu = CELEX aktu BAZOWEGO (np. „32016R0679"),
+    /// niezależnie od tego, z której wersji (skonsolidowanej czy bazowej) wzięliśmy treść.</summary>
+    public const string EurLex = "EURLEX";
 }
 
 /// <summary>
@@ -38,6 +43,10 @@ public static class DocTypes
     /// jako <see cref="Judgment"/> (normalizer ustawia norm.DocType) — w retrievalu to orzecznictwo,
     /// spójne z SAOS. Osobny selektor, bo <c>JudgmentNormalizer</c> zajmuje już klucz „judgment".</summary>
     public const string NsaJudgment = "nsa-judgment";
+    /// <summary>Selektor normalizera aktów UE (inny markup niż ISAP: „Artykuł N" + ust./lit., trzy warianty
+    /// dokumentu z CELLAR-a). ZAPISYWANY jako <see cref="Act"/> — w retrievalu to akt prawny, spójnie z ISAP.</summary>
+    public const string EuAct = "eu-act";
+
     public const string Article = "article";   // artykuł prawniczy (po MVP)
     public const string Book = "book";         // książka OCR .md (po MVP)
 }

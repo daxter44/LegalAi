@@ -63,6 +63,24 @@ public static class IngestionServiceCollectionExtensions
         });
         services.AddTransient<ISourceConnector>(sp => sp.GetRequiredService<EliSejmConnector>());
 
+        // EUR-Lex/CELLAR — Faza 1 planu prawa UE: samo ODKRYWANIE zakresu (SPARQL) i klasyfikacja aktów.
+        // Treść pobiera konektor z Fazy 2; dzięki temu wolumen i skład korpusu znamy przed pobieraniem.
+        services.Configure<EurLex.EurLexOptions>(config.GetSection(EurLex.EurLexOptions.SectionName));
+        services.AddHttpClient<EurLex.EurLexDiscovery>((sp, c) =>
+        {
+            var opt = sp.GetRequiredService<IOptions<EurLex.EurLexOptions>>().Value;
+            c.BaseAddress = new Uri(opt.BaseUrl.TrimEnd('/') + "/");
+            c.Timeout = Timeout.InfiniteTimeSpan;
+        }).AddStandardResilienceHandler(o =>
+        {
+            // Zapytania zakresowe do SPARQL-a liczą się w minutach (7 756 aktów w 3 stronach).
+            var attempt = TimeSpan.FromSeconds(
+                config.GetValue<int?>($"{EurLex.EurLexOptions.SectionName}:AttemptTimeoutSeconds") ?? 45);
+            o.AttemptTimeout.Timeout = attempt;
+            o.TotalRequestTimeout.Timeout = attempt * 2 + TimeSpan.FromSeconds(30);
+            o.CircuitBreaker.SamplingDuration = attempt * 2;
+        });
+
         services.AddSingleton<Pdf.IPdfTextExtractor, Pdf.PdfPigTextExtractor>();
         services.AddSingleton<IDocumentNormalizer, JudgmentNormalizer>();
         services.AddSingleton<IDocumentNormalizer, ActNormalizer>();

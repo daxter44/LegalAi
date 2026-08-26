@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using PrawoRAG.Domain;
 using PrawoRAG.Domain.Sources;
 using PrawoRAG.Ingestion;
+using PrawoRAG.Ingestion.EurLex;
 
 // Jednorazowy przebieg ingestii (idealny pod smoke i pod harmonogram zewnętrzny: cron/systemd-timer
 // na tanim VPS — bez procesu rezydentnego). Periodyczność = zewnętrzny scheduler wołający ten worker.
@@ -76,6 +77,32 @@ switch (mode)
     }
     case "discover":
     {
+        if (string.Equals(source, SourceKeys.EurLex, StringComparison.OrdinalIgnoreCase))
+        {
+            // Prawo UE — Faza 1: wolumen i SKŁAD zakresu bez pobierania treści. Raport odpowiada na pytanie
+            // „ile z tego niesie własną treść, a ile jest instrukcją zmiany" (zmierzone na populacji:
+            // 52% aktów obowiązujących tylko zmienia inne akty, a 91% z nich jest już wchłonięte w konsolidacje).
+            var eurLexOpt = host.Services
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<PrawoRAG.Ingestion.EurLex.EurLexOptions>>().Value;
+            eurLexOpt.Discover.Enabled = true;
+            var discovery = host.Services.GetRequiredService<PrawoRAG.Ingestion.EurLex.EurLexDiscovery>();
+            var acts = await discovery.DiscoverAsync(default);
+
+            Console.WriteLine($"\nODKRYTO {acts.Count} aktów UE "
+                + $"({string.Join("+", eurLexOpt.Discover.ResourceTypes)}, obowiązujące: {eurLexOpt.Discover.InForceOnly}, "
+                + $"lata {eurLexOpt.Discover.YearFrom}–{eurLexOpt.Discover.YearTo}).\n");
+            Console.WriteLine("Skład po klasie aktu (decyduje, czy akt wchodzi do wektorów):");
+            foreach (var g in acts.GroupBy(a => a.Class).OrderByDescending(g => g.Count()))
+                Console.WriteLine($"  {g.Key.ToMetadataValue(),-18} {g.Count(),6}  {(g.Key.CarriesOwnText() ? "treść + chunki" : "tylko metadane")}");
+            Console.WriteLine($"\nDo chunkowania: {acts.Count(a => a.Class.CarriesOwnText())}; "
+                + $"metadane-only: {acts.Count(a => !a.Class.CarriesOwnText())}.");
+            Console.WriteLine($"Z własną wersją skonsolidowaną: {acts.Count(a => a.Consolidations.Count > 0)}.");
+            Console.WriteLine("\nPrzykłady (CELEX, klasa, kandydaci treści):");
+            foreach (var a in acts.Take(10))
+                Console.WriteLine($"  {a.Celex,-12} {a.Class.ToMetadataValue(),-18} {string.Join(" → ", a.TextCandidates(DateOnly.FromDateTime(DateTime.UtcNow)))}");
+            break;
+        }
+
         // Podgląd odkrywania aktów ELI (ile pasuje wg Eli:Discover) — BEZ pobierania. Poznaj wolumen zanim ruszysz.
         var eli = host.Services.GetRequiredService<PrawoRAG.Ingestion.Eli.EliSejmConnector>();
         var addrs = await eli.DiscoverAddressesAsync(default);
