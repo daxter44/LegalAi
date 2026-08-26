@@ -5,7 +5,9 @@ namespace PrawoRAG.Api.Services;
 
 /// <summary>Źródło do panelu obok odpowiedzi (numerowane [n], z dosłownym cytatem i linkiem do oryginału).
 /// AKT-4: <see cref="AmendmentEffectiveDate"/> niepuste ⇔ fragment nowelizacji niewchłoniętej do t.j.</summary>
-public sealed record ChatSource(int Index, string Label, string Title, string? Url, string Snippet, string? AmendmentEffectiveDate = null, IReadOnlyList<string>? LegalBases = null);
+/// <param name="Neighbour">Źródło dociągnięte SĄSIEDZTWEM (plan SAS) — przepis obok trafienia,
+/// nie zwycięzca rankingu. UI oznacza je inaczej, żeby było widać, co wyszukiwanie dopasowało.</param>
+public sealed record ChatSource(int Index, string Label, string Title, string? Url, string Snippet, string? AmendmentEffectiveDate = null, IReadOnlyList<string>? LegalBases = null, bool Neighbour = false);
 
 /// <summary>
 /// Zdarzenia strumienia czatu (in-process, odpowiednik zdarzeń SSE z /api/chat). Kolejność:

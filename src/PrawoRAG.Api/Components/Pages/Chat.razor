@@ -163,12 +163,37 @@
                     {
                         <details class="sources" open>
                             <summary>Źródła (@ex.Sources.Count)</summary>
-                            @foreach (var s in ex.Sources)
+                            @* Grupowanie po dokumencie (Zadanie 3 planu SAS): przy rozszerzeniu
+                               sąsiedztwa aktu źródeł bywa kilkadziesiąt i płaska lista przestaje być
+                               czytelna. Numeracja [n] i kotwice #src-… zostają NIETKNIĘTE — na nich
+                               stoją klikalne cytowania. Grupa jednoelementowa renderuje się bez
+                               nagłówka: dla zwykłych pytań (źródła z różnych dokumentów) panel
+                               wygląda dokładnie jak dotąd. *@
+                            @foreach (var group in ex.Sources.GroupBy(s => s.Title))
                             {
-                                <div class="source-card" id="src-@(ex.AnchorId)-@s.Index">
+                            @if (group.Count() > 1)
+                            {
+                                <div class="source-group-head">
+                                    <span class="source-group-title">@group.Key</span>
+                                    <span class="source-group-count">@group.Count() fragmentów</span>
+                                    @if (group.Any(s => s.Neighbour))
+                                    {
+                                        <span class="badge badge-ok" title="Artykuły dociągnięte jako kontekst obok trafień — progi i wyjątki w ustawach stoją przy przepisie, który modyfikują">
+                                            + @group.Count(s => s.Neighbour) z sąsiedztwa
+                                        </span>
+                                    }
+                                </div>
+                            }
+                            @foreach (var s in group)
+                            {
+                                <div class="source-card @(s.Neighbour ? "source-neighbour" : "")" id="src-@(ex.AnchorId)-@s.Index">
                                     <div class="source-head">
                                         <span class="source-n">[@s.Index]</span>
                                         <span class="source-label">@s.Label</span>
+                                        @if (s.Neighbour)
+                                        {
+                                            <span class="source-neighbour-tag" title="Nie było trafieniem wyszukiwania — dociągnięte jako przepis sąsiadujący">kontekst</span>
+                                        }
                                         @if (!string.IsNullOrWhiteSpace(s.AmendmentEffectiveDate))
                                         {
                                             <span class="badge badge-warn" title="Fragment nowelizacji jeszcze niewchłoniętej do tekstu jednolitego">🕓 nowelizacja — obowiązuje od @s.AmendmentEffectiveDate</span>
@@ -192,6 +217,7 @@
                                         </details>
                                     }
                                 </div>
+                            }
                             }
                         </details>
                     }

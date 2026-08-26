@@ -102,6 +102,24 @@ body {
    to jedyna odpowiedź w systemie nieoparta na źródłach, więc nie może wyglądać jak reszta. */
 .verify-banner.no-retrieval { border: 1px dashed var(--c-warn); font-weight: 600; }
 
+/* Grupowanie źródeł po dokumencie (plan SAS) — przy rozszerzeniu sąsiedztwa aktu źródeł bywa
+   kilkadziesiąt, więc płaska lista przestaje być czytelna. */
+.source-group-head {
+    display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap;
+    margin: var(--s-3) 0 var(--s-1); padding-bottom: var(--s-1);
+    border-bottom: 1px solid var(--c-border);
+    font-size: var(--fs-13);
+}
+.source-group-title { font-weight: 600; color: var(--c-text); }
+.source-group-count { color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
+
+/* Artykuł dociągnięty sąsiedztwem — nie był trafieniem wyszukiwania, tylko kontekstem obok niego. */
+.source-card.source-neighbour { opacity: .82; border-left-style: dashed; }
+.source-neighbour-tag {
+    font-size: var(--fs-12); color: var(--c-text-muted);
+    border: 1px dashed var(--c-border); border-radius: 999px; padding: 0 var(--s-2);
+}
+
 /* Druga runda retrievalu (pętla domykająca lukę) — informacja, nie ostrzeżenie. */
 .retry-note {
     margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--radius-sm);

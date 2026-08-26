@@ -8,7 +8,13 @@ namespace PrawoRAG.Llm.Grounding;
 
 /// <summary>Źródło pokazywane użytkownikowi i numerowane [n] w prompcie/odpowiedzi. AKT-4:
 /// <see cref="AmendmentEffectiveDate"/> niepuste ⇔ fragment nowelizacji niewchłoniętej do t.j. (chip w UI).</summary>
-public sealed record SourceRef(int Index, string Label, string Title, string? SourceUrl, string Snippet, string? AmendmentEffectiveDate = null, IReadOnlyList<string>? LegalBases = null);
+/// <param name="Neighbour">
+/// Źródło dociągnięte SĄSIEDZTWEM (plan SAS), a nie wygrane rankingiem — przepis leżący obok
+/// trafienia. UI oznacza je inaczej, żeby użytkownik widział, co wyszukiwanie FAKTYCZNIE dopasowało,
+/// a co dostał jako kontekst. Rozpoznawane po markerze <c>Score = double.MinValue</c>, tym samym
+/// mechanizmem, którym tory dokładne znaczą się przez <c>MaxValue</c>.
+/// </param>
+public sealed record SourceRef(int Index, string Label, string Title, string? SourceUrl, string Snippet, string? AmendmentEffectiveDate = null, IReadOnlyList<string>? LegalBases = null, bool Neighbour = false);
 
 /// <summary>
 /// Buduje ugruntowany prompt: twardy system prompt (odpowiadaj tylko ze źródeł, cytuj [n],
@@ -159,7 +165,9 @@ public static class GroundedPrompt
 
             var n = i + 1;
             var label = LocatorLabel(chunks[i]);
-            sources.Add(new SourceRef(n, label, chunks[i].Title, chunks[i].SourceUrl, Snippet(chunks[i].Text), chunks[i].AmendmentEffectiveDate, chunks[i].LegalBases));
+            sources.Add(new SourceRef(n, label, chunks[i].Title, chunks[i].SourceUrl, Snippet(chunks[i].Text),
+                chunks[i].AmendmentEffectiveDate, chunks[i].LegalBases,
+                Neighbour: chunks[i].Score == double.MinValue));
             sb.Append('[').Append(n).Append("] ").Append(label).Append('\n')
               .Append(chunks[i].Text).Append("\n\n");
         }
