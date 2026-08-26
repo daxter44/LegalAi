@@ -215,7 +215,13 @@ string? ResolveApiUser(HttpContext http)
 app.MapPost("/api/search", async (HttpContext http, SearchRequest req, IRetriever retriever, IOptions<RetrievalOptions> opt, CancellationToken ct) =>
 {
     if (ResolveApiUser(http) is null) return Results.Unauthorized(); // bramka 3.7 (cookie lub X-Invite-Code)
-    var result = await retriever.RetrieveAsync(ToQuery(req.Query, req.Filters, req.TopK ?? opt.Value.TopK, opt.Value), ct);
+    // Wyszukiwarka: sąsiedztwo (plan SAS) WYŁĄCZONE. Tam wynikiem jest lista trafień do przejrzenia
+    // przez człowieka — dociąganie sąsiednich artykułów rozmyłoby ranking i zalało listę przepisami,
+    // których nikt nie szukał. Mechanizm istnieje po to, żeby MODEL widział przepis pod nazwą,
+    // której użytkownik nie zna; człowiek na liście wyników tego nie potrzebuje.
+    var result = await retriever.RetrieveAsync(
+        ToQuery(req.Query, req.Filters, req.TopK ?? opt.Value.TopK, opt.Value)
+            with { NeighbourhoodRadius = 0 }, ct);
     return Results.Ok(new
     {
         maxSimilarity = result.MaxSimilarity,
@@ -380,6 +386,9 @@ static RetrievalQuery ToQuery(string text, FiltersDto? f, int topK, RetrievalOpt
     DateFrom = f?.DateFrom,
     DateTo = f?.DateTo,
     OnlyInForce = f?.OnlyInForce ?? false,
+    NeighbourhoodRadius = o.NeighbourhoodRadius,
+    NeighbourhoodMinChunks = o.NeighbourhoodMinChunks,
+    NeighbourhoodTokenBudget = o.NeighbourhoodTokenBudget,
 };
 
 internal sealed record FiltersDto(string? CourtType, DateOnly? DateFrom, DateOnly? DateTo, bool OnlyInForce = false);
@@ -454,6 +463,20 @@ public sealed class RetrievalOptions
 
     /// <summary>Górny limit wywołań narzędzia w turze — twardy hamulec na koszt.</summary>
     public int MaxToolCalls { get; set; } = 2;
+
+    /// <summary>
+    /// Rozszerzenie sąsiedztwa artykułów w dominującym akcie (plan SAS) — ile artykułów w każdą
+    /// stronę. 0 = wyłączone. Powód: retrieval trafia w AKT i mija właściwy przepis, bo ten nazywa
+    /// się inaczej niż w pytaniu (zmierzone: „limity wpłat" vs ustawowy „próg zwolnienia").
+    /// </summary>
+    public int NeighbourhoodRadius { get; set; } = 2;
+
+    /// <summary>Ile chunków z jednego aktu kwalifikuje go do rozszerzenia (ogranicza zasięg zmiany —
+    /// pytania z rozproszonymi źródłami zachowują się jak dotąd).</summary>
+    public int NeighbourhoodMinChunks { get; set; } = 3;
+
+    /// <summary>Budżet tokenów na dociągnięte artykuły — cała obsługa przypadku „kodeks".</summary>
+    public int NeighbourhoodTokenBudget { get; set; } = 20_000;
 }
 
 /// <summary>Ugruntowanie odpowiedzi — bramki chroniące rdzeń wartości produktu.</summary>

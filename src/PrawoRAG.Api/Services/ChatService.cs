@@ -56,6 +56,12 @@ public sealed class ChatService(
             CandidatesPerPath = o.CandidatesPerPath,
             MinChunkTokens = o.MinChunkTokens,
             Progress = progress,
+            // Rozszerzenie sąsiedztwa artykułów (plan SAS) — dotyczy CZATU, bo tu model musi znaleźć
+            // przepis pod nazwą, której użytkownik nie zna. /api/search zostaje bez tego: tam wynikiem
+            // jest lista trafień do przejrzenia, nie kontekst dla modelu.
+            NeighbourhoodRadius = o.NeighbourhoodRadius,
+            NeighbourhoodMinChunks = o.NeighbourhoodMinChunks,
+            NeighbourhoodTokenBudget = o.NeighbourhoodTokenBudget,
         };
 
         // ROUTER INTENCJI (Zadanie 8 planu ROU) — jedyne miejsce, w którym tura może pominąć bazę.

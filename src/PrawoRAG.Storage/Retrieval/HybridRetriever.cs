@@ -271,6 +271,19 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
             .Take(query.TopK)
             .ToList();
 
+        // ROZSZERZENIE SĄSIEDZTWA (plan SAS): gdy retrieval skoncentrował się na jednym AKCIE,
+        // dociągnij sąsiadujące artykuły. Świadomie PO `Take(TopK)` i PO wyliczeniu capów — sąsiedztwo
+        // nie konkuruje o sloty TopK, tylko je uzupełnia (`ExactMatchCap` istnieje, by jeden dokument
+        // nie zjadł budżetu; tutaj dominacja aktu jest CELEM, nie awarią).
+        var neighbours = await NeighbourhoodAsync(query, final, ct);
+        if (neighbours.Count > 0)
+            final = final.Concat(neighbours)
+                .GroupBy(c => c.ChunkId).Select(g => g.First())
+                // Akt ma czytać się LINIOWO — inaczej model dostaje przepisy w kolejności
+                // podobieństwa, co przy kilkudziesięciu artykułach jest nie do czytania.
+                .OrderBy(c => c.DocumentId).ThenBy(c => c.ChunkIndex)
+                .ToList();
+
         // Ile FINALNYCH slotów zajęło trafienie dokładne (sygnatura/akt/cytat z pytania użytkownika) —
         // trzeci sygnał dla bramki abstynencji, obok cosine i score rerankera. Liczone po `final`, nie po
         // `exact`, bo interesuje nas to, co model FAKTYCZNIE dostanie w kontekście (cap per dokument
@@ -506,6 +519,100 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     private sealed record ChunkRow(
         Guid Id, Guid DocumentId, int ChunkIndex, string Text, string? Section, JsonDocument? Locator,
         string Source, string DocType, string Title, string? SourceUrl, JsonDocument? TypedMetadata);
+
+    /// <summary>
+    /// Dociąga SĄSIEDNIE artykuły wokół trafień w dominującym akcie (plan SAS, Zadanie 2).
+    ///
+    /// Powód (zmierzony przypadek): pytanie o „limity wpłat na OKI" dało 8 z 8 źródeł z właściwej
+    /// ustawy i ANI JEDNEGO z limitem — bo ustawa nazywa go „progiem zwolnienia". Kryterium wyboru
+    /// jest ślepe na synonim ustawowy, więc dołożenie kolejnych PODOBNYCH chunków nic nie da.
+    /// Sąsiedztwo działa, bo w tekstach prawnych progi i wyjątki stoją przy przepisie, który
+    /// modyfikują.
+    ///
+    /// Budżet tokenów (<see cref="RetrievalQuery.NeighbourhoodTokenBudget"/>) to CAŁA obsługa
+    /// przypadku „kodeks": dla 18-stronicowej ustawy obejmuje w praktyce cały akt, dla kodeksu
+    /// cywilnego ucina do okolic trafień. Zamiast osobnej gałęzi „czy cały akt się mieści".
+    ///
+    /// Odsiew po najbliższości do trafień: przy przekroczeniu budżetu zostają artykuły NAJBLIŻSZE
+    /// trafieniom — one najpewniej niosą powiązany przepis.
+    /// </summary>
+    private async Task<List<RetrievedChunk>> NeighbourhoodAsync(
+        RetrievalQuery query, IReadOnlyList<RetrievedChunk> final, CancellationToken ct)
+    {
+        var ranges = ArticleNeighbourhood.Plan(
+            final, query.NeighbourhoodMinChunks, query.NeighbourhoodRadius);
+        if (ranges.Count == 0) return [];
+
+        query.ReportStage("neighbourhood", "Dociągam sąsiednie artykuły ustawy…", ranges.Count);
+
+        var have = final.Select(c => c.ChunkId).ToHashSet();
+        // Pozycje trafień per dokument — do sortowania po odległości przy cięciu budżetem.
+        var hits = final
+            .GroupBy(c => c.DocumentId)
+            .ToDictionary(g => g.Key, g => g.Select(c => c.ChunkIndex).ToList());
+
+        var fetched = await LatencyLog.TimeAsync("neighbourhood", async () =>
+        {
+            var acc = new List<ChunkRow>();
+            // Zapytanie per zakres — trafia w unikalny indeks (DocumentId, ChunkIndex), więc to
+            // odczyt po zakresie na indeksie, nie skan. Zakresów jest tyle, ile rozsianych trafień.
+            foreach (var r in ranges)
+            {
+                var rows = await Project(db.Chunks.Where(c =>
+                        c.DocumentId == r.DocumentId &&
+                        c.ChunkIndex >= r.FromIndex && c.ChunkIndex <= r.ToIndex))
+                    .ToListAsync(ct);
+                acc.AddRange(rows);
+            }
+            return acc;
+        });
+
+        var budget = query.NeighbourhoodTokenBudget;
+        var result = new List<RetrievedChunk>();
+
+        foreach (var row in fetched
+            .Where(r => !have.Contains(r.Id))
+            .DistinctBy(r => r.Id)
+            .OrderBy(r => DistanceToNearestHit(r, hits)))
+        {
+            // TokenCount czytamy z bazy osobno (Project go nie niesie) — patrz TokenCounts niżej.
+            if (budget <= 0) break;
+            result.Add(NeighbourChunk(row));
+            budget -= EstimatedTokens(row);
+        }
+
+        return result;
+    }
+
+    /// <summary>Odległość artykułu od NAJBLIŻSZEGO trafienia w tym samym dokumencie — im mniejsza,
+    /// tym większa szansa, że niesie przepis powiązany z pytaniem.</summary>
+    private static int DistanceToNearestHit(ChunkRow row, Dictionary<Guid, List<int>> hits) =>
+        hits.TryGetValue(row.DocumentId, out var positions)
+            ? positions.Min(p => Math.Abs(p - row.ChunkIndex))
+            : int.MaxValue;
+
+    /// <summary>
+    /// Szacunek tokenów z długości tekstu (~4 znaki/token) — świadomie NIE dociągamy
+    /// <c>TokenCount</c> z bazy dodatkową kolumną: budżet jest zgrubnym hamulcem na rozmiar promptu,
+    /// a nie pomiarem, więc dokładność co do tokena nic tu nie kupuje, a rozszerzyłaby projekcję
+    /// używaną przez WSZYSTKIE tory.
+    /// </summary>
+    private static int EstimatedTokens(ChunkRow row) => Math.Max(1, row.Text.Length / 4);
+
+    /// <summary>
+    /// Chunk dociągnięty SĄSIEDZTWEM. <c>Score = double.MinValue</c> to marker pochodzenia
+    /// (symetrycznie do <c>MaxValue</c> torów dokładnych) — po nim testy i diagnostyka poznają, że
+    /// artykuł nie wygrał rankingu, tylko przyszedł jako kontekst obok trafienia.
+    /// </summary>
+    private static RetrievedChunk NeighbourChunk(ChunkRow h) => new()
+    {
+        ChunkId = h.Id, DocumentId = h.DocumentId, ChunkIndex = h.ChunkIndex,
+        Text = h.Text, Section = h.Section,
+        Source = h.Source, DocType = h.DocType, Title = h.Title, SourceUrl = h.SourceUrl,
+        Locator = Deserialize(h.Locator),
+        LegalBases = LegalBasesDisplay(h.TypedMetadata),
+        Score = double.MinValue, Similarity = null,
+    };
 
     /// <summary>Projekcja wspólna dla wszystkich torów — jedno miejsce, w którym rośnie lista kolumn.</summary>
     private static IQueryable<ChunkRow> Project(IQueryable<ChunkEntity> q) =>

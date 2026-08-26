@@ -76,6 +76,30 @@ public sealed record RetrievalQuery
     public int CitationBridgeArticles { get; init; } = 2;
 
     /// <summary>
+    /// Ile artykułów w KAŻDĄ stronę dociągnąć wokół trafień w dominującym akcie (plan SAS).
+    /// 0 = mechanizm wyłączony, wynik bajt w bajt jak przed jego wprowadzeniem — ten sam idiom co
+    /// <see cref="CitationBridgeArticles"/>.
+    ///
+    /// Powód: retrieval potrafi trafić w AKT i jednocześnie ominąć właściwy przepis, bo ten nazywa
+    /// się inaczej niż w pytaniu (zmierzone: pytanie o „limity wpłat", ustawa mówi „próg zwolnienia";
+    /// 8 z 8 źródeł z właściwej ustawy, ani jedno z limitem). W tekstach prawnych progi i wyjątki
+    /// leżą FIZYCZNIE OBOK przepisu, który modyfikują — więc sąsiedztwo omija problem terminologii,
+    /// nie wiedząc nic o terminologii.
+    /// </summary>
+    public int NeighbourhoodRadius { get; init; }
+
+    /// <summary>Ile chunków z jednego aktu w finalnej liście kwalifikuje go do rozszerzenia.
+    /// Ogranicza zasięg zmiany: pytania z rozproszonymi źródłami zachowują się jak dotąd.</summary>
+    public int NeighbourhoodMinChunks { get; init; } = 3;
+
+    /// <summary>
+    /// Górny limit tokenów DOCIĄGNIĘTYCH chunków. To cała obsługa przypadku „kodeks" — bez osobnej
+    /// gałęzi: dla 18-stronicowej ustawy budżet obejmuje w praktyce cały akt, dla kodeksu cywilnego
+    /// ucina do okolic trafień. Liczone z <c>ChunkEntity.TokenCount</c>, więc bez tokenizacji.
+    /// </summary>
+    public int NeighbourhoodTokenBudget { get; init; } = 20_000;
+
+    /// <summary>
     /// Raportowanie etapów na bieżąco (Zadanie 2 planu ROU) — ten sam wzorzec opcjonalnego
     /// wzbogacenia zapytania co <see cref="RerankText"/>/<see cref="ExactMatchText"/>.
     /// Null = nikt nie słucha (Eval, <c>/api/search</c>, testy) i retrieval zachowuje się bajt
