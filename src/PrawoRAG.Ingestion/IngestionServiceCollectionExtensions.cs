@@ -102,6 +102,7 @@ public static class IngestionServiceCollectionExtensions
         services.AddSingleton<IDocumentNormalizer, JudgmentNormalizer>();
         services.AddSingleton<IDocumentNormalizer, ActNormalizer>();
         services.AddSingleton<IDocumentNormalizer, Nsa.NsaNormalizer>(); // orzeczenia NSA/WSA (JuDDGES)
+        services.AddSingleton<IDocumentNormalizer, EurLex.EuActNormalizer>(); // akty UE (CELLAR)
         services.AddTransient<IChunker, TokenAwareChunker>();
         services.AddScoped<IngestionPipeline>();
         services.AddScoped<IIngestionPipeline>(sp => sp.GetRequiredService<IngestionPipeline>());
