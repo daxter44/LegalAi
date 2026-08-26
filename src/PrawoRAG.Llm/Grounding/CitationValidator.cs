@@ -46,15 +46,11 @@ public static partial class CitationValidator
         string answer, IReadOnlyList<string> contextTexts, int sourceCount,
         IReadOnlyList<string> docTexts, int docFragmentCount)
     {
-        var cited = MarkerRegex().Matches(answer)
-            .Select(m => int.Parse(m.Groups[1].Value))
-            .Distinct().OrderBy(x => x).ToList();
+        var cited = Numbers(MarkerRegex().Matches(answer));
 
         var outOfRange = cited.Where(n => n < 1 || n > sourceCount).ToList();
 
-        var docCited = DocMarkerRegex().Matches(answer)
-            .Select(m => int.Parse(m.Groups[1].Value))
-            .Distinct().OrderBy(x => x).ToList();
+        var docCited = Numbers(DocMarkerRegex().Matches(answer));
 
         var docOutOfRange = docCited.Where(n => n < 1 || n > docFragmentCount).ToList();
 
@@ -112,18 +108,39 @@ public static partial class CitationValidator
             @"\bart\.?\s*" + Regex.Escape(number) + @"(?![\p{L}\d])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+    /// <summary>
+    /// Wyciąga WSZYSTKIE numery z dopasowanych markerów — także z grupy <c>[2, 3, 4]</c>, którą model
+    /// czasem pisze zamiast osobnych <c>[2] [3] [4]</c> (Zadanie 4 planu SAS).
+    ///
+    /// Dlaczego to nie kosmetyka: poprzedni wzorzec wymagał cyfr BEZPOŚREDNIO przed <c>]</c>, więc cała
+    /// grupa była dla walidatora niewidoczna. Numer spoza zakresu ukryty w grupie (np. <c>[2, 99]</c>
+    /// przy 8 źródłach) nie trafiał do <c>OutOfRange</c> — <c>IsClean</c> zostawało <c>true</c>
+    /// i <c>AnswerGate</c> przepuszczał odpowiedź powołującą się na nieistniejące źródło.
+    /// </summary>
+    private static List<int> Numbers(MatchCollection matches) => matches
+        .SelectMany(m => NumberRegex().Matches(m.Value).Select(n => int.Parse(n.Value)))
+        .Distinct().OrderBy(x => x).ToList();
+
     private static bool ContainsNormalized(string haystack, string needle)
     {
         static string N(string s) => WhitespaceRegex().Replace(s, " ").Trim().ToLowerInvariant();
         return N(haystack).Contains(N(needle));
     }
 
-    [GeneratedRegex(@"\[(\d+)\]")]
+    // Marker cytowania, w tym GRUPA: [2] oraz [2, 3, 4]. Dopasowujemy CAŁY nawias bez grup
+    // przechwytujących, a numery wyciąga z niego NumberRegex — próba trzymania wszystkich numerów
+    // w jednej powtarzalnej grupie rozbija się o to, że pierwszy numer i kolejne trafiają do RÓŻNYCH
+    // grup, więc `Groups[1].Captures` gubiłoby część grupy. Tolerancja na białe znaki, bo modele
+    // piszą i „[2,3]", i „[ 2, 3 ]".
+    [GeneratedRegex(@"\[\s*\d+(?:\s*,\s*\d+)*\s*\]")]
     private static partial Regex MarkerRegex();
 
-    // Przestrzeń załącznika: [D1], [D2]… — rozłączna z [n] (MarkerRegex nie łapie litery D).
-    [GeneratedRegex(@"\[D(\d+)\]")]
+    // Przestrzeń załącznika: [D1], [D2], [D1, D2]… — rozłączna z [n] (MarkerRegex nie łapie litery D).
+    [GeneratedRegex(@"\[D\s*\d+(?:\s*,\s*D?\s*\d+)*\s*\]")]
     private static partial Regex DocMarkerRegex();
+
+    [GeneratedRegex(@"\d+")]
+    private static partial Regex NumberRegex();
 
     [GeneratedRegex(@"art\.?\s*\d+[a-z]?(\s*§\s*\d+)?", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ArticleRegex();

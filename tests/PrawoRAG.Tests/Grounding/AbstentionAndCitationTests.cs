@@ -149,6 +149,70 @@ public class CitationValidatorTests
         Assert.False(check.IsClean);
     }
 
+    // --- Zadanie 4 planu SAS: cytowania GRUPOWANE [2, 3, 4] ---
+    // Model czasem pisze grupę zamiast osobnych markerów. Stary regex `\[(\d+)\]` wymagał cyfr
+    // BEZPOŚREDNIO przed `]`, więc cała grupa była dla walidatora NIEWIDOCZNA. To nie kosmetyka:
+    // cytat spoza zakresu ukryty w grupie przechodził niezauważony, czyli bramka anty-fabrykacji
+    // przepuszczała odpowiedź powołującą się na nieistniejące źródło.
+
+    [Fact] // Grupa rozbita na wszystkie numery.
+    public void Groups_citation_numbers_are_all_recognized()
+    {
+        var check = CitationValidator.Validate("Wynika to z przepisów [2, 3, 4].", ["a", "b", "c", "d"], 4);
+
+        Assert.Equal([2, 3, 4], check.Cited);
+        Assert.Empty(check.OutOfRange);
+    }
+
+    [Fact] // TEST REGRESJI NA REALNA DZIURE: numer spoza zakresu UKRYTY w grupie musi byc wykryty.
+           // Przed Zadaniem 4 `[2, 99]` bylo dla walidatora niewidoczne w calosci => IsClean=true
+           // => AnswerGate przepuszczal odpowiedz cytujaca nieistniejace zrodlo.
+    public void Out_of_range_hidden_in_group_is_detected()
+    {
+        var check = CitationValidator.Validate("Zgodnie z [2, 99].", ["a", "b"], 2);
+
+        Assert.Contains(99, check.OutOfRange);
+        Assert.False(check.IsClean);
+    }
+
+    [Theory] // Warianty zapisu grupy, ktore realnie produkuja modele.
+    [InlineData("[2,3]")]
+    [InlineData("[2, 3]")]
+    [InlineData("[2 , 3]")]
+    [InlineData("[ 2, 3 ]")]
+    public void Group_separator_variants_are_recognized(string marker)
+    {
+        var check = CitationValidator.Validate($"Teza {marker} jest oparta na źródłach.", ["a", "b", "c"], 3);
+        Assert.Equal([2, 3], check.Cited);
+    }
+
+    [Fact] // Pojedynczy marker dziala jak dotad (rownowaznosc - zero regresji).
+    public void Single_marker_still_works()
+    {
+        var check = CitationValidator.Validate("Teza [2].", ["a", "b"], 2);
+        Assert.Equal([2], check.Cited);
+    }
+
+    [Fact] // Grupa w przestrzeni ZALACZNIKA [D1, D2].
+    public void Doc_group_markers_are_recognized()
+    {
+        var check = CitationValidator.Validate("Umowa mówi [D1, D2].", ["a"], 1, ["x", "y"], 2);
+
+        Assert.Equal([1, 2], check.DocCited);
+        Assert.Empty(check.DocOutOfRange!);
+    }
+
+    [Theory] // Tekst NIEBEDACY cytowaniem nie moze byc lapany - inaczej kazda data w nawiasie
+             // kwadratowym staje sie falszywym cytatem i psuje liczby w raporcie.
+    [InlineData("Termin [2 marca] upłynął.")]
+    [InlineData("Zobacz [ustawa] wyżej.")]
+    [InlineData("Pusty [] nawias.")]
+    public void Non_citation_brackets_are_ignored(string text)
+    {
+        var check = CitationValidator.Validate(text, ["a", "b", "c"], 3);
+        Assert.Empty(check.Cited);
+    }
+
     [Fact] // Numer artykulu z litera (art. 1a u.p.o.l., art. 43bb) - realny przypadek z korpusu,
            // rdzen nie moze zgubic litery, bo art. 1a to INNY przepis niz art. 1.
     public void Article_number_with_letter_is_not_confused_with_bare_number()
