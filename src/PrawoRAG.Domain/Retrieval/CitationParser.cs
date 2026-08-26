@@ -19,7 +19,24 @@ public static class CitationParser
     // Kolejne numery w wyliczeniu „art. 94 i 95", „art. 5, 6 oraz 7".
     private static readonly Regex ChainRe =
         new(@"\G\s*(?:,|i|oraz)\s*(\d+[a-zA-Z]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex ParaRe = new(@"§\s*(\d+[a-zA-Z]*)", RegexOptions.Compiled);
+    // Jednostka niższego poziomu: „§ 2" (prawo polskie) albo „ust. 1" (prawo UE — rozporządzenia
+    // i dyrektywy dzielą artykuł na USTĘPY, nie paragrafy). Po „ust" wymagana jest cyfra, więc „ustawa
+    // o …" się nie łapie. Informacyjnie — retrieval i tak pobiera CAŁY artykuł (P3).
+    private static readonly Regex ParaRe =
+        new(@"(?:§\s*|\bust\.?\s*)(\d+[a-zA-Z]*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // Nazwy zwyczajowe aktów UE — dopasowanie po CAŁYM tokenie (nie fragmencie słowa), bo to
+    // charakterystyczne skróty. Kanoniczne oznaczenie („2016/679") daje ActAliases.
+    private static readonly Regex EuAliasRe = new(
+        @"(?<![\p{L}])(RODO|GDPR|AI\s*Act|AIA|DSA|DMA|DORA|MiCA|NIS\s*2|MDR|REACH)(?![\p{L}])",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // Oznaczenie aktu UE podane wprost: „rozporządzenie (UE) 2016/679", „(WE) nr 45/2001",
+    // „dyrektywa 95/46/WE". To dokładny identyfikator aktu, więc ma pierwszeństwo przed nazwą zwyczajową.
+    private static readonly Regex EuDesignatorRe = new(
+        @"\((?:UE|WE|EWG|Euratom|EWWiS)\)\s*(?:nr\s*)?(\d{1,4}/\d{2,4})"
+        + @"|\b(\d{2,4}/\d{1,4}/(?:WE|EWG|UE|Euratom|EWWiS))\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
     // Fraza aktu: „Kodeksu wykroczeń", „kodeks postępowania cywilnego" (kodeks + 1-2 słowa).
     private static readonly Regex KodeksRe =
         new(@"kodeks\w*(?:\s+\p{L}+){1,2}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -89,6 +106,15 @@ public static class CitationParser
         if (string.IsNullOrWhiteSpace(text)) return null;
         var k = KodeksRe.Match(text);
         if (k.Success) return Ws.Replace(k.Value, " ").Trim();
+
+        // Prawo UE PRZED skrótami kodeksów i przed frazą „ustawa o …": „art. 6 ust. 1 lit. f) RODO"
+        // ma wskazać rozporządzenie 2016/679, a nie zgadywać polską ustawę o ochronie danych osobowych.
+        // Oznaczenie podane wprost wygrywa z nazwą zwyczajową, bo jest dokładniejsze.
+        if (EuDesignatorRe.Match(text) is { Success: true } d)
+            return d.Groups[1].Success ? d.Groups[1].Value : d.Groups[2].Value;
+        if (EuAliasRe.Match(text) is { Success: true } eu)
+            return NormalizeEuAlias(eu.Groups[1].Value);
+
         foreach (var (norm, re) in Abbrevs)
             if (re.IsMatch(text)) return norm;
         // Nazwa ustawy/ordynacji wprost (korpusowo → fuzzy resolver). Po skrótach, żeby „art. 5 KC"
@@ -97,6 +123,16 @@ public static class CitationParser
         if (OrdynacjaRe.Match(text) is { Success: true } o) return Clean(o.Value);
         return null;
     }
+
+    /// <summary>Nazwa zwyczajowa aktu UE w formie, którą zna <see cref="ActAliases"/> („ai act" → „AI Act").
+    /// Użytkownik pisze różnie („rodo", „AI act", „nis 2"), a mapa aliasów ma jedno brzmienie.</summary>
+    private static string NormalizeEuAlias(string raw) => Ws.Replace(raw, " ").Trim().ToUpperInvariant() switch
+    {
+        "AI ACT" => "AI Act",
+        "NIS 2" or "NIS2" => "NIS2",
+        "MICA" => "MiCA",
+        var other => other,
+    };
 
     /// <summary>Normalizuje wyłuskaną nazwę aktu: obcina od „art." (gdyby fraza połknęła kolejny cytat),
     /// zwija białe znaki, przycina do <see cref="MaxActHintChars"/>.</summary>
