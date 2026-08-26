@@ -2,6 +2,32 @@
 
 **Data:** 2026-08-26. **Branch bazowy:** `feat/halfvec-retriever`.
 
+## Status: ZAIMPLEMENTOWANE (Zadania 1–4), 693/693 testów zielone
+
+Commity `b1da869`..`30866f3`. Flagi domyślne: `NeighbourhoodRadius = 2`,
+`NeighbourhoodMinChunks = 3`, `NeighbourhoodTokenBudget = 20 000`. Mechanizm jest **włączony
+domyślnie** — może tylko DODAĆ artykuły do kontekstu, bramki działają na końcu bez zmian, a warunek
+koncentracji nie dotyka pytań z rozproszonymi źródłami.
+
+**Do sprawdzenia przez Ciebie (jedno pytanie, bez evalu):** zapytać o limity wpłat na OKI. Albo
+w źródłach jest przepis o progu, albo nie ma.
+
+### Znaleziska z implementacji
+
+1. **`RetrievedChunk` nie miał `ChunkIndex`.** Bez pozycji w dokumencie nie da się ani zaplanować
+   sąsiedztwa, ani uporządkować aktu liniowo — pole doszło przez `ChunkRow` i oba mappery.
+2. **`/api/search` używa tego samego `ToQuery` co czat**, więc sąsiedztwo trzeba było wyłączyć tam
+   JAWNIE (`with { NeighbourhoodRadius = 0 }`). W Wyszukiwarce wynikiem jest lista trafień dla
+   człowieka — dociąganie rozmyłoby ranking.
+3. **Zadanie 4 okazało się szersze niż zgłoszenie.** Grupa `[2, 3, 4]` była niewidoczna nie tylko dla
+   renderera (objaw: brak linku), ale i dla `CitationValidator` — czyli numer spoza zakresu ukryty
+   w grupie (`[2, 99]`) nie trafiał do `OutOfRange` i `AnswerGate` przepuszczał odpowiedź cytującą
+   nieistniejące źródło. Jest na to test regresji.
+4. **Dwa błędy w moich własnych testach**, wykryte tylko przez pełny zestaw (w izolacji przechodziły):
+   asercje na globalnej liczbie chunków są niestabilne, bo baza `LiveDb` jest współdzielona; oraz
+   testowy akt musi być WIĘKSZY niż `TopK`, inaczej cały wchodzi do wyniku sam i sąsiedztwo nie ma
+   czego dołożyć. Oba to przypomnienie, że test na wspólnej bazie musi mówić o SWOICH danych.
+
 ## Przypadek, który to wywołał
 
 Pytanie o **limity wpłat na OKI** (osobiste konta inwestycyjne). Retrieval zadziałał: **8 z 8 źródeł
@@ -82,7 +108,7 @@ per chunk pozwala pilnować budżetu bez tokenizacji.
 
 ---
 
-## Zadanie 1: ArticleNeighbourhood — czysta funkcja wyboru zakresów
+## Zadanie 1 ✅ ZROBIONE: ArticleNeighbourhood — czysta funkcja wyboru zakresów
 
 **Pliki:**
 - Create: `src/PrawoRAG.Domain/Retrieval/ArticleNeighbourhood.cs`
@@ -106,7 +132,7 @@ per chunk pozwala pilnować budżetu bez tokenizacji.
 - [ ] Implementacja.
 - [ ] Commit: `feat(retrieval): ArticleNeighbourhood - plan zakresow sasiedztwa dla dominujacych aktow`
 
-## Zadanie 2: dociągnięcie sąsiadów w HybridRetriever
+## Zadanie 2 ✅ ZROBIONE: dociągnięcie sąsiadów w HybridRetriever
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Domain/Retrieval/Retrieval.cs` (`RetrievalQuery`: `NeighbourhoodRadius`,
@@ -136,7 +162,7 @@ per chunk pozwala pilnować budżetu bez tokenizacji.
 - [ ] Implementacja.
 - [ ] Commit: `feat(retrieval): sasiedztwo artykulow dla dominujacego aktu - budzet tokenow zamiast galezi na kodeks`
 
-## Zadanie 3: panel źródeł grupowany po dokumencie
+## Zadanie 3 ✅ ZROBIONE: panel źródeł grupowany po dokumencie
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Api/Components/Pages/Chat.razor` (sekcja `Źródła (@ex.Sources.Count)`)
@@ -152,7 +178,7 @@ retrievalu widoczne od razu, sąsiedztwo zwinięte pod rozwijaniem.
 - [ ] Odróżnienie wizualne: trafienie retrievalu vs dociągnięty sąsiad.
 - [ ] Commit: `feat(ui): panel zrodel grupowany po dokumencie - czytelnosc przy rozszerzonym sasiedztwie`
 
-## Zadanie 4: cytowania grupowane `[2, 3, 4]` — rozbicie na klikalne `[2] [3] [4]`
+## Zadanie 4 ✅ ZROBIONE: cytowania grupowane `[2, 3, 4]` — rozbicie na klikalne `[2] [3] [4]`
 
 **Pliki:**
 - Modify: `src/PrawoRAG.Api/Services/MarkdownRenderer.cs` (`CiteRe`, `DocCiteRe` i pętla podmiany)
