@@ -170,15 +170,46 @@ public sealed class EurLexConnector(
         return true;
     }
 
+    /// <summary>Ile przekierowań 303 podążamy ręcznie, zanim uznamy to za pętlę/błąd.</summary>
+    private const int MaxManualRedirects = 5;
+
+    /// <summary>
+    /// CELLAR odpowiada linked-data wzorcem 303 „See Other" wskazującym konkretny dokument — I
+    /// ROBI TO Z DOWNGRADEM PROTOKOŁU (żądanie https://, `Location: http://...`, zmierzone na żywo
+    /// 2026-08-26: 32016R0679 i inne — 100% prób, nie flaki sieci). .NET-owy `SocketsHttpHandler`
+    /// (domyślny handler `HttpClient`) CELOWO nie podąża automatycznie za przekierowaniem HTTPS→HTTP
+    /// (ochrona przed downgrade'em) — bez tej pętli KAŻDE pobranie z CELLAR-a kończy się surowym 303
+    /// przekazanym do `EnsureSuccessStatusCode()`, niezależnie od maszyny/sieci, na której to działa.
+    /// `curl -L` z tymi samymi nagłówkami podąża bez problemu i dostaje 200 — to potwierdza, że sam
+    /// docelowy zasób jest OK, przekierowanie jest tu jedyną przeszkodą.
+    /// </summary>
     private async Task<HttpResponseMessage> SendAsync(string celex, string accept, CancellationToken ct)
     {
         if (_opt.RequestDelayMs > 0) await Task.Delay(_opt.RequestDelayMs, ct); // uprzejmość wobec CELLAR-a
-        using var req = new HttpRequestMessage(HttpMethod.Get, celex);
-        req.Headers.Accept.Clear();
-        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(accept));
-        req.Headers.AcceptLanguage.Clear();
-        req.Headers.AcceptLanguage.Add(new StringWithQualityHeaderValue(_opt.Language));
-        return await http.SendAsync(req, ct);
+
+        Uri? nextUri = null; // null = pierwsze żądanie, względne do BaseAddress (jak dotąd)
+        for (var hop = 0; hop <= MaxManualRedirects; hop++)
+        {
+            using var req = nextUri is null
+                ? new HttpRequestMessage(HttpMethod.Get, celex)
+                : new HttpRequestMessage(HttpMethod.Get, nextUri);
+            req.Headers.Accept.Clear();
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(accept));
+            req.Headers.AcceptLanguage.Clear();
+            req.Headers.AcceptLanguage.Add(new StringWithQualityHeaderValue(_opt.Language));
+
+            var resp = await http.SendAsync(req, ct);
+            if (resp.StatusCode != HttpStatusCode.SeeOther || resp.Headers.Location is null)
+                return resp; // sukces, 404, albo coś, czego świadomie nie obsługujemy tutaj
+
+            nextUri = resp.Headers.Location.IsAbsoluteUri
+                ? resp.Headers.Location
+                : new Uri(req.RequestUri!, resp.Headers.Location);
+            resp.Dispose();
+        }
+
+        throw new HttpRequestException(
+            $"EUR-Lex {celex}: przekroczono limit {MaxManualRedirects} przekierowań 303 (możliwa pętla).");
     }
 
     /// <summary>Metadane źródłowe aktu UE w <see cref="RawDocument.SourcePayload"/> — czyta je normalizer (Faza 3).</summary>
