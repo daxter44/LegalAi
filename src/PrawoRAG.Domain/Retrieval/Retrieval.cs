@@ -99,6 +99,13 @@ public sealed record RetrievedChunk
 {
     public Guid ChunkId { get; init; }
     public Guid DocumentId { get; init; }
+
+    /// <summary>
+    /// Pozycja chunka w dokumencie (od 0). Potrzebna, żeby dociągnąć SĄSIEDNIE artykuły
+    /// (<see cref="ArticleNeighbourhood"/>) i żeby akt czytał się w prompcie liniowo — a nie
+    /// w kolejności podobieństwa. Baza ma pod to unikalny indeks <c>(DocumentId, ChunkIndex)</c>.
+    /// </summary>
+    public int ChunkIndex { get; init; }
     public required string Text { get; init; }
     public string? Section { get; init; }
     public required string Source { get; init; }

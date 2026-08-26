@@ -160,6 +160,7 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
             {
                 ChunkId = c.Id,
                 DocumentId = c.DocumentId,
+                ChunkIndex = c.ChunkIndex,
                 Text = c.Text,
                 Section = c.Section,
                 Source = c.Source,
@@ -503,13 +504,13 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     /// encja wyłącza śledzenie z definicji, więc `AsNoTracking` jest tu zbędne.
     /// </summary>
     private sealed record ChunkRow(
-        Guid Id, Guid DocumentId, string Text, string? Section, JsonDocument? Locator,
+        Guid Id, Guid DocumentId, int ChunkIndex, string Text, string? Section, JsonDocument? Locator,
         string Source, string DocType, string Title, string? SourceUrl, JsonDocument? TypedMetadata);
 
     /// <summary>Projekcja wspólna dla wszystkich torów — jedno miejsce, w którym rośnie lista kolumn.</summary>
     private static IQueryable<ChunkRow> Project(IQueryable<ChunkEntity> q) =>
         q.Select(c => new ChunkRow(
-            c.Id, c.DocumentId, c.Text, c.Section, c.Locator,
+            c.Id, c.DocumentId, c.ChunkIndex, c.Text, c.Section, c.Locator,
             c.Document!.Source, c.Document.DocType, c.Document.Title, c.Document.SourceUrl,
             c.Document.TypedMetadata));
 
@@ -521,7 +522,8 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
     /// </summary>
     private static RetrievedChunk ExactMatchChunk(ChunkRow h) => new()
     {
-        ChunkId = h.Id, DocumentId = h.DocumentId, Text = h.Text, Section = h.Section,
+        ChunkId = h.Id, DocumentId = h.DocumentId, ChunkIndex = h.ChunkIndex,
+        Text = h.Text, Section = h.Section,
         Source = h.Source, DocType = h.DocType, Title = h.Title, SourceUrl = h.SourceUrl,
         Locator = Deserialize(h.Locator),
         // Podstawy prawne dotyczą orzeczeń (lane sygnatury). Dla aktów (lane odwołania, cytat, most)
