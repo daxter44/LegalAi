@@ -64,7 +64,28 @@ i chodzi godzinami (potwierdzone: przebieg 2 h zakończony błędem). Golden set
 Pełny przebieg z generowaniem odpowiedzi (`--chat` lub `Eval:Chat=true`) ma sens dopiero po
 transzy T1 — do pomiaru „przed" wystarczy retrieval, bo pytania UE nie mają dziś czego trafić.
 
-## 3. Wyniki „PRZED" — do wypełnienia
+## 3. Wyniki „PRZED" — ZMIERZONE (2026-08-26)
+
+**Golden set: 14 / 40 pozycji zaliczonych. Żadna pozycja `ue-*` nie ma `hit=True`.**
+
+Interpretacja (dlatego ta liczba jest dobrym punktem odniesienia, a nie porażką):
+
+| grupa | ile | oczekiwanie „przed" | wynik |
+|---|---|---|---|
+| `ue-*` merytoryczne (`InCorpus`) | 18 | wszystkie nietrafione — w korpusie nie ma ani jednego aktu UE | ✅ zero trafień |
+| `ue-*` odmowy (`Trap`/`OutOfCorpus`/`RelatedButWrong`) | 4 | powinny zaliczać już dziś (poprawne zachowanie = odmowa) | ✅ (w puli 14) |
+| pozycje polskie | 18 | baseline regresji; część świadomie czerwona (`uodo-107`) | ✅ (w puli 14) |
+
+**Najważniejsze z tego pomiaru:** zero `hit=True` na pozycjach UE znaczy, że retrieval nie podstawia
+dziś polskiego aktu o zbliżonym temacie pod pytanie unijne. Gdyby podstawiał, mielibyśmy problem R6
+(mieszanie porządków prawnych) JESZCZE PRZED ingestią — i to on byłby pierwszy do naprawy, nie pokrycie.
+
+**Bramka Fazy 0: SPEŁNIONA.** Liczba odniesienia dla transzy T1 to `14/40` przy zerowym trafieniu
+prawa UE. Po T1 mierzymy: (a) ile pozycji `ue-*` merytorycznych zaczyna trafiać, (b) czy 18 pozycji
+polskich nie spadło (regresja = warunek STOPU dla kolejnych transz), (c) ile pokazanych źródeł to
+bojlerplate albo diff (metryka wyniku odsiewu z § 4.6 planu).
+
+## 4. Wyniki `--refusals` — do wypełnienia
 
 Oczekiwanie: **wszystkie pozycje `ue-*` z kategorii `InCorpus` kończą się odmową albo trafieniem
 w niewłaściwy akt** (prawa UE nie ma dziś w korpusie). Jeśli któraś przechodzi z sensowną
