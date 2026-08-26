@@ -152,6 +152,47 @@ retrievalu widoczne od razu, sąsiedztwo zwinięte pod rozwijaniem.
 - [ ] Odróżnienie wizualne: trafienie retrievalu vs dociągnięty sąsiad.
 - [ ] Commit: `feat(ui): panel zrodel grupowany po dokumencie - czytelnosc przy rozszerzonym sasiedztwie`
 
+## Zadanie 4: cytowania grupowane `[2, 3, 4]` — rozbicie na klikalne `[2] [3] [4]`
+
+**Pliki:**
+- Modify: `src/PrawoRAG.Api/Services/MarkdownRenderer.cs` (`CiteRe`, `DocCiteRe` i pętla podmiany)
+- Modify: `src/PrawoRAG.Llm/Grounding/CitationValidator.cs` (`MarkerRegex`, `DocMarkerRegex`)
+- Test: `tests/PrawoRAG.Tests/Grounding/AbstentionAndCitationTests.cs` (dopisać)
+- Test: nowy plik dla renderera, jeśli go nie ma
+
+**To NIE jest tylko problem UI.** Model czasem pisze `[2, 3, 4]` zamiast `[2] [3] [4]`, a oba miejsca,
+które rozpoznają cytowania, wymagają cyfr **bezpośrednio** przed `]`:
+
+- `MarkdownRenderer.CiteRe` = `\[(\d{1,2})\]` — grupa NIE jest linkowana, użytkownik widzi
+  nieklikalny tekst;
+- `CitationValidator.MarkerRegex` = `\[(\d+)\]` — grupa jest **niewidoczna dla bramki
+  anty-fabrykacji**. Konsekwencje: `Cited` jest niekompletne (traci wartość diagnostyczną
+  i zasila raport `--live-report` zaniżonymi liczbami), a cytat spoza zakresu **ukryty w grupie**
+  (np. `[2, 99]` przy 8 źródłach) **nie zostanie wykryty** — `OutOfRange` go nie zobaczy, więc
+  `AnswerGate` przepuści odpowiedź, która powołuje się na nieistniejące źródło.
+
+Dlatego naprawa musi objąć OBA regexy, a nie tylko renderer.
+
+**Decyzja: naprawiamy po stronie ODCZYTU, nie promptu.** Można by dopisać do `GroundedPrompt` regułę
+„pisz `[2] [3] [4]`, nigdy `[2, 3, 4]`", ale (a) to prośba do modelu, nie gwarancja, (b) nie naprawia
+**już zapisanych** odpowiedzi w historii, które UI renderuje ponownie po wczytaniu rozmowy.
+Rozpoznawanie grup po stronie odczytu działa retroaktywnie i nie zależy od tego, czy model posłucha.
+
+- [ ] `MarkerRegex`/`CiteRe` rozpoznają grupę: `\[\s*\d+(\s*,\s*\d+)*\s*\]` (i analogicznie `[D1, D2]`),
+      a z niej wyciągane są WSZYSTKIE numery.
+- [ ] Renderer emituje osobny link per numer (`[2] [3] [4]`, każdy z własną kotwicą
+      `#src-{anchorId}-{n}`) — separator z oryginału (przecinek) zamieniony na spację, żeby nie
+      renderować `[2], [3], [4]` z wiszącym przecinkiem poza linkiem.
+- [ ] Walidator zlicza wszystkie numery z grupy do `Cited` i sprawdza każdy osobno przeciw
+      `sourceCount` (`OutOfRange`).
+- [ ] Testy walidatora: `[2, 3, 4]` ⇒ `Cited = [2,3,4]`; `[2, 99]` przy 8 źródłach ⇒ `99`
+      w `OutOfRange` (dziś przechodzi niezauważone — to jest test regresji na realną dziurę);
+      `[D1, D2]` w przestrzeni załącznika; pojedyncze `[2]` bez zmian; `[2,3]` bez spacji;
+      tekst niebędący cytatem (np. `[2 marca]`) NIE łapany.
+- [ ] Testy renderera: grupa daje trzy osobne `<a class="cite">`; numer spoza zakresu w grupie NIE
+      jest linkowany (parytet z dzisiejszym zachowaniem dla pojedynczych cytatów).
+- [ ] Commit: `fix(ui): cytowania grupowane [2, 3, 4] klikalne i widoczne dla bramki anty-fabrykacji`
+
 ---
 
 ## Weryfikacja — bez rytuału pomiarowego
