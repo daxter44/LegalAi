@@ -2,6 +2,35 @@
 
 Data: 2026-08-27. Branch: `feat/halfvec-retriever`. Rozbicie epiku E1 z `PLAN-KOMERCJALIZACJA-EPIKI.md`.
 
+## STAN NA 2026-08-27 — E1 ZREALIZOWANY (poza T-14)
+
+| Task | Stan | Gdzie |
+|---|---|---|
+| T-1 Identity w schemacie i DI | ✅ | `PrawoRagDbContext`, migracja `AddIdentityAccounts` |
+| T-2 Rejestracja, logowanie, wylogowanie | ✅ | `Services/Auth/AuthEndpoints.cs` |
+| T-3 `CurrentUser` = identyfikator konta | ✅ | `Services/CurrentUser.cs` |
+| T-4 Poczta + potwierdzenie adresu | ✅ | `Services/Auth/AppEmailSender.cs` (Resend / log), `EmailTemplates.cs` |
+| T-5 Reset hasła | ✅ | `AuthEndpoints.cs` |
+| T-6 Ochrona tras, invite wyłączony | ✅ | `Program.cs` — przy `Auth:Enabled=true` invite nie jest mapowany |
+| T-7 Testy tożsamości i izolacji | ✅ | `Access/AuthTests.cs` |
+| T-8 Słownik planów | ✅ | `Services/Plans/PlanOptions.cs` (15 / 300) |
+| T-9 Uprawnienie jako jedyne źródło „czy wolno" | ✅ | `Services/Plans/Entitlements.cs` — **hak dla E3** |
+| T-10 Liczniki w bazie | ✅ | `Services/Plans/UsageCounters.cs`, tabela `usage_counters` |
+| T-11 Komunikat limitu jako konwersja | ✅ | `Services/CostGuard.cs` |
+| T-12 Testy planów i limitów | ✅ | `BillingPeriodTests`, `CostGuardRulesTests`, `CostGuardLiveTests` |
+| T-13 Klucze DataProtection i sekrety | ✅ w kodzie | ustawienie ścieżki = krok wdrożeniowy (`RUNBOOK-KONTA.md`) |
+| T-14 Backup z odtworzeniem | ⬜ **do zrobienia** | praca po stronie infrastruktury, nie kodu |
+
+**Zmiany względem pierwotnego planu, wprowadzone w trakcie:**
+
+- Limit planu jest **miesięczny** (nie dobowy jak stary `CostGuard`) i liczony od dnia rejestracji.
+- Dobowe capy globalne **zostały** jako osobna oś (pojemność sprzętu ≠ uprawnienie klienta).
+- Magazyn liczników wydzielony za `IUsageCounters`, żeby reguły dało się testować bez bazy.
+- Doszedł przegląd bezpieczeństwa (sekcja w `RUNBOOK-KONTA.md`) — poprawione m.in. wyliczanie kont
+  przez komunikat o niepotwierdzonym adresie.
+
+---
+
 Dokument porządkujący, **nie zlecenie implementacji** — czeka na wyraźne „go". Bez wycen czasowych:
 każdy task ma złożoność i ryzyko zakopania się.
 

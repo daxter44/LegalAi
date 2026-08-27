@@ -33,7 +33,27 @@ E2 Marka, UI/UX i zaufanie     ──►  (równolegle; styka się z E3 na cenni
 
 ---
 
-# E1 — Konta, plany i uprawnienia
+## STAN NA 2026-08-27 (koniec sesji)
+
+| Epik | Stan | Dowód |
+|---|---|---|
+| **E1 — konta, plany, uprawnienia** | **kod MVP zrobiony**; poza kodem zostaje backup (US-1.12) i ustawienie sekretów przy wdrożeniu | commity `5e8311f` (konta), `8187f49` (plany); 824 testy zielone; runbook `RUNBOOK-KONTA.md` |
+| **E2 — marka, UI/UX, zaufanie** | nietknięty | — |
+| **E3 — płatności** | nietknięty; hak gotowy | `IEntitlements` czeka na zapis z webhooków |
+
+**Ustalone wartości:** plan darmowy **15 zapytań/okres**, płatny **300**. Do dostrojenia po becie —
+świadomie wzięte „na oko", bo brak danych o realnym użyciu.
+
+**Wszystko za flagą `Auth:Enabled` (domyślnie `false`).** Przy wyłączonej fladze aplikacja zachowuje
+się dokładnie jak przed sesją: bramka na kody zaproszeń, dobowe limity z alfy, `/rejestracja` daje 404.
+
+**Do zrobienia zanim ruszy E3:** nazwa i domena (E2/US-2.1) — wchodzą do adresów w e-mailach
+i do `Auth:PublicBaseUrl`. **Rekomendowany następny krok:** US-3.1, czyli spike całej ścieżki
+płatniczej w trybie testowym Stripe, zanim powstanie cennik.
+
+---
+
+# E1 — Konta, plany i uprawnienia ✅ (MVP zrobione)
 
 **Cel:** trwałe konto z niezmiennym identyfikatorem i plan, który realnie steruje limitami — niezależnie
 od płatności.
@@ -45,17 +65,17 @@ limity; liczniki zużycia przeżywają restart.
 
 | # | Story | Gotowe, gdy | Koszt |
 |---|---|---|---|
-| US-1.1 | Rejestracja e-mailem i hasłem | ASP.NET Core Identity w istniejącym Postgresie; hasło haszowane; walidacja siły | mały — gotowy mechanizm |
-| US-1.2 | Potwierdzenie adresu e-mail | Link aktywacyjny; wymagany do korzystania | mały (dochodzi wysyłka poczty) |
-| US-1.3 | Logowanie i wylogowanie | Cookie jak dziś; wylogowanie kończy obwód Blazora | mały |
-| US-1.4 | Reset zapomnianego hasła | Token jednorazowy z terminem ważności | mały — bez tego każdy zapomniany login to Twoja ręczna robota |
-| US-1.5 | `UserId` = identyfikator konta (GUID) zamiast czytelnej nazwy | `CurrentUser` zwraca identyfikator konta; kolumna `user_id` bez zmian (tekst); wiersze alfy zostają w bazie, po prostu bez właściciela | mały — zmiana jednego miejsca, nie migracja schematu |
-| US-1.7 | Dwa plany: darmowy i płatny | Słownik planów z limitami; nowe konto dostaje darmowy | mały |
-| US-1.8 | Uprawnienie na koncie jako jedyne źródło „czy wolno" | Plan + ważność + stan (aktywny / zaległy / anulowany-do-końca-okresu); awaria Stripe nie wpływa na zalogowanego | mały |
-| US-1.9 | Liczniki zużycia w bazie | `CostGuard` czyta i zapisuje stan w Postgresie; restart nie zeruje dnia | mały |
-| US-1.10 | Limity odczytywane z planu | Obecne wartości globalne stają się planem darmowym; płatny ma wyższe | mały |
-| US-1.11 | Trwałe klucze DataProtection i sekrety poza repo | `DataProtection:KeysPath` na wolumenie — inaczej restart wylogowuje wszystkich | trywialny — mechanizm już wpięty |
-| US-1.12 | Backup bazy z odtworzeniem wykonanym realnie | `pg_dump` w cronie + jedno odtworzenie zrobione, nie założone | mały |
+| US-1.1 ✅ | Rejestracja e-mailem i hasłem | ASP.NET Core Identity w istniejącym Postgresie; hasło haszowane; walidacja siły | mały — gotowy mechanizm |
+| US-1.2 ✅ | Potwierdzenie adresu e-mail | Link aktywacyjny; wymagany do korzystania | mały (dochodzi wysyłka poczty) |
+| US-1.3 ✅ | Logowanie i wylogowanie | Cookie jak dziś; wylogowanie kończy obwód Blazora | mały |
+| US-1.4 ✅ | Reset zapomnianego hasła | Token jednorazowy z terminem ważności | mały — bez tego każdy zapomniany login to Twoja ręczna robota |
+| US-1.5 ✅ | `UserId` = identyfikator konta (GUID) zamiast czytelnej nazwy | `CurrentUser` zwraca identyfikator konta; kolumna `user_id` bez zmian (tekst); wiersze alfy zostają w bazie, po prostu bez właściciela | mały — zmiana jednego miejsca, nie migracja schematu |
+| US-1.7 ✅ | Dwa plany: darmowy i płatny | Słownik planów z limitami; nowe konto dostaje darmowy | mały |
+| US-1.8 ✅ | Uprawnienie na koncie jako jedyne źródło „czy wolno" | Plan + ważność + stan (aktywny / zaległy / anulowany-do-końca-okresu); awaria Stripe nie wpływa na zalogowanego | mały |
+| US-1.9 ✅ | Liczniki zużycia w bazie | `CostGuard` czyta i zapisuje stan w Postgresie; restart nie zeruje dnia | mały |
+| US-1.10 ✅ | Limity odczytywane z planu | Obecne wartości globalne stają się planem darmowym; płatny ma wyższe | mały |
+| US-1.11 ✅ (kod) | Trwałe klucze DataProtection i sekrety poza repo — USTAWIENIE ścieżki to krok wdrożeniowy | `DataProtection:KeysPath` na wolumenie — inaczej restart wylogowuje wszystkich | trywialny — mechanizm już wpięty |
+| US-1.12 ⬜ NIE ZROBIONE | Backup bazy z odtworzeniem wykonanym realnie (praca po stronie infrastruktury) | `pg_dump` w cronie + jedno odtworzenie zrobione, nie założone | mały |
 
 ### Po deployu
 
