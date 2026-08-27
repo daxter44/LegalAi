@@ -30,20 +30,22 @@ public class GapClosingRetrievalTests
     {
         public int Calls { get; private set; }
         public string? LastQuestion { get; private set; }
+        public IReadOnlyList<ChatTurn>? LastHistory { get; private set; }
 
-        public Task<string?> ReformulateAsync(string question, CancellationToken ct)
+        public Task<string?> ReformulateAsync(string question, IReadOnlyList<ChatTurn> history, CancellationToken ct)
         {
             Calls++;
             LastQuestion = question;
+            LastHistory = history;
             return Task.FromResult(result);
         }
     }
 
     private static Task<GapClosingRetrieval.Outcome> Run(
         IRetriever retriever, IQueryReformulator? reformulator, int maxExtraRounds = 1,
-        string question = "czy pracodawca może mnie zwolnić?") =>
+        string question = "czy pracodawca może mnie zwolnić?", IReadOnlyList<ChatTurn>? history = null) =>
         GapClosingRetrieval.RetrieveAsync(
-            retriever, text => new RetrievalQuery { Text = text, TopK = 8 }, question, [],
+            retriever, text => new RetrievalQuery { Text = text, TopK = 8 }, question, history ?? [],
             cosineMargin: 0.05, rerankMargin: 0.05, abstentionThreshold: Threshold,
             reformulator, maxExtraRounds, default);
 
@@ -199,5 +201,44 @@ public class GapClosingRetrievalTests
         await Run(retriever, reformulator, question: "komu zgłosić wyciek danych?");
 
         Assert.Equal("komu zgłosić wyciek danych?", reformulator.LastQuestion);
+    }
+
+    // --- HISTORIA DLA REFORMULATORA (fix 2026-08-27) ---
+    // Defekt: reformulator dostawał goły string, więc na follow-upie przekładał na terminologię
+    // ustawową samo „a co z § 2?" — tekst bez tematu. Właśnie w tej klasie tur odmowy są
+    // najczęstsze, czyli tam, gdzie druga runda ma najwięcej do uratowania.
+
+    [Fact]
+    public async Task Reformulator_receives_history()
+    {
+        var retriever = new FakeRetriever(_ => new RetrievalResult([Chunk("x")], 0.20));
+        var reformulator = new CountingReformulator("art. 367 § 2 KPC solidarność dłużników");
+        ChatTurn[] history = [new("co mówi art. 367 KPC?", "Art. 367 KPC dotyczy solidarności dłużników.")];
+
+        await Run(retriever, reformulator, question: "a co z § 2?", history: history);
+
+        Assert.Equal("a co z § 2?", reformulator.LastQuestion);          // pytanie surowe, jak dotąd
+        var passed = Assert.Single(reformulator.LastHistory!);           // ale historia DOCHODZI
+        Assert.Equal("co mówi art. 367 KPC?", passed.Question);
+    }
+
+    [Fact] // Runda 2 to JEDEN retrieval, nie dwa - przeformulowane zapytanie jest juz samodzielne
+           // (reformulator widzial rozmowe), wiec sklejanie go z historia tylko rozmylo by embedding
+           // i podwoilo koszt rundy.
+    public async Task Second_round_does_not_re_glue_history()
+    {
+        var call = 0;
+        var retriever = new FakeRetriever(_ => ++call <= 2
+            ? new RetrievalResult([Chunk("nietrafione")], 0.20)         // runda 1: surowe + kontekstowe
+            : new RetrievalResult([Chunk("trafione")], 0.80));
+        var reformulator = new CountingReformulator("solidarność dłużników art. 367 § 2 KPC");
+        ChatTurn[] history = [new("co mówi art. 367 KPC?", "Solidarność dłużników.")];
+
+        var outcome = await Run(retriever, reformulator, question: "a co z § 2?", history: history);
+
+        // 2 (runda 1: surowe + sklejka, bo pytanie użytkownika NIE jest samodzielne) + 1 (runda 2).
+        Assert.Equal(3, retriever.Queries.Count);
+        Assert.Equal("solidarność dłużników art. 367 § 2 KPC", retriever.Queries[^1].Text);
+        Assert.True(outcome.ExtraRound);
     }
 }

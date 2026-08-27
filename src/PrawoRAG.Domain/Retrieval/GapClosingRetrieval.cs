@@ -61,11 +61,21 @@ public static class GapClosingRetrieval
         // ~40 s za pytania, które już mają dobrą odpowiedź.
         if (!AbstentionPolicy.ShouldAbstain(first.Result, abstentionThreshold)) return new Outcome(first);
 
-        var reformulated = await reformulator.ReformulateAsync(question, ct);
+        // Reformulator dostaje HISTORIĘ (2026-08-27). Bez niej na follow-upie przekładał na
+        // terminologię ustawową samo „a co z § 2?" — tekst bez tematu — czyli w klasie tur,
+        // w której odmowy są najczęstsze, druga runda była z góry przegrana.
+        var reformulated = await reformulator.ReformulateAsync(question, history, ct);
         if (reformulated is null) return new Outcome(first); // brak sensownego wariantu → dzisiejsza odmowa
 
+        // Historia PUSTA, mimo że runda 1 ją dostała: przeformułowane zapytanie jest już samodzielne
+        // (reformulator widział rozmowę i rozwiązał odwołanie), więc sklejanie go z historią
+        // w FollowUpSelector tylko rozmyłoby embedding i podwoiło koszt rundy — dwa retrievale
+        // zamiast jednego, na tekście gorszym niż to, co model właśnie napisał.
+        // Skutek uboczny: zapytanie rundy 2 nie niesie już cytatów z historii, więc gdy wygra
+        // sygnałem, augmenter nowelizacji dostanie właśnie je (patrz Merge) — cytat, którego user
+        // sam nie wpisał, i tak nie powinien wyzwalać torów dokładnych.
         var second = await FollowUpSelector.SelectAsync(
-            retriever, queryFactory, reformulated, history, cosineMargin, rerankMargin, ct);
+            retriever, queryFactory, reformulated, [], cosineMargin, rerankMargin, ct);
 
         return new Outcome(Merge(first, second), ExtraRound: true, ReformulatedQuery: reformulated);
     }

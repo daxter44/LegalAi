@@ -175,6 +175,24 @@ public static class GroundedPrompt
         // Warunkowy system prompt (DOC-2): zasady o dokumencie tylko gdy sekcja DOKUMENT istnieje.
         var system = docFragments.Count > 0 ? SystemPrompt + "\n" + DocumentRules : SystemPrompt;
         var messages = new List<ChatMessage> { new(ChatRole.System, system) };
+        AppendHistory(messages, history);
+        AddCoalescing(messages, new ChatMessage(ChatRole.User, sb.ToString()));
+
+        var request = new LlmRequest { Messages = messages, Temperature = 0 };
+        return (request, sources);
+    }
+
+    /// <summary>
+    /// Dokleja historię rozmowy jako naprzemienne wiadomości User/Assistant: ostatnie
+    /// <see cref="HistoryTurnsTaken"/> tur, odpowiedzi sanityzowane (<see cref="SanitizeHistoryAnswer"/>),
+    /// tura z abstynencją (Answer=null) → tylko User, kolejne wiadomości tej samej roli scalone.
+    ///
+    /// PUBLICZNA, bo ścieżka bez retrievalu (small-talk w ChatService) potrzebuje DOKŁADNIE tej samej
+    /// historii, mimo że świadomie nie używa <see cref="SystemPrompt"/> ani sekcji ŹRÓDŁA. Druga kopia
+    /// tej pętli rozjechałaby się z tą (precedens: trzy kopie logiki follow-upu przed FollowUpSelector).
+    /// </summary>
+    public static void AppendHistory(List<ChatMessage> messages, IReadOnlyList<ChatTurn> history)
+    {
         foreach (var turn in history.TakeLast(HistoryTurnsTaken))
         {
             if (string.IsNullOrWhiteSpace(turn.Question)) continue;
@@ -182,17 +200,15 @@ public static class GroundedPrompt
             if (turn.Answer is { } a && !string.IsNullOrWhiteSpace(a))
                 messages.Add(new ChatMessage(ChatRole.Assistant, SanitizeHistoryAnswer(a)));
         }
-        AddCoalescing(messages, new ChatMessage(ChatRole.User, sb.ToString()));
-
-        var request = new LlmRequest { Messages = messages, Temperature = 0 };
-        return (request, sources);
     }
 
     /// <summary>Scala kolejne wiadomości tej samej roli (tura z abstynencją = samotny User przed następnym
     /// User). Messages API dziś łączy takie tury samo, ale historycznie zwracało 400 „roles must alternate",
     /// a szablony czatu lokalnych modeli (Bielik/llama.cpp) bywają wrażliwe — ścisła naprzemienność jest
-    /// bezpieczna dla KAŻDEGO providera.</summary>
-    private static void AddCoalescing(List<ChatMessage> messages, ChatMessage next)
+    /// bezpieczna dla KAŻDEGO providera. PUBLICZNA z tego samego powodu co
+    /// <see cref="AppendHistory"/>: ścieżka bez retrievalu składa listę wiadomości sama, a ograniczenie
+    /// providerów obowiązuje ją identycznie.</summary>
+    public static void AddCoalescing(List<ChatMessage> messages, ChatMessage next)
     {
         if (messages.Count > 0 && messages[^1] is { } last && last.Role == next.Role)
             messages[^1] = last with { Content = last.Content + "\n\n" + next.Content };

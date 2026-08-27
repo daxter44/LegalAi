@@ -127,7 +127,63 @@ public class ChatServiceRouterTests
         var system = llm.LastRequest!.Messages.Single(m => m.Role == ChatRole.System).Content;
         Assert.Contains("NIE jest pytaniem prawnym", system);
         Assert.DoesNotContain("[1], [2]", system);   // reguły cytowania nie mają tu czego cytować
-        Assert.Equal(256, llm.LastRequest.MaxTokens); // reguła R2: bez rozumowania na „siema"
+        // 512, nie 256: ta ścieżka obsługuje też „streść poprzednią odpowiedź w punktach", a to
+        // potrzebuje miejsca na treść. Reguła R2 (bez rozumowania na tej ścieżce) trzyma się rzędu
+        // wielkości — odpowiedź na źródłach ma limit wielokrotnie większy.
+        Assert.Equal(512, llm.LastRequest.MaxTokens);
+    }
+
+    // --- HISTORIA NA ŚCIEŻCE BEZ RETRIEVALU (fix 2026-08-27) ---
+    // Defekt: SmalltalkAsync dostawał SAMO pytanie. Router orzeka „przepisy niepotrzebne" m.in. dla
+    // „streść to krócej", więc model trafiał tam bez czegokolwiek do streszczenia — i albo pytał
+    // „co mam streścić?", albo dorabiał treść z pamięci. Ta ścieżka nie ma bramki abstynencji ani
+    // walidacji cytatów, więc nie miało tego co wyłapać.
+
+    [Fact]
+    public async Task Smalltalk_path_receives_conversation_history()
+    {
+        var llm = new FakeLlm("Krócej: odpowiadasz na zasadach ogólnych.");
+        ChatTurn[] history = [new("kto odpowiada za szkodę?", "Odpowiada sprawca [1], na zasadach ogólnych.")];
+
+        await Drain(Service(new CountingRetriever(0.9), llm, new StubRouter(false), routerEnabled: true)
+            .AskAsync("streść to krócej", history, null, default));
+
+        var messages = llm.LastRequest!.Messages;
+        Assert.Contains(messages, m => m.Role == ChatRole.User && m.Content.Contains("kto odpowiada za szkodę?"));
+        Assert.Contains(messages, m => m.Role == ChatRole.Assistant && m.Content.Contains("Odpowiada sprawca"));
+        Assert.Equal(ChatRole.User, messages[^1].Role);                      // pytanie bieżące na końcu
+        Assert.Contains("streść to krócej", messages[^1].Content);
+    }
+
+    [Fact] // Markery [n] z tamtej tury ZDJETE - tu nie ma zadnych zrodel, wiec nie moglyby na nic wskazywac.
+    public async Task Smalltalk_history_answer_has_no_citation_markers()
+    {
+        var llm = new FakeLlm("ok");
+        ChatTurn[] history = [new("pytanie", "Teza [1] oraz teza [2].")];
+
+        await Drain(Service(new CountingRetriever(0.9), llm, new StubRouter(false), routerEnabled: true)
+            .AskAsync("krócej", history, null, default));
+
+        var assistant = llm.LastRequest!.Messages.Single(m => m.Role == ChatRole.Assistant).Content;
+        Assert.DoesNotContain("[1]", assistant);
+        Assert.DoesNotContain("[2]", assistant);
+    }
+
+    [Fact] // Tura z ABSTYNENCJA (Answer=null) konczy historie rola User - dwie wiadomosci User z rzedu
+           // lamia naprzemiennosc, ktorej wymagaja szablony czatu lokalnych modeli.
+    public async Task Smalltalk_coalesces_roles_after_abstained_turn()
+    {
+        var llm = new FakeLlm("ok");
+        ChatTurn[] history = [new("pytanie bez odpowiedzi", null)];
+
+        await Drain(Service(new CountingRetriever(0.9), llm, new StubRouter(false), routerEnabled: true)
+            .AskAsync("to co teraz?", history, null, default));
+
+        var messages = llm.LastRequest!.Messages;
+        for (var i = 1; i < messages.Count; i++)
+            Assert.NotEqual(messages[i - 1].Role, messages[i].Role);
+        Assert.Contains("pytanie bez odpowiedzi", messages[^1].Content);     // scalone, nie zgubione
+        Assert.Contains("to co teraz?", messages[^1].Content);
     }
 
     [Fact] // Router mowi "prawne" => normalna sciezka z retrievalem i zrodlami.

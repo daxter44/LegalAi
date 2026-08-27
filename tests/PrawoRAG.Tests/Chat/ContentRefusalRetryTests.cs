@@ -66,7 +66,7 @@ public class ContentRefusalRetryTests
     {
         public int Calls { get; private set; }
 
-        public Task<string?> ReformulateAsync(string question, CancellationToken ct)
+        public Task<string?> ReformulateAsync(string question, IReadOnlyList<ChatTurn> history, CancellationToken ct)
         {
             Calls++;
             return Task.FromResult(result);

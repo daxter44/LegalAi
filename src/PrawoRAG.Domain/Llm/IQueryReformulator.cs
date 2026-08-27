@@ -16,9 +16,21 @@ namespace PrawoRAG.Domain.Llm;
 public interface IQueryReformulator
 {
     /// <summary>
-    /// Zwraca zapytanie przełożone na język przepisów albo <c>null</c>, gdy: model padł/timeout,
-    /// wyjście jest puste, ALBO wyjście jest równoważne wejściu (druga runda byłaby wtedy
-    /// deterministycznym powtórzeniem pierwszej — czysta strata ~40 s bez żadnej szansy na inny wynik).
+    /// Zwraca SAMODZIELNE zapytanie przełożone na język przepisów albo <c>null</c>, gdy: model
+    /// padł/timeout, wyjście jest puste, ALBO wyjście jest równoważne wejściu (druga runda byłaby
+    /// wtedy deterministycznym powtórzeniem pierwszej — czysta strata ~40 s bez żadnej szansy na
+    /// inny wynik).
     /// </summary>
-    Task<string?> ReformulateAsync(string question, CancellationToken ct);
+    /// <param name="history">
+    /// Poprzednie tury rozmowy. NIE jest opcjonalna i NIE ma przeciążki bez niej — na follow-upie
+    /// („a co z § 2?") samo <paramref name="question"/> nie niesie treści, więc bez historii ten
+    /// mechanizm przekładał na terminologię ustawową tekst bez tematu. Dokładnie w tej klasie tur
+    /// odmowy są najczęstsze, czyli tam, gdzie druga runda ma najwięcej do uratowania.
+    /// Pusta lista = pytanie otwierające rozmowę (zachowanie jak dotąd).
+    ///
+    /// KONSEKWENCJA DLA WOŁAJĄCEGO: wynik jest już samodzielny, więc NIE wolno go ponownie sklejać
+    /// z historią w <see cref="PrawoRAG.Domain.Retrieval.FollowUpSelector"/> — patrz
+    /// <see cref="PrawoRAG.Domain.Retrieval.GapClosingRetrieval"/>.
+    /// </param>
+    Task<string?> ReformulateAsync(string question, IReadOnlyList<ChatTurn> history, CancellationToken ct);
 }

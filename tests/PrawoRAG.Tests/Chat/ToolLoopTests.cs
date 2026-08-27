@@ -153,6 +153,42 @@ public class ToolLoopTests
         Assert.True(done.Check!.IsClean);
     }
 
+    // --- HISTORIA A KOSZT RETRIEVALU (fix 2026-08-27) ---
+    // Sklejka kontekstowa w FollowUpSelector istnieje TYLKO dlatego, że surowe dopytanie nie niesie
+    // treści. Zapytanie napisane przez model, który widział rozmowę (prompt narzędziowy dostaje
+    // historię), już ją niesie — więc sklejanie go po raz drugi to podwójny embedding + SQL +
+    // reranker za pogorszenie tekstu, który model właśnie napisał.
+
+    [Fact]
+    public async Task Tool_call_with_history_runs_single_retrieval()
+    {
+        var retriever = new RecordingRetriever();
+        var llm = new ToolCallingLlm("solidarność dłużników art. 367 § 2 KPC");
+        ChatTurn[] history = [new("co mówi art. 367 KPC?", "Solidarność dłużników.")];
+
+        await Drain(Service(retriever, llm, toolCalling: true)
+            .AskAsync("a co z § 2?", history, null, default));
+
+        // JEDEN przebieg, i to na zapytaniu modelu — nie dwa (surowe + sklejka z historią).
+        Assert.Equal(["solidarność dłużników art. 367 § 2 KPC"], retriever.Queries);
+    }
+
+    [Fact] // Model NIE zawolal narzedzia => historia zostaje, czyli dzisiejsza sciezka follow-upu
+           // (podwojny retrieval i wybor wariantu) dziala bez zmian. Fix nie moze jej zabrac.
+    public async Task No_tool_call_keeps_contextual_follow_up_path()
+    {
+        var retriever = new RecordingRetriever();
+        var llm = new ToolCallingLlm(toolQuery: null);
+        ChatTurn[] history = [new("co mówi art. 367 KPC?", "Solidarność dłużników.")];
+
+        await Drain(Service(retriever, llm, toolCalling: true)
+            .AskAsync("a co z § 2?", history, null, default));
+
+        Assert.Equal(2, retriever.Queries.Count);                       // surowe + kontekstowe
+        Assert.Contains("a co z § 2?", retriever.Queries);
+        Assert.Contains(retriever.Queries, q => q.Contains("co mówi art. 367 KPC?"));
+    }
+
     // --- Czysta funkcja pętli (bez ChatService) ---
 
     private sealed class ArgsLlm(string argumentsJson, string toolName = ToolLoop.ToolName) : ILlmProvider

@@ -39,7 +39,7 @@ public class AuxQueryReformulatorTests
     public async Task Returns_reformulated_query()
     {
         var result = await Reformulator("zgłoszenie naruszenia ochrony danych Prezesowi UODO")
-            .ReformulateAsync("komu zgłosić wyciek danych do głównego inspektora?", default);
+            .ReformulateAsync("komu zgłosić wyciek danych do głównego inspektora?", [], default);
 
         Assert.Equal("zgłoszenie naruszenia ochrony danych Prezesowi UODO", result);
     }
@@ -49,7 +49,7 @@ public class AuxQueryReformulatorTests
     {
         var result = await Reformulator(
                 "rozwiązanie umowy o pracę w okresie niezdolności do pracy\n\nMam nadzieję, że pomogłem!")
-            .ReformulateAsync("zwolnienie na chorobowym", default);
+            .ReformulateAsync("zwolnienie na chorobowym", [], default);
 
         Assert.Equal("rozwiązanie umowy o pracę w okresie niezdolności do pracy", result);
     }
@@ -58,7 +58,7 @@ public class AuxQueryReformulatorTests
     public async Task Strips_surrounding_quotes()
     {
         var result = await Reformulator("\"kara umowna za opóźnienie\"")
-            .ReformulateAsync("kara za spóźnienie", default);
+            .ReformulateAsync("kara za spóźnienie", [], default);
 
         Assert.Equal("kara umowna za opóźnienie", result);
     }
@@ -70,7 +70,7 @@ public class AuxQueryReformulatorTests
     [InlineData("brak")]       // wielkość liter bez znaczenia
     public async Task Returns_null_for_unusable_output(string response)
     {
-        var result = await Reformulator(response).ReformulateAsync("pytanie", default);
+        var result = await Reformulator(response).ReformulateAsync("pytanie", [], default);
         Assert.Null(result);
     }
 
@@ -83,7 +83,7 @@ public class AuxQueryReformulatorTests
     public async Task Returns_null_when_output_equals_input(string response)
     {
         var result = await Reformulator(response)
-            .ReformulateAsync("kara umowna za opóźnienie", default);
+            .ReformulateAsync("kara umowna za opóźnienie", [], default);
 
         Assert.Null(result);
     }
@@ -92,7 +92,7 @@ public class AuxQueryReformulatorTests
     public async Task Provider_failure_returns_null()
     {
         var result = await Reformulator(null, new HttpRequestException("connection refused"))
-            .ReformulateAsync("pytanie", default);
+            .ReformulateAsync("pytanie", [], default);
 
         Assert.Null(result);
     }
@@ -101,7 +101,7 @@ public class AuxQueryReformulatorTests
     public async Task Client_timeout_returns_null()
     {
         var result = await Reformulator(null, new TaskCanceledException("timeout"))
-            .ReformulateAsync("pytanie", default);
+            .ReformulateAsync("pytanie", [], default);
 
         Assert.Null(result);
     }
@@ -113,14 +113,14 @@ public class AuxQueryReformulatorTests
         await cts.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            Reformulator(null, new OperationCanceledException()).ReformulateAsync("pytanie", cts.Token));
+            Reformulator(null, new OperationCanceledException()).ReformulateAsync("pytanie", [], cts.Token));
     }
 
     [Fact] // Puste pytanie nie wola modelu wcale.
     public async Task Empty_question_does_not_call_model()
     {
         var llm = new ScriptedLlm("cokolwiek");
-        var result = await new AuxQueryReformulator(llm).ReformulateAsync("  ", default);
+        var result = await new AuxQueryReformulator(llm).ReformulateAsync("  ", [], default);
 
         Assert.Null(result);
         Assert.Null(llm.Captured);
@@ -130,8 +130,38 @@ public class AuxQueryReformulatorTests
     public async Task Uses_zero_temperature()
     {
         var llm = new ScriptedLlm("inne zapytanie");
-        await new AuxQueryReformulator(llm).ReformulateAsync("pytanie", default);
+        await new AuxQueryReformulator(llm).ReformulateAsync("pytanie", [], default);
 
         Assert.Equal(0, llm.Captured!.Temperature);
+    }
+
+    // --- HISTORIA W PROMPCIE (fix 2026-08-27) ---
+
+    [Fact] // Rozmowa DOCHODZI do modelu - bez niej „a co z § 2?" nie ma tematu do przelozenia.
+    public async Task History_reaches_the_prompt()
+    {
+        var llm = new ScriptedLlm("solidarność dłużników art. 367 § 2 KPC");
+        ChatTurn[] history = [new("co mówi art. 367 KPC?", "Art. 367 KPC dotyczy solidarności [1].")];
+
+        await new AuxQueryReformulator(llm).ReformulateAsync("a co z § 2?", history, default);
+
+        var user = llm.Captured!.Messages.Single(m => m.Role == ChatRole.User).Content;
+        Assert.Contains("co mówi art. 367 KPC?", user);
+        Assert.Contains("solidarności", user);
+        Assert.Contains("a co z § 2?", user);
+        Assert.DoesNotContain("[1]", user);   // markery tamtej tury nic tu nie znaczą
+        // Historia jako BLOK TEKSTU, nie rola Assistant: model ma przepisać zapytanie,
+        // a w roli Assistant potrafi zacząć odpowiadać na pytanie.
+        Assert.DoesNotContain(llm.Captured.Messages, m => m.Role == ChatRole.Assistant);
+    }
+
+    [Fact] // Pusta historia = prompt dokladnie jak dotad (pytanie samo, bez naglowkow rozmowy).
+    public async Task Empty_history_keeps_bare_question()
+    {
+        var llm = new ScriptedLlm("inne zapytanie");
+        await new AuxQueryReformulator(llm).ReformulateAsync("kara za spóźnienie", [], default);
+
+        var user = llm.Captured!.Messages.Single(m => m.Role == ChatRole.User).Content;
+        Assert.Equal("kara za spóźnienie", user);
     }
 }

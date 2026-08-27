@@ -81,7 +81,7 @@ public sealed class ChatService(
                 // abstynencji i bez walidacji cytatów — nie ma czego walidować. Dlatego prompt sam
                 // pilnuje, żeby model nie zaczął tu udzielać porad prawnych z pamięci.
                 yield return new NoRetrievalEvent(decision.Uzasadnienie);
-                await foreach (var e in SmalltalkAsync(question, ct)) yield return e;
+                await foreach (var e in SmalltalkAsync(question, history, ct)) yield return e;
                 yield break;
             }
         }
@@ -94,6 +94,10 @@ public sealed class ChatService(
         // zdegradował), lecimy dalej z pytaniem użytkownika. Brak wywołania NIGDY nie prowadzi do
         // odpowiedzi bez źródeł — po prostu wracamy do ścieżki klasycznej.
         var retrievalQuestion = question;
+        // Historia DLA RETRIEVALU, osobno od historii dla promptu (ta zostaje pełna zawsze). Sklejka
+        // kontekstowa w FollowUpSelector istnieje TYLKO dlatego, że surowe dopytanie nie niesie
+        // treści — a zapytanie napisane przez model, który widział rozmowę, już ją niesie.
+        var retrievalHistory = history;
         if (o.ToolCallingEnabled)
         {
             yield return new StageEvent("tool_call", "Ustalam, czego szukać w przepisach…", null);
@@ -102,14 +106,23 @@ public sealed class ChatService(
             if (!loop.NoToolCall)
             {
                 retrievalQuestion = loop.Queries[0];
+                // Zapytanie modelu jest SAMODZIELNE (prompt narzędziowy zawierał historię — wyżej),
+                // więc pusta historia dla retrievalu: jeden przebieg zamiast dwóch. Wcześniej
+                // sklejaliśmy je z poprzednimi pytaniami i foldem odpowiedzi, płacąc podwójny
+                // embedding + SQL + reranker za pogorszenie tekstu, który model właśnie napisał.
+                // Brak wywołania narzędzia → historia zostaje, czyli dzisiejsza ścieżka bez zmian.
+                retrievalHistory = [];
                 yield return new RetryingRetrievalEvent(retrievalQuestion, "zapytanie sformułowane przez model");
             }
         }
 
         // GapClosingRetrieval (Zadanie 12): jedno wejście retrievalu dla czatu, /api/chat i evalu.
         // Gdy runda 1 nie daje pokrycia — druga runda z przeformułowanym zapytaniem, zamiast odmowy.
+        // UWAGA: reformulator w środku dostaje PEŁNĄ `history` (rozwiązanie odwołania), nie
+        // `retrievalHistory` — te dwie rzeczy służą do czego innego.
         var selectionTask = GapClosingRetrieval.RetrieveAsync(
-            retriever, Query, retrievalQuestion, history, o.FollowUpSignalMargin, o.RerankSignalMargin,
+            retriever, Query, retrievalQuestion, retrievalHistory, o.FollowUpSignalMargin,
+            o.RerankSignalMargin,
             o.AbstentionThreshold, o.GapClosingEnabled ? reformulator : null, o.MaxExtraRounds, ct);
 
         // Etapy retrievalu płyną do UI W TRAKCIE — bez tego użytkownik ma kilkadziesiąt sekund ciszy.
@@ -235,15 +248,17 @@ public sealed class ChatService(
             if (o.GapClosingEnabled && !extraRoundUsed && o.MaxExtraRounds > 0 && reformulator is not null
                 && answer.Contains(AbstentionPolicy.Message, StringComparison.Ordinal))
             {
-                var retryQuery = await reformulator.ReformulateAsync(question, ct);
+                var retryQuery = await reformulator.ReformulateAsync(question, history, ct);
                 if (retryQuery is not null)
                 {
                     extraRoundUsed = true;
                     yield return new RetryingRetrievalEvent(retryQuery,
                         "model uznał, że źródła nie odpowiadają na pytanie");
 
+                    // Pusta historia z tego samego powodu co w GapClosingRetrieval: `retryQuery`
+                    // jest już samodzielne, bo reformulator widział rozmowę.
                     var retryOutcome = await GapClosingRetrieval.RetrieveAsync(
-                        retriever, Query, retryQuery, history, o.FollowUpSignalMargin, o.RerankSignalMargin,
+                        retriever, Query, retryQuery, [], o.FollowUpSignalMargin, o.RerankSignalMargin,
                         o.AbstentionThreshold, reformulator: null, maxExtraRounds: 0, ct);
                     while (side.Reader.TryRead(out var stage)) yield return stage;
 
@@ -310,19 +325,34 @@ public sealed class ChatService(
     ///
     /// Niski limit tokenów: reguła R2 planu — rozumowanie tylko przy PISANIU odpowiedzi na źródłach,
     /// a nie przy „siema". Odpowiedź ma paść w ~2 s, nie po 40 s myślenia.
+    ///
+    /// HISTORIA (2026-08-27): ta ścieżka dostaje poprzednie tury. Bez nich router, który orzekł
+    /// „przepisy niepotrzebne" dla „streść to krócej" albo „rozwiń ostatni punkt", wysyłał model
+    /// z SAMĄ tą wiadomością — czyli bez czegokolwiek do streszczenia. Model nie miał wtedy żadnego
+    /// dobrego wyjścia: albo pytał „co mam streścić?", albo dorabiał treść z pamięci parametrycznej,
+    /// a ta ścieżka nie ma ani bramki abstynencji, ani walidacji cytatów, żeby to wyłapać.
+    /// Zakres tego, co model może z historią zrobić, pilnuje <see cref="SmalltalkPrompt"/>
+    /// (przeredagowanie TAK, dokładanie nowej treści prawnej NIE).
     /// </summary>
     private async IAsyncEnumerable<ChatEvent> SmalltalkAsync(
-        string question, [EnumeratorCancellation] CancellationToken ct)
+        string question, IReadOnlyList<ChatTurn> history, [EnumeratorCancellation] CancellationToken ct)
     {
+        // Ta sama historia i ta sama sanityzacja co w GroundedPrompt (markery [n] zdjęte: odnosiły się
+        // do źródeł TAMTEJ tury, a tu nie ma żadnych źródeł, więc nie mogłyby na nic wskazywać).
+        var messages = new List<ChatMessage> { new(ChatRole.System, SmalltalkPrompt.SystemPrompt) };
+        GroundedPrompt.AppendHistory(messages, history);
+        // Scalanie roli, nie zwykłe Add: gdy ostatnia tura skończyła się abstynencją (Answer=null),
+        // historia kończy się wiadomością User i dwie z rzędu łamią naprzemienność.
+        GroundedPrompt.AddCoalescing(messages, new ChatMessage(ChatRole.User, question));
+
         var request = new LlmRequest
         {
-            Messages =
-            [
-                new ChatMessage(ChatRole.System, SmalltalkPrompt.SystemPrompt),
-                new ChatMessage(ChatRole.User, question),
-            ],
+            Messages = messages,
             Temperature = 0,
-            MaxTokens = 256,
+            // 512, nie 256: przeredagowanie poprzedniej odpowiedzi („w punktach") potrzebuje miejsca
+            // na treść, a nie na jedno zdanie. Nadal rząd wielkości poniżej odpowiedzi na źródłach —
+            // reguła R2 (bez rozumowania na tej ścieżce) zostaje.
+            MaxTokens = 512,
         };
 
         LlmUsage? usage = null;
