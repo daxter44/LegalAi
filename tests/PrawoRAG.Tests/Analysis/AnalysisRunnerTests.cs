@@ -115,7 +115,10 @@ public class AnalysisRunnerTests
         var provider = services.BuildServiceProvider();
 
         var options = Options.Create(new AnalysisOptions { MaxParallelism = maxParallelism });
-        var costGuard = new CostGuard(Options.Create(access ?? new AccessOptions()), TimeProvider.System);
+        // Bramka kosztów bez bazy: liczniki w pamięci, brak planu (tryb sprzed kont) — tu testujemy
+        // reakcję runnera na wyczerpany limit, nie samo liczenie (to CostGuard*Tests).
+        var costGuard = new CostGuard(new MemoryUsageCounters(),
+            Options.Create(access ?? new AccessOptions()), new NoPlanEntitlements(), TimeProvider.System);
         return (new AnalysisRunner(provider.GetRequiredService<IServiceScopeFactory>(), options, costGuard,
                     analysisStore ?? new RecordingAnalysisStore()),
                 new AnalysisSessionStore(TimeProvider.System, options));

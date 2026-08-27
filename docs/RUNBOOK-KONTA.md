@@ -1,6 +1,6 @@
-# RUNBOOK: włączenie kont użytkowników (E1, blok A)
+# RUNBOOK: włączenie kont użytkowników (E1, bloki A i B)
 
-Data: 2026-08-27. Branch: `feat/halfvec-retriever`. Zakres: T-1…T-7 z `PLAN-KOMERCJALIZACJA-E1-TASKI.md`.
+Data: 2026-08-27. Branch: `feat/halfvec-retriever`. Zakres: T-1…T-12 z `PLAN-KOMERCJALIZACJA-E1-TASKI.md`.
 
 Kod jest kompletny i domyślnie **wyłączony** (`Auth:Enabled=false`) — bez konfiguracji nic się nie
 zmienia: dev działa jak dotąd, bramka na kody zaproszeń też.
@@ -17,7 +17,12 @@ zmienia: dev działa jak dotąd, bramka na kody zaproszeń też.
 | Wysyłka: Resend albo log (dev) | `Services/Auth/AppEmailSender.cs` |
 | Adresy/tokeny/filtr przekierowań (pokryte testami) | `Services/Auth/AuthLinks.cs` |
 | Tożsamość = identyfikator konta | `Services/CurrentUser.cs` |
-| Testy | `tests/PrawoRAG.Tests/Access/AuthTests.cs` |
+| Testy kont | `tests/PrawoRAG.Tests/Access/AuthTests.cs` |
+| Plany i okres rozliczeniowy | `Services/Plans/PlanOptions.cs`, `Services/Plans/BillingPeriod.cs` |
+| Uprawnienie (jedyne źródło „czy wolno") | `Services/Plans/Entitlements.cs` |
+| Liczniki zużycia (magazyn + SQL atomowy) | `Services/Plans/UsageCounters.cs`, tabela `usage_counters` |
+| Bramka kosztów (dwie osie) | `Services/CostGuard.cs` |
+| Testy planów i limitów | `Access/BillingPeriodTests.cs`, `Access/CostGuardRulesTests.cs`, `Access/CostGuardLiveTests.cs` |
 
 ## Krok 1 — migracja bazy
 
@@ -133,7 +138,52 @@ update conversations set "UserId" = '<identyfikator konta>' where "UserId" = 'Ja
 update analyses      set "UserId" = '<identyfikator konta>' where "UserId" = 'Jan Kowalski';
 ```
 
-## Czego tu jeszcze nie ma (świadomie, blok B epiku E1)
+## Plany i limity (blok B)
 
-Plany i uprawnienia · limity per plan · liczniki `CostGuard` w bazie · ekran zużycia · zmiana adresu
-e-mail · usuwanie konta z interfejsu (w MVP na żądanie mailowe, opisane w polityce prywatności).
+**Dwie osie, których nie wolno pomieszać:**
+
+| Oś | Co ogranicza | Skąd wartości | Okres |
+|---|---|---|---|
+| Rozliczeniowa | ile należy się KLIENTOWI | plan konta (`Plans:Items`) | okres rozliczeniowy konta |
+| Pojemnościowa | ile zniesie NASZ SPRZĘT | `Access:MaxGlobal*` | doba UTC |
+
+Domyślne plany: **darmowy 15 zapytań/okres**, **pro 300**. Zmiana to konfiguracja, nie migracja:
+
+```bash
+Plans__Items__free__RequestsPerMonth=15
+Plans__Items__pro__RequestsPerMonth=300
+```
+
+**Okres rozliczeniowy liczy się od dnia miesiąca, w którym powstało konto**, nie od pierwszego
+kalendarzowego. Powód: Stripe rozlicza w okresach od dnia zakupu, więc kalendarzowy miesiąc trzeba by
+przy płatnościach przepisywać na żywych licznikach. E3 ustawi `BillingAnchorUtc` na początek okresu
+subskrypcji i limit zacznie odnawiać się razem z płatnością. Konto z kotwicą 31. dostaje w lutym
+ostatni dzień miesiąca i wraca na 31. w marcu.
+
+**Nadanie planu ręcznie** (do czasu E3) działa od następnego zapytania, bez restartu:
+
+```sql
+update "AspNetUsers" set "PlanId" = 'pro' where "Email" = 'ktos@kancelaria.pl';
+-- plan czasowy: dodatkowo "PlanValidUntilUtc"; po tej dacie konto samo spada na darmowy
+```
+
+**Liczniki** siedzą w tabeli `usage_counters` (klucz: zakres + konto + początek okresu). Nowy okres to
+nowy wiersz, więc zerowanie dzieje się samo — nie ma żadnego zadania w tle, które musiałoby zdążyć.
+Stare wiersze zostają jako historia zużycia. Zliczanie jest atomowe po stronie Postgresa (warunkowy
+upsert), bo dwie karty przeglądarki tego samego użytkownika nie mogą przepchnąć się ponad limit.
+
+**Tryb bez kont zachowany bit w bit:** przy `Auth:Enabled=false` planów nie ma, a limit dobowy per
+tester z `Access:MaxUserRequestsPerDay` działa jak w alfie.
+
+### Weryfikacja po wdrożeniu (blok B)
+
+- [ ] po wyczerpaniu limitu komunikat mówi, ILE było, KIEDY się odnowi i (na darmowym) że jest Pro;
+- [ ] restart aplikacji NIE zeruje wykorzystanego limitu;
+- [ ] `update "AspNetUsers" set "PlanId"='pro'` działa bez restartu;
+- [ ] wyczerpany globalny cap dobowy NIE zjada zapytania z pakietu klienta (zwrot rezerwacji).
+
+## Czego tu jeszcze nie ma (świadomie)
+
+Ekran zużycia w interfejsie (dane są — `CostGuard.UsageAsync` — brakuje widoku) · funkcje włączane
+per plan · zmiana adresu e-mail · usuwanie konta z interfejsu (w MVP na żądanie mailowe, opisane
+w polityce prywatności) · cokolwiek związanego z płatnościami (E3).

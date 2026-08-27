@@ -471,10 +471,10 @@
             _notice = "Za dużo zapytań w krótkim czasie — spróbuj ponownie za chwilę.";
             return;
         }
-        // Twardy dzienny cap kosztów LLM (3.7) — obok okna minutowego RateGuard.
-        if (!CostGuard.TryAcquire(_userId, out var limitReason))
+        // Limit planu (miesięczny) + capy pojemności (dobowe) — obok okna minutowego RateGuard.
+        if (await CostGuard.TryAcquireAsync(_userId) is { Allowed: false } limit)
         {
-            _notice = CostGuard.LimitMessage(limitReason);
+            _notice = limit.Message;
             return;
         }
 
@@ -550,7 +550,7 @@
             ex.Streaming = false;
             _cts?.Cancel();          // zatrzymuje ticker (jego jedyne zadanie skończone)
             await Try(() => ticker); // domknięcie bez wyjątku w tle
-            CostGuard.Record(_userId, ex.Answer.Length); // dolicz wyjście do dziennego budżetu
+            await CostGuard.RecordAsync(_userId, ex.Answer.Length); // dolicz wyjscie do dobowego budzetu
             if (_conversationId is { } cid2)
             {
                 var content = ex.Abstained ? (ex.AbstainMessage ?? "") : ex.Answer;

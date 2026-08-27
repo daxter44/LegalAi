@@ -600,9 +600,9 @@ else
             _notice = "Za dużo zapytań w krótkim czasie — spróbuj ponownie za chwilę.";
             return;
         }
-        if (!CostGuard.TryAcquire(_userId, out var limitReason))
+        if (await CostGuard.TryAcquireAsync(_userId) is { Allowed: false } limit)
         {
-            _notice = CostGuard.LimitMessage(limitReason);
+            _notice = limit.Message;
             return;
         }
 
@@ -651,7 +651,7 @@ else
         {
             ex.Streaming = false;
             ex.Done = true;
-            CostGuard.Record(_userId, ex.Answer.Length);
+            await CostGuard.RecordAsync(_userId, ex.Answer.Length);
             _followUpBusy = false;
             await InvokeAsync(StateHasChanged);
         }

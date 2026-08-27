@@ -33,6 +33,9 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options)
     public DbSet<MessageEntity> Messages => Set<MessageEntity>();
     public DbSet<FeedbackEntity> Feedbacks => Set<FeedbackEntity>();
 
+    /// <summary>Zużycie planu i capów pojemności (E1/T-10) — trwałe, przeżywa restart.</summary>
+    public DbSet<UsageCounterEntity> UsageCounters => Set<UsageCounterEntity>();
+
     // --- analiza dokumentów (raport BEZ treści dokumentu — patrz AnalysisEntity) ---
     public DbSet<AnalysisEntity> Analyses => Set<AnalysisEntity>();
     public DbSet<AnalysisUnitEntity> AnalysisUnits => Set<AnalysisUnitEntity>();
@@ -50,6 +53,18 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options)
         {
             e.Property(x => x.DisplayName).HasMaxLength(200);
             e.Property(x => x.TermsVersion).HasMaxLength(40);
+            e.Property(x => x.PlanId).HasMaxLength(40);
+            e.Property(x => x.PlanStatus).HasMaxLength(30);
+        });
+
+        b.Entity<UsageCounterEntity>(e =>
+        {
+            e.ToTable("usage_counters");
+            // Klucz złożony = mechanizm zerowania: nowy okres to nowy wiersz, bez zadania w tle.
+            // On nadaje też indeks unikalny, na którym stoi atomowy upsert (ON CONFLICT) w CostGuard.
+            e.HasKey(x => new { x.Scope, x.Key, x.PeriodStart });
+            e.Property(x => x.Scope).HasMaxLength(40);
+            e.Property(x => x.Key).HasMaxLength(450); // mieści identyfikator konta z Identity
         });
 
         b.Entity<DocumentEntity>(e =>

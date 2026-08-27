@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using PrawoRAG.Api.Services;
 using PrawoRAG.Api.Services.Auth;
+using PrawoRAG.Api.Services.Plans;
 using PrawoRAG.Storage.Entities;
 using PrawoRAG.Domain;
 using PrawoRAG.Domain.Llm;
@@ -58,7 +59,15 @@ builder.Services.AddHostedService<RetentionService>(); // retencja logów 6 mies
 builder.Services.Configure<AccessOptions>(builder.Configuration.GetSection(AccessOptions.SectionName));
 var access = builder.Configuration.GetSection(AccessOptions.SectionName).Get<AccessOptions>() ?? new AccessOptions();
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<CostGuard>(); // twardy dzienny cap kosztów LLM (obok RateGuard — inna oś)
+
+// --- Plany i uprawnienia (E1, blok B) -----------------------------------------------------------
+// Uprawnienie czytamy z NASZEJ bazy, nigdy od dostawcy płatności w ścieżce zapytania (E3 tylko
+// zapisuje tu stan z webhooków). CostGuard trzyma dwie osie: limit planu na okres rozliczeniowy
+// konta ORAZ globalne capy dobowe chroniące pojemność — patrz komentarz w klasie.
+builder.Services.Configure<PlanOptions>(builder.Configuration.GetSection(PlanOptions.SectionName));
+builder.Services.AddSingleton<IEntitlements, Entitlements>();
+builder.Services.AddSingleton<IUsageCounters, PostgresUsageCounters>();
+builder.Services.AddSingleton<CostGuard>();
 
 // --- Konta użytkowników (E1, blok A) ------------------------------------------------------------
 // Auth:Enabled=false (domyślnie) = świat sprzed kont: bramka invite albo otwarty dev, bit w bit.
@@ -375,10 +384,10 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
 
     try
     {
-        // Twardy dzienny cap kosztów LLM (obok rate-limitera HTTP) — parytet z UI/Chat.razor.
-        if (!costGuard.TryAcquire(apiUser, out var limitReason))
+        // Limit planu + capy pojemności (obok rate-limitera HTTP) — parytet z UI/Chat.razor.
+        if (await costGuard.TryAcquireAsync(apiUser, ct) is { Allowed: false } limit)
         {
-            await Send("error", new { message = CostGuard.LimitMessage(limitReason) });
+            await Send("error", new { message = limit.Message });
             await Send("done", new { abstained = true });
             return Results.Empty;
         }
@@ -486,7 +495,7 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
             ? new { abstained = false, model = llm.ModelId, citationCheck = check, usage }
             : (object)new { abstained = false, model = llm.ModelId, citationCheck = check });
 
-        costGuard.Record(apiUser, full.Length); // dolicz wyjście do dziennego budżetu znaków
+        await costGuard.RecordAsync(apiUser, full.Length, ct); // dolicz wyjscie do dobowego budzetu znakow
         LatencyLog.Mark("chat.total", chatSw.ElapsedMilliseconds);
         return Results.Empty;
     }

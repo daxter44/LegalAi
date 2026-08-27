@@ -117,9 +117,9 @@ public sealed class AnalysisRunner(
     /// wywołań LLM, każde liczone), świeży scope DI, drenaż strumienia zdarzeń czatu do wyniku.</summary>
     private async Task<UnitAnalysis> AnalyzeUnitAsync(string userPrompt, DocUnit unit, string userId, CancellationToken ct)
     {
-        if (!costGuard.TryAcquire(userId, out var reason))
+        if (await costGuard.TryAcquireAsync(userId, ct) is { Allowed: false } limit)
             return new UnitAnalysis(unit.Index, unit.Heading, UnitVerdict.Error, null, [],
-                Error: CostGuard.LimitMessage(reason));
+                Error: limit.Message);
 
         using var scope = scopes.CreateScope();
         var chat = scope.ServiceProvider.GetRequiredService<IChatService>();
@@ -146,7 +146,7 @@ public sealed class AnalysisRunner(
                 case ChatErrorEvent err: error = err.Message; break;
             }
 
-        costGuard.Record(userId, answer.Length);
+        await costGuard.RecordAsync(userId, answer.Length, ct);
 
         if (error is not null)
             return new UnitAnalysis(unit.Index, unit.Heading, UnitVerdict.Error, null, sources, Error: error);
@@ -163,7 +163,7 @@ public sealed class AnalysisRunner(
     {
         var results = session.Snapshot().Results.Where(r => r is not null).Cast<UnitAnalysis>().ToList();
         if (results.Count == 0) return null;
-        if (!costGuard.TryAcquire(userId, out _)) return null;
+        if (await costGuard.TryAcquireAsync(userId, ct) is { Allowed: false }) return null;
 
         using var scope = scopes.CreateScope();
         var llm = scope.ServiceProvider.GetRequiredService<ILlmProvider>();
@@ -180,7 +180,7 @@ public sealed class AnalysisRunner(
         var sb = new StringBuilder();
         await foreach (var delta in llm.StreamCompletionAsync(request, ct))
             sb.Append(delta);
-        costGuard.Record(userId, sb.Length);
+        await costGuard.RecordAsync(userId, sb.Length, ct);
         return sb.Length > 0 ? sb.ToString().Trim() : null;
     }
 
