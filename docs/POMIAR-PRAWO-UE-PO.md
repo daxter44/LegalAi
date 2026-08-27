@@ -93,23 +93,49 @@ per-pozycję `hit=True/False` na poziomie pliku. To luka w moim własnym zapisie
 danych zespołu — do naprawienia przy następnym pomiarze (zapisywać hit per pozycję, nie tylko
 zbiorczy procent).
 
-**Hipoteza, NIE potwierdzona:** dołożenie ~975 nowych dokumentów do puli kandydatów (dense/BM25/RRF)
-mogło rozcieńczyć ranking dla jednego z tych dwóch pytań — mechanizm dokładnie taki, jak w innych
-diagnozach retrievalu w tej sesji (marginesy cosine rzędu setnych decydują o kolejności). To
-NIE jest dowód regresji spowodowanej ingestią UE — może być też szum między dwoma przebiegami
-(inny stan cache'u/HNSW, inna losowość w `ef_search` na aproksymacyjnym indeksie).
+**POTWIERDZONE `--probe-chunk` (2026-08-27), NIE jest to już hipoteza:**
 
-**Rekomendacja przed T2:** odpalić `--probe-chunk` na `kpk-41` i `uodo-60` (wskazując oczekiwany
-chunk przez `Eval:ProbeEli`/`Eval:ProbeArticle`), żeby ustalić, czy to realna regresja (przepis
-wypadł z top-K przez rozcieńczenie puli) czy nieszkodliwy szum pomiaru. Runbook UE-5.3 traktuje
-regresję jako warunek STOPU dla T2 — ale dopóki nie wiadomo, CZY to regresja, nie ma jeszcze
-podstawy do zatrzymania ani do kontynuacji.
+| pozycja | chunk celu | exact fp32 rank | HNSW rank | sim | `CandidatesPerPath` (produkcja) |
+|---|---|---|---|---|---|
+| `kpk-41` | KPK art. 41 §2 | **#67** | #65 (zgodny) | 0,8147 | **50** |
+| `uodo-60` | UODO art. 60 | **#88** | #82 (zgodny) | 0,8266 | **50** |
+
+Dla OBU pozycji: HNSW jest zgodny z dokładnym skanem (indeks działa poprawnie, nie gubi wektora),
+embedding dobrze reprezentuje przepis (similarity 0,81–0,83, nie jest to rozmycie chunka) — po
+prostu oba chunki lądują TUŻ ZA twardą granicą `CandidatesPerPath=50` (`Retrieval.cs:56`,
+`Program.cs:406` w API — ten sam parametr, dzielony z produkcyjnym czatem, nie tylko evalem). BM25
+też nie ratuje (tsquery z AND-em wszystkich słów pytania nie matchuje żadnego z dwóch chunków —
+znany, osobny wzorzec „Case 4").
+
+To jest dokładnie mechanizm R7 z `PLAN-PRAWO-UE.md`: **stały rozmiar okna kandydatów (50) nie
+skaluje się z rosnącym korpusem.** ~975 nowych dokumentów UE (realnie dziesiątki tysięcy nowych
+chunków, sądząc po raporcie jakości z Kroku 3 — średnio 150 segmentów/akt) dodało konkurentów do
+tej samej, niezmienionej puli top-50 gęstego wyszukiwania. Oba przepisy nie zniknęły z korpusu ani
+nie pogorszył się ich embedding — zostały wypchnięte przez samą liczbę nowych kandydatów.
+
+**To NIE jest coś, co ustąpi samo — T2 (kolejna transza, porównywalna lub większa objętościowo)
+pogłębi ten sam efekt na kolejnych granicznych przypadkach**, nie tylko na tych dwóch już złapanych.
 
 ## 5. Bramka T2 (na podstawie tego pomiaru)
 
 - **UE strona: zaliczona bez zastrzeżeń.** 0→13/18 merytorycznych, oba strażniki mechanizmu
   (`ue-aiact-deepfake`, `ue-reach-33`) przeszły. Ingestia ma mierzalny sens.
-- **Polska strona: NIE zamknięta.** Możliwy spadek o 1 pozycję (kpk-41 lub uodo-60) wymaga
-  diagnozy przed uznaniem `UE-5.3` za spełnione. Do czasu wyjaśnienia traktować T2 jako
-  **wstrzymane, nie odrzucone** — jeśli diagnoza pokaże szum pomiaru, a nie realną regresję,
-  bramka jest czysto spełniona i T2 może ruszyć bez dalszych zastrzeżeń.
+- **Polska strona: POTWIERDZONA regresja, mechanizm zidentyfikowany (R7 — rozcieńczenie okna
+  kandydatów).** Nie szum pomiaru — `--probe-chunk` pokazuje spójny wzorzec na obu pozycjach
+  (patrz sekcja 4). To realny koszt każdej kolejnej transzy przy dzisiejszej konfiguracji
+  `CandidatesPerPath=50`, nie jednorazowy wypadek.
+
+**Decyzja do podjęcia PRZED T2 (nie techniczna, biznesowa/priorytetowa):**
+1. **Podnieść `CandidatesPerPath`** (np. 50→100) i zmierzyć koszt — to wspólny parametr z
+   produkcyjnym czatem (`ChatService`/`Program.cs` w API), więc zmiana wpływa na WSZYSTKIE
+   zapytania, nie tylko na eval. Koszt do zmierzenia: narzut na `rerank.main` (dziś ~400–700 ms
+   przy k=50 na tor, z logów `PRAWORAG_LOG_TIMING` tej sesji) — podwojenie puli prawdopodobnie
+   podwaja też ten narzut. Nie zgadywać, zmierzyć przed wdrożeniem (zasada tego projektu).
+2. **Zaakceptować ryzyko i iść w T2**, wiedząc że każda transza będzie po cichu spychać kolejne
+   graniczne polskie przepisy poza okno — bez własnego mechanizmu wykrywania tego na bieżąco
+   (dziś złapane tylko dlatego, że te dwie pozycje akurat są w golden-secie).
+3. **Wstrzymać T2**, dopóki (1) nie zostanie zrobione i zmierzone.
+
+Bramka `UE-5.3` w obecnym stanie: **NIE spełniona bez decyzji o (1)** — regresja jest realna i
+zidentyfikowana, ale jej rozwiązanie (podniesienie `CandidatesPerPath`) nie zostało jeszcze ani
+wdrożone, ani zmierzone kosztowo.
