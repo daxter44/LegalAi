@@ -6,9 +6,12 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using PrawoRAG.Api.Services;
+using PrawoRAG.Api.Services.Auth;
+using PrawoRAG.Storage.Entities;
 using PrawoRAG.Domain;
 using PrawoRAG.Domain.Llm;
 using PrawoRAG.Domain.Retrieval;
@@ -56,21 +59,123 @@ builder.Services.Configure<AccessOptions>(builder.Configuration.GetSection(Acces
 var access = builder.Configuration.GetSection(AccessOptions.SectionName).Get<AccessOptions>() ?? new AccessOptions();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<CostGuard>(); // twardy dzienny cap kosztów LLM (obok RateGuard — inna oś)
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-    .AddCookie(o =>
+
+// --- Konta użytkowników (E1, blok A) ------------------------------------------------------------
+// Auth:Enabled=false (domyślnie) = świat sprzed kont: bramka invite albo otwarty dev, bit w bit.
+// Auth:Enabled=true = rejestracja/logowanie kontem; bramka invite wtedy NIE jest mapowana.
+// Dwie ścieżki wykluczają się świadomie: tożsamością invite jest nazwa testera, a ciasteczko Identity
+// jest walidowane znacznikiem bezpieczeństwa konta — principal bez konta zostałby natychmiast wylogowany.
+builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
+var authOptions = builder.Configuration.GetSection(AuthOptions.SectionName).Get<AuthOptions>() ?? new AuthOptions();
+
+static void ApiReturns401Instead302(CookieAuthenticationOptions o)
+{
+    // API (JSON/SSE) nie chcemy przekierowywać na HTML — 401 zamiast 302:
+    o.Events.OnRedirectToLogin = ctx =>
     {
-        o.LoginPath = "/wejscie";
+        if (ctx.Request.Path.StartsWithSegments("/api")) { ctx.Response.StatusCode = 401; return Task.CompletedTask; }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
+}
+
+if (authOptions.Enabled)
+{
+    builder.Services.AddIdentityCore<AppUserEntity>(o =>
+        {
+            // Hasła: stawiamy na DŁUGOŚĆ, nie na wymuszone znaki specjalne — dłuższa fraza jest
+            // trudniejsza do złamania niż „Haslo1!", a nie prowokuje zapisywania na karteczce.
+            o.Password.RequiredLength = 10;
+            o.Password.RequireDigit = false;
+            o.Password.RequireUppercase = false;
+            o.Password.RequireLowercase = false;
+            o.Password.RequireNonAlphanumeric = false;
+            o.Password.RequiredUniqueChars = 4;
+
+            // Blokada po serii nieudanych prób — hamuje zgadywanie haseł (obok limitera HTTP „auth").
+            o.Lockout.MaxFailedAccessAttempts = 5;
+            o.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+            o.Lockout.AllowedForNewUsers = true;
+
+            o.User.RequireUniqueEmail = true;
+            // Bez potwierdzonego adresu nie ma logowania: inaczej limit darmowy byłby dostępny
+            // na dowolny zmyślony adres, a reset hasła stałby się kanałem wysyłki spamu.
+            o.SignIn.RequireConfirmedEmail = true;
+        })
+        .AddEntityFrameworkStores<PrawoRagDbContext>()
+        .AddDefaultTokenProviders()
+        .AddSignInManager()
+        .AddErrorDescriber<PolishIdentityErrorDescriber>();
+
+    // Odnośniki z e-maili (potwierdzenie, reset) są ważne krótko — zgubiona skrzynka nie zostaje
+    // wieczną furtką do konta.
+    builder.Services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifespan = TimeSpan.FromHours(6));
+
+    // Reset hasła zmienia znacznik bezpieczeństwa konta, ale ciasteczko jest z nim porównywane co
+    // ten interwał (domyślnie 30 min). 5 minut = ukradziona sesja umiera szybko po resecie, a koszt
+    // to jedno zapytanie o konto na obwód na 5 minut.
+    builder.Services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.FromMinutes(5));
+
+    // Bezpieczniki startowe: te dwie pomyłki konfiguracyjne czynią konta niebezpiecznymi, więc
+    // produkcja ma się NIE URUCHOMIĆ zamiast działać źle. (1) Bez PublicBaseUrl adres w e-mailu
+    // buduje się z nagłówka Host sterowanego przez klienta — droga do listu resetującego hasło
+    // z odnośnikiem na cudzy serwer. (2) Provider "log" wypisywałby tokeny do logu produkcyjnego.
+    if (!builder.Environment.IsDevelopment())
+    {
+        if (string.IsNullOrWhiteSpace(authOptions.PublicBaseUrl))
+            throw new InvalidOperationException(
+                "Auth:Enabled=true poza dev wymaga Auth:PublicBaseUrl (odnośniki w e-mailach).");
+        if (!string.Equals(builder.Configuration[$"{EmailOptions.SectionName}:Provider"], "resend",
+                StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                "Auth:Enabled=true poza dev wymaga Email:Provider=resend (log ujawniałby tokeny).");
+    }
+
+    builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
+    builder.Services.ConfigureApplicationCookie(o =>
+    {
+        o.LoginPath = "/logowanie";
+        o.LogoutPath = "/wylogowanie";
+        o.AccessDeniedPath = "/logowanie";
+        // Nazwa parametru powrotu musi zgadzać się z tą, którą czyta strona logowania — inaczej
+        // po zalogowaniu użytkownik ląduje na stronie startowej zamiast tam, gdzie chciał wejść.
+        o.ReturnUrlParameter = "powrot";
         o.ExpireTimeSpan = TimeSpan.FromDays(30);
         o.SlidingExpiration = true;
         o.Cookie.Name = "praworag.auth";
-        // API (JSON/SSE) nie chcemy przekierowywać na HTML — 401 zamiast 302:
-        o.Events.OnRedirectToLogin = ctx =>
-        {
-            if (ctx.Request.Path.StartsWithSegments("/api")) { ctx.Response.StatusCode = 401; return Task.CompletedTask; }
-            ctx.Response.Redirect(ctx.RedirectUri);
-            return Task.CompletedTask;
-        };
+        o.Cookie.HttpOnly = true;
+        o.Cookie.SameSite = SameSiteMode.Lax; // Lax, nie Strict: powrót z odnośnika w e-mailu ma działać
+        // W produkcji ciasteczko tylko po HTTPS; w dev localhost bywa po http.
+        o.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+            ? CookieSecurePolicy.SameAsRequest
+            : CookieSecurePolicy.Always;
+        ApiReturns401Instead302(o);
     });
+
+    // Poczta transakcyjna: Resend albo zapis do logu (dev). Wybór z konfiguracji, nie z #if.
+    var emailProvider = builder.Configuration[$"{EmailOptions.SectionName}:Provider"] ?? "log";
+    if (string.Equals(emailProvider, "resend", StringComparison.OrdinalIgnoreCase))
+        builder.Services.AddHttpClient<IAppEmailSender, ResendEmailSender>(c =>
+        {
+            c.BaseAddress = new Uri("https://api.resend.com/");
+            c.Timeout = TimeSpan.FromSeconds(15);
+        });
+    else
+        builder.Services.AddSingleton<IAppEmailSender, LogEmailSender>();
+}
+else
+{
+    builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+        .AddCookie(o =>
+        {
+            o.LoginPath = "/wejscie";
+            o.ExpireTimeSpan = TimeSpan.FromDays(30);
+            o.SlidingExpiration = true;
+            o.Cookie.Name = "praworag.auth";
+            ApiReturns401Instead302(o);
+        });
+}
 builder.Services.AddAuthorization();
 
 // --- Hardening (FE-7) ---
@@ -85,6 +190,12 @@ builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.AddFixedWindowLimiter("api", opt => { opt.Window = TimeSpan.FromMinutes(1); opt.PermitLimit = 60; opt.QueueLimit = 0; });
+    // Ścieżki kont osobno i ciaśniej: to one są celem zgadywania haseł, wyliczania adresów
+    // i zalewania cudzych skrzynek listami „zresetuj hasło". Klucz = adres klienta, nie globalnie,
+    // żeby jeden bot nie zablokował logowania wszystkim pozostałym.
+    o.AddPolicy("auth", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ctx.Connection.RemoteIpAddress?.ToString() ?? "nieznany",
+        _ => new FixedWindowRateLimiterOptions { Window = TimeSpan.FromMinutes(1), PermitLimit = 12, QueueLimit = 0 }));
 });
 if (builder.Environment.IsDevelopment())
     builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
@@ -168,18 +279,28 @@ const string LandingHtml = """
       <div class="card"><h2>Świeżość prawa</h2><p>System oznacza nowelizacje jeszcze nie wchłonięte do tekstów jednolitych — pokazuje, od kiedy obowiązuje dana zmiana.</p></div>
     </div>
 
-    <a class="cta" href="/wejscie">Mam kod zaproszenia → Wejdź</a>
+    <!--CTA-->
     <p class="muted">Chcesz dołączyć do zamkniętego testu? Napisz do zespołu — liczba miejsc ograniczona pojemnością.</p>
 
     <p class="note">To wstępny research prawny do weryfikacji, nie porada. Zawsze sprawdzaj przy źródle. Więcej: <a href="/o-systemie">co system umie, a czego nie</a>.</p>
     </div></body></html>
     """;
 
+// Wezwanie do działania na landingu zależy od trybu: konta → rejestracja, alfa → kod zaproszenia.
+var landingHtml = LandingHtml.Replace("<!--CTA-->", authOptions.Enabled
+    ? """<a class="cta" href="/rejestracja">Załóż konto</a> <span class="muted">albo <a href="/logowanie">zaloguj się</a></span>"""
+    : """<a class="cta" href="/wejscie">Mam kod zaproszenia → Wejdź</a>""");
+
 app.MapGet("/", (HttpContext http) =>
     http.User.Identity?.IsAuthenticated == true
         ? Results.Redirect("/czat")
-        : Results.Content(LandingHtml, "text/html; charset=utf-8"));
+        : Results.Content(landingHtml, "text/html; charset=utf-8"));
 
+// Konta (E1, blok A) — mapowane TYLKO gdy włączone; inaczej zostaje bramka na kody zaproszeń.
+if (authOptions.Enabled) app.MapAuthEndpoints();
+
+if (!authOptions.Enabled)
+{
 app.MapGet("/wejscie", () => Results.Content(WejscieHtml(null), "text/html; charset=utf-8"));
 
 // Login-CSRF przy kodzie zaproszenia = ryzyko pomijalne (statyczny formularz bez tokenu) → DisableAntiforgery.
@@ -201,13 +322,19 @@ app.MapGet("/wyjscie", async (HttpContext http) =>
     await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.Redirect("/wejscie");
 });
+} // koniec bramki na kody zaproszeń (tylko gdy Auth:Enabled=false)
 
 // Autoryzacja API: cookie ALBO nagłówek X-Invite-Code (wygoda curl/runbooków). Zwraca tożsamość testera
 // (nazwę) do limitów, albo null = odmowa. Gdy bramka wyłączona — placeholder jak dotąd.
 string? ResolveApiUser(HttpContext http)
 {
-    if (!access.Enabled) return http.User?.Identity?.Name ?? "demo@local";
-    if (http.User?.Identity?.IsAuthenticated == true) return http.User.Identity.Name;
+    // Zalogowany: tożsamością jest identyfikator konta (parytet z ICurrentUser — ten sam klucz
+    // trafia do rozmów i do liczników). Dla bramki invite claim ten niesie nazwę testera.
+    if (http.User?.Identity?.IsAuthenticated == true)
+        return http.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? http.User.Identity.Name;
+
+    if (authOptions.Enabled) return null;      // konta włączone → API tylko dla zalogowanych
+    if (!access.Enabled) return "demo@local";  // dev/M4 bez żadnej bramki
     return access.TryResolveInvite(http.Request.Headers["X-Invite-Code"], out var tester) ? tester : null;
 }
 
@@ -370,9 +497,10 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
     }
 }).RequireRateLimiting("api");
 
-// Bramka 3.7 na UI: niezalogowany → 302 na /wejscie (LoginPath cookie handlera). Gdy wyłączona — jak dotąd.
+// Ochrona UI: niezalogowany → 302 na stronę logowania (LoginPath cookie handlera). Landing, strony
+// prawne i same formularze logowania są mapowane osobno (minimalne API), więc zostają anonimowe.
 var components = app.MapRazorComponents<PrawoRAG.Api.Components.App>().AddInteractiveServerRenderMode();
-if (access.Enabled) components.RequireAuthorization();
+if (access.Enabled || authOptions.Enabled) components.RequireAuthorization();
 
 app.Run();
 

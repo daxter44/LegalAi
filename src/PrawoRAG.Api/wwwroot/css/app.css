@@ -292,3 +292,14 @@ body {
 .docview-section { font-size: var(--fs-16); margin: var(--s-4) 0 var(--s-1); }
 .docview-text { white-space: pre-wrap; line-height: 1.6; }
 .docview-note { margin-top: var(--s-4); }
+
+/* Konta (E1): kto jest zalogowany, w menu obok odnośnika wylogowania. Skraca się na wąskim ekranie,
+   żeby długi adres e-mail nie rozpychał paska. */
+.app-user {
+    color: var(--c-text-muted);
+    font-size: var(--fs-14);
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

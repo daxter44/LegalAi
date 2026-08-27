@@ -1,10 +1,16 @@
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using PrawoRAG.Domain;
 using PrawoRAG.Storage.Entities;
 
 namespace PrawoRAG.Storage;
 
-public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options) : DbContext(options)
+/// <summary>
+/// Jeden kontekst na całą bazę: korpus, rozmowy i konta (E1/T-1). Identity siedzi tutaj, a nie
+/// w osobnym kontekście, żeby była jedna historia migracji i jeden backup.
+/// </summary>
+public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options)
+    : IdentityDbContext<AppUserEntity>(options)
 {
     /// <summary>
     /// Wymiar wektora. mmlw-base = 768, large-v2 = 1024. ZMIANA wymaga nowej migracji
@@ -34,7 +40,17 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options) : Db
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        // KONIECZNE: buduje tabele Identity (AspNetUsers i spółka). Bez tego wywołania konta nie
+        // istnieją w modelu, a migracja wychodzi pusta.
+        base.OnModelCreating(b);
+
         b.HasPostgresExtension("vector");
+
+        b.Entity<AppUserEntity>(e =>
+        {
+            e.Property(x => x.DisplayName).HasMaxLength(200);
+            e.Property(x => x.TermsVersion).HasMaxLength(40);
+        });
 
         b.Entity<DocumentEntity>(e =>
         {
