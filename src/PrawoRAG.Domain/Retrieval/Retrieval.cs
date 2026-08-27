@@ -100,6 +100,24 @@ public sealed record RetrievalQuery
     public int NeighbourhoodTokenBudget { get; init; } = 20_000;
 
     /// <summary>
+    /// Most vacatio legis: ile chunków dociągnąć z jednostek WSKAZANYCH w klauzuli wejścia w życie,
+    /// gdy taka klauzula trafiła do wyniku (0 = wyłączony, wynik bajt w bajt jak przed zmianą — ten sam
+    /// idiom co <see cref="CitationBridgeArticles"/> i <see cref="NeighbourhoodRadius"/>).
+    ///
+    /// Powód (DIAGNOZA-NOWELIZACJA-DATA-WEJSCIA-W-ZYCIE-2026-08-27): pytanie „jakie zmiany wejdą w życie
+    /// we wrześniu 2026" trafia w klauzulę („z dniem 20 września 2026 r. wchodzą w życie art. 1 pkt 1
+    /// lit. a i c oraz pkt 3"), ale treść tych przepisów ma przy DOKŁADNYM skanie rangi #2367/#50430/#82405
+    /// — trzy rzędy wielkości od okna kandydatów, więc nie da się tego naprawić ani progiem, ani HNSW.
+    /// Pytanie niesie datę, treść nowelizacji nie niesie żadnej daty, a łącznik między nimi to CYTOWANIE
+    /// wewnątrz dokumentu. Dlatego dociągamy strukturalnie, tak jak most cytowań dociąga przepis
+    /// z orzeczenia — z pominięciem embeddingu, bo nie ma tu czego mierzyć podobieństwem.
+    ///
+    /// Sąsiedztwo (<see cref="NeighbourhoodRadius"/>) tego NIE łapie: jest pozycyjne, więc wokół art. 13
+    /// dociągnie art. 12 i 14, a treść nowelizacji siedzi w art. 1.
+    /// </summary>
+    public int VacatioLegisChunks { get; init; } = 8;
+
+    /// <summary>
     /// Raportowanie etapów na bieżąco (Zadanie 2 planu ROU) — ten sam wzorzec opcjonalnego
     /// wzbogacenia zapytania co <see cref="RerankText"/>/<see cref="ExactMatchText"/>.
     /// Null = nikt nie słucha (Eval, <c>/api/search</c>, testy) i retrieval zachowuje się bajt

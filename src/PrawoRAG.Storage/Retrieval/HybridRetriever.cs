@@ -275,9 +275,15 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         // dociągnij sąsiadujące artykuły. Świadomie PO `Take(TopK)` i PO wyliczeniu capów — sąsiedztwo
         // nie konkuruje o sloty TopK, tylko je uzupełnia (`ExactMatchCap` istnieje, by jeden dokument
         // nie zjadł budżetu; tutaj dominacja aktu jest CELEM, nie awarią).
+        // MOST VACATIO LEGIS: gdy w wyniku jest klauzula wejścia w życie wskazująca konkretne jednostki
+        // („…wchodzą w życie art. 1 pkt 1 lit. a i c oraz pkt 3"), dociągnij TREŚĆ tych jednostek z tego
+        // samego aktu. Świadomie tutaj — razem z sąsiedztwem, PO `Take(TopK)`: dociągnięta treść nie
+        // konkuruje o sloty, bo bez niej odpowiedź jest niemożliwa (system odmawiał, mając samą klauzulę).
+        var vacatio = await LatencyLog.TimeAsync("vacatio_legis", () => VacatioLegisAsync(query, final, ct));
+
         var neighbours = await NeighbourhoodAsync(query, final, ct);
-        if (neighbours.Count > 0)
-            final = final.Concat(neighbours)
+        if (vacatio.Count > 0 || neighbours.Count > 0)
+            final = final.Concat(vacatio).Concat(neighbours)
                 .GroupBy(c => c.ChunkId).Select(g => g.First())
                 // Akt ma czytać się LINIOWO — inaczej model dostaje przepisy w kolejności
                 // podobieństwa, co przy kilkudziesięciu artykułach jest nie do czytania.
@@ -294,6 +300,66 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
 
         LatencyLog.Mark("retrieval.total", totalSw.ElapsedMilliseconds);
         return new RetrievalResult(final, maxSim, rerankTop, exactInFinal);
+    }
+
+    /// <summary>
+    /// Dociąga TREŚĆ jednostek wskazanych w klauzuli wejścia w życie, która trafiła do wyniku.
+    ///
+    /// Dlaczego strukturalnie, a nie lepszym rankingiem (diagnoza 2026-08-27): treść nowelizacji ma dla
+    /// pytania o datę rangi #2367/#50430/#82405 przy DOKŁADNYM skanie — pytanie niesie datę, a treść
+    /// zmian nie niesie żadnej, więc w przestrzeni wektorowej nie ma czego mierzyć. Łącznik („art. 13
+    /// wskazuje art. 1 pkt 3") jest CYTOWANIEM wewnątrz dokumentu, dokładnie jak w moście cytowań.
+    ///
+    /// Dwie decyzje warte zapamiętania:
+    /// • dociągamy CAŁY wskazany artykuł tego samego dokumentu, a numery pkt/lit służą do KOLEJNOŚCI —
+    ///   akt nowelizujący ma zwykle jeden wielki artykuł pocięty po rozmiarze, bez granulacji pkt/lit
+    ///   w lokalizatorze (zmierzone: treść „pkt 1 lit. c" leży w chunku #2, „pkt 3" w #3);
+    /// • szukamy w TYM SAMYM dokumencie (po <c>DocumentId</c>), więc rozpoznanie aktu jest niepotrzebne —
+    ///   klauzula mówi o jednostkach własnego aktu, nie cudzego.
+    /// </summary>
+    private async Task<List<RetrievedChunk>> VacatioLegisAsync(
+        RetrievalQuery query, IReadOnlyList<RetrievedChunk> final, CancellationToken ct)
+    {
+        if (query.VacatioLegisChunks <= 0) return [];
+
+        var clauses = final
+            .Where(c => c.DocType == DocTypes.Act && VacatioLegis.IsEntryIntoForceClause(c.Text))
+            .Select(c => (c.DocumentId, Targets: VacatioLegis.ParseTargets(c.Text)))
+            .ToList();
+        if (clauses.Count == 0) return [];
+
+        var present = final.Select(c => c.ChunkId).ToHashSet();
+        var result = new List<RetrievedChunk>();
+
+        foreach (var (docId, targets) in clauses)
+        {
+            foreach (var target in targets)
+            {
+                if (result.Count >= query.VacatioLegisChunks) break;
+
+                var rows = await Project(db.Chunks
+                        .Where(x => x.DocumentId == docId && x.ArticleNo == target.Article)
+                        .OrderBy(x => x.ChunkIndex))
+                    .ToListAsync(ct);
+
+                // Kolejność: najpierw chunki, w których stoi wskazany „pkt"/„lit." (to dokładnie te
+                // przepisy, o które pyta użytkownik), potem pozostałe chunki artykułu — bo klauzula
+                // wskazuje jednostki, których w lokalizatorze nie ma, a treść i tak trzeba pokazać.
+                var markers = target.Markers().ToList();
+                var ordered = rows
+                    .OrderByDescending(r => markers.Count(m => r.Text.Contains(m, StringComparison.OrdinalIgnoreCase)))
+                    .ThenBy(r => r.ChunkIndex);
+
+                foreach (var row in ordered)
+                {
+                    if (result.Count >= query.VacatioLegisChunks) break;
+                    if (!present.Add(row.Id)) continue; // już jest w wyniku albo już dociągnięty
+                    result.Add(ExactMatchChunk(row));
+                }
+            }
+        }
+
+        return result;
     }
 
     /// <summary>Minimalna liczba NIEZALEŻNYCH orzeczeń cytujących artykuł, żeby wszedł mostem cytowań.

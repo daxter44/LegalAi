@@ -389,6 +389,7 @@ static RetrievalQuery ToQuery(string text, FiltersDto? f, int topK, RetrievalOpt
     NeighbourhoodRadius = o.NeighbourhoodRadius,
     NeighbourhoodMinChunks = o.NeighbourhoodMinChunks,
     NeighbourhoodTokenBudget = o.NeighbourhoodTokenBudget,
+    VacatioLegisChunks = o.VacatioLegisChunks,
 };
 
 internal sealed record FiltersDto(string? CourtType, DateOnly? DateFrom, DateOnly? DateTo, bool OnlyInForce = false);
@@ -483,6 +484,10 @@ public sealed class RetrievalOptions
 
     /// <summary>Budżet tokenów na dociągnięte artykuły — cała obsługa przypadku „kodeks".</summary>
     public int NeighbourhoodTokenBudget { get; set; } = 20_000;
+
+    /// <summary>Most vacatio legis: ile chunków dociągnąć z jednostek wskazanych w klauzuli wejścia
+    /// w życie (0 = wyłączony). Patrz RetrievalQuery.VacatioLegisChunks.</summary>
+    public int VacatioLegisChunks { get; set; } = 8;
 }
 
 /// <summary>Ugruntowanie odpowiedzi — bramki chroniące rdzeń wartości produktu.</summary>

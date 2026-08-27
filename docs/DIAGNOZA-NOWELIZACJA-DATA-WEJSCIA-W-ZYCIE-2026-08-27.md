@@ -80,6 +80,48 @@ Nieoceniony jeszcze: (a) jak rozpoznać „to jest klauzula wejścia w życie" b
 pytań w `--refusals`/golden-secie faktycznie ma ten kształt (jedno zmierzone wystąpienie to n=1,
 nie stopa błędu — ta sama zasada co przy innych diagnozach tej sesji).
 
+## Rozwiązanie WDROŻONE (2026-08-27): most vacatio legis
+
+Wariant A z rekomendacji, w kodzie: `VacatioLegis` (parser, `PrawoRAG.Domain/Retrieval`) +
+`HybridRetriever.VacatioLegisAsync`. Pokrętło `Retrieval:VacatioLegisChunks` (domyślnie 8, `0` =
+wyłączony i wynik bajt w bajt jak przed zmianą — ten sam idiom co `CitationBridgeArticles`).
+
+Cztery decyzje, które wyszły dopiero przy implementacji, każda zamknięta testem:
+
+1. **Dociągamy CAŁY wskazany artykuł, a numery pkt/lit służą do KOLEJNOŚCI.** Akt nowelizujący nie ma
+   granulacji pkt/lit w lokalizatorze (art. 1 to jedna enumeracja pocięta po rozmiarze), więc adresowanie
+   „pkt 3" jest niemożliwe — ale rankowanie po obecności znacznika w treści chunka działa, bo tekst
+   „pkt 1 lit. c" fizycznie stoi w chunku #2, a „pkt 3" w #3.
+2. **Parsujemy dopiero OD frazy „wchodzi/wchodzą w życie".** Chunk zaczyna się własnym nagłówkiem
+   („Art. 13. Ustawa wchodzi w życie…"), więc parsowanie całości brało art. 13 za CEL i most dociągałby
+   samą klauzulę, zjadając sloty przeznaczone na treść. Świadoma granica: rzadki szyk „art. 1 pkt 3
+   wchodzi w życie z dniem…" (cel przed frazą) nie zostanie rozpoznany — wtedy most nic nie dokłada.
+3. **Sama fraza „wchodzi w życie" nie włącza mostu** — warunkiem jest obecność wskazanych jednostek.
+   Formuła końcowa („ustawa wchodzi w życie po upływie 14 dni") nie ma czego dociągać, a w korpusie
+   stoi w każdej ustawie.
+4. **Most omija próg `MinChunkTokens`** (jak tory exact-match, P5), bo chunki treści nowelizacji bywają
+   krótkie — i na tym właśnie oparty jest deterministyczny test na żywej bazie.
+
+Wpięcie: PO `Take(TopK)`, razem z rozszerzeniem sąsiedztwa. Dociągnięta treść nie konkuruje o sloty,
+bo bez niej odpowiedź jest niemożliwa — system odmawiał, trzymając w ręku samą klauzulę.
+
+Testy: `VacatioLegisTests` (10, parser — wzorcem jest DOSŁOWNA klauzula z tego przypadku) oraz
+`VacatioLegisLiveTests` (4, żywy Postgres): treść wskazana w klauzuli wchodzi, artykuł niewskazany
+NIE wchodzi, wyłączony most odtwarza pierwotną porażkę, limit chunków obowiązuje.
+
+## Czego to NIE naprawia (wariant B, nierozstrzygnięty)
+
+Most działa, gdy klauzula trafi do wyniku — tak było w tym przypadku. Nie pomoże, gdy klauzula nie
+trafi (np. pytanie bez nazwy ustawy: „co zmienia się w budowlance od września"). Wariant B („znajdź
+nowelizacje z datą wejścia w życie w oknie i dociągnij ich treść") wymaga danych, których nie ma
+w kolumnie — i tu jest pułapka warta zapisania: **data wejścia w życie nie jest własnością dokumentu,
+a pojedynczego przepisu** (art. 13 tego aktu rozkłada terminy na kilka grup przepisów). Jedna kolumna
+„data wejścia w życie" byłaby więc nieprawdą dokładnie dla tej klasy nowelizacji. B zrobione uczciwie
+to wyciąganie par (przepis → data) przy ingestii, nie backfill jednej kolumny.
+
+Warunek wejścia w B: sonda na kilku parafrazach pytania (bez nazwy ustawy, sama data, sama dziedzina)
+— czy klauzula w ogóle trafia do kandydatów. Dopóki trafia, most wystarcza.
+
 ## Narzędzie
 
 `--probe-chunk` (`PrawoRAG.Eval/ChunkProbe.cs`), tylko odczyt, zero zmian w kodzie czy danych.
