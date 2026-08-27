@@ -121,7 +121,7 @@ public sealed class ChatService(
         // UWAGA: reformulator w środku dostaje PEŁNĄ `history` (rozwiązanie odwołania), nie
         // `retrievalHistory` — te dwie rzeczy służą do czego innego.
         var selectionTask = GapClosingRetrieval.RetrieveAsync(
-            retriever, Query, retrievalQuestion, history, o.FollowUpSignalMargin, o.RerankSignalMargin,
+            retriever, Query, retrievalQuestion, retrievalHistory, o.FollowUpSignalMargin, o.RerankSignalMargin,
             o.GapClosingTriggerThreshold, o.GapClosingEnabled ? reformulator : null, o.MaxExtraRounds, ct);
 
         // Etapy retrievalu płyną do UI W TRAKCIE — bez tego użytkownik ma kilkadziesiąt sekund ciszy.
@@ -258,7 +258,7 @@ public sealed class ChatService(
                     // w GapClosingRetrieval), ale przekazujemy właściwy semantycznie parametr, nie
                     // próg odmowy — na wypadek gdyby ta wartość kiedyś przestała być 0.
                     var retryOutcome = await GapClosingRetrieval.RetrieveAsync(
-                        retriever, Query, retryQuery, history, o.FollowUpSignalMargin, o.RerankSignalMargin,
+                        retriever, Query, retryQuery, [], o.FollowUpSignalMargin, o.RerankSignalMargin,
                         o.GapClosingTriggerThreshold, reformulator: null, maxExtraRounds: 0, ct);
                     while (side.Reader.TryRead(out var stage)) yield return stage;
 
