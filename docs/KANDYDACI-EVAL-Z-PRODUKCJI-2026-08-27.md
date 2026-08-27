@@ -129,41 +129,85 @@ Pogrupowane tematycznie, zdeduplikowane (jeden reprezentant na temat):
 
 Trzy rozbudowane stany faktyczne czytają się jak klasyczne polskie kazusy prawnicze (fikcyjne
 nazwiska Kowalski/Nowak-owego typu — „Marek Nowak", „Franciszek Nowicki", „Bogusława i Krzysztof K.",
-„Paweł Ostry" — to konwencja kazusów, nie dane rzeczywistych osób):
+„Paweł Ostry" — to konwencja kazusów, potwierdzone przez autora jako dane testowe):
 
-- Kazus o umowie sprzedaży drewna przez nieuprawnionego przedstawiciela spółki (prawo cywilne/
-  spółki — pełnomocnictwo, ważność umowy).
-- Kazus o podziale majątku po rozwodzie i darowiźnie otrzymanej w trakcie małżeństwa (prawo
-  rodzinne — art. 31 § 1, 56 § 1, 58 § 3 k.r.o.).
-- Kazus o przestoju w zakładzie drzewnym i wynagrodzeniu za czas niewykonywania pracy (prawo pracy).
+1. **Sprzedaż drewna przez nieuprawnionego przedstawiciela spółki** — „Marek Nowak, właściciel
+   tartaku, sprzedał 1000 m³ drewna Franciszkowi Nowickiemu, który przedstawił się jako prezes spółki
+   Dudek S.A. Po zawarciu umowy Nowak sprawdził w KRS, że do reprezentacji upoważniony jest wyłącznie
+   Fryderyk Nowicki (ojciec Franciszka). Ceny na rynku drzewnym wzrosły, Nowak mógłby dziś sprzedać
+   towar drożej. (1) Czy umowa jest nieważna? (2) Czy Franciszek może twierdzić, że nabył drewno we
+   własnym imieniu? (3) Jakie czynności powinien podjąć Nowak — czy może uznać umowę za niewiążącą i
+   sprzedać towar komuś innemu?" — pełnomocnictwo rzekome (falsus procurator), art. 103–104 k.c.
+
+2. **Podział majątku po rozwodzie i darowizna w trakcie małżeństwa** — „Bogusława i Krzysztof K. byli
+   małżeństwem 19 lat. Krzysztof wniósł o rozwód (art. 56 § 1 k.r.o.). Sąd dokonał podziału majątku
+   (art. 58 § 3) i uznał, że dom otrzymany przez Krzysztofa w darowiźnie od babki rok po ślubie
+   pozostaje jego własnością — Bogusława mieszkała w nim tylko przez 3 lata. W apelacji Bogusława
+   twierdzi, że dom wszedł do majątku wspólnego (art. 31 § 1 k.r.o.), bo został darowany w trakcie
+   małżeństwa bez rozdzielności majątkowej. Czy ta argumentacja była zasadna?" — majątek osobisty a
+   wspólny, darowizna do majątku osobistego mimo braku rozdzielności.
+
+3. **Przestój w zakładzie drzewnym i wynagrodzenie** — „Paweł Ostry pracuje w zakładzie drzewnym.
+   Przez 5 dni nie pracował z powodu usterki w pojazdach dostarczających surowiec. W czasie przestoju
+   pracodawca nie powierzył mu innej pracy. Po miesiącu pracodawca odmówił wypłaty wynagrodzenia za
+   okres niewykonywania pracy. Proszę ocenić zgodność z prawem działania pracodawcy." — wynagrodzenie
+   za przestój niezawiniony przez pracownika, art. 81 k.p.
 
 Pasują do `PLAN-TRYB-KAZUSU.md` (jeśli ten tryb istnieje w produkcie) bardziej niż do prostego
-golden-setu pytanie→artykuł. Zostawiam jako materiał, nie duplikuję ich tutaj w pełnej treści — są
-w `db-questions-numbered.txt` (scratchpad) pod numerami 73, 85, 67.
+golden-setu pytanie→artykuł, bo ocena poprawnej odpowiedzi wymaga wielostopniowego rozumowania, nie
+jednego cytowanego przepisu.
 
-## 4. ⚠ Realne, wrażliwe sprawy osobiste — NIE kopiować do repo bez decyzji
+## 4. Dodatkowe kazusy testowe (potwierdzone: fikcyjne/testowe, nie dane realnych osób)
 
-Kilka wiadomości to najwyraźniej **prawdziwe, osobiste sprawy realnych użytkowników** (pierwsza
-osoba, konkretne kwoty, konkretne daty, konkretne okoliczności rodzinne/zdrowotne/majątkowe) — nie
-kazusy egzaminacyjne. Świetny materiał testowy (dokładnie to, do czego produkt ma służyć), ale
-**celowo NIE wkleiłem ich pełnej treści do tego dokumentu** i nie umieszczałbym ich w
-`golden-set.json` w wersji dosłownej bez Twojej wyraźnej zgody — plik trafia do gita:
+Potwierdzone przez autora (2026-08-27): wszystkie poniższe to dane testowe/wymyślone, nie sprawy
+realnych użytkowników — pełna treść, bez redakcji, gotowa jako kandydaci golden-setu (kategoria
+`InCorpus`/`needsLawyer:true`, bo ocena poprawności wymaga prawnika, podobnie jak istniejąca pozycja
+`lawyer-kredyt-darmowy`):
 
-1. Spadek odrzucony bez zachowania kolejności — spór rodzinny o dziedziczenie.
-2. Rozwód, rozdzielność majątkowa, spór o rozliczenia z małżonkiem.
-3. Pogryzienie przez psa, zgłoszenie na policji, pytanie o dalsze kroki.
-4. Zatrzymanie i 180 dni w areszcie przez zagubione pismo sądowe — pytanie o odszkodowanie.
-5. Alimenty — analiza kosztów utrzymania dziecka, upadłość, depresja, dochody netto.
-6. Podejrzenie inwigilacji danych w PUE ZUS przez żonę pracodawcy-lekarkę — najbardziej wrażliwa
-   (dane medyczne, potencjalne zniesławienie, tożsamość pracodawcy dająca się namierzyć w połączeniu
-   z KRS).
-7. Spór z deweloperem o wypłatę 80% wynagrodzenia przy niedokończonych pracach.
+1. **Odrzucenie spadku bez zachowania kolejności** — „Odrzuciłem u notariusza spadek nie zachowując
+   kolejności odrzucania (nie wiedziałem o tym zapisie, notariusz nie poinformował mnie). Dwójka
+   moich dzieci odrzuciła spadek w terminie 6 miesięcy po mnie, ale syn tego nie wypełnił, twierdzi,
+   że moje odrzucenie się nie liczy, bo kolejność nie została zachowana. Czy moje odrzucenie się
+   liczy? Czy moje pozostałe dzieci muszą jeszcze raz odrzucać? Jeśli anuluję odrzucenie, czy będę
+   automatycznie obciążony długami spadkowymi?" — prawo spadkowe, art. 1015–1024 k.c.
 
-**Rekomendacja:** jeśli chcesz je wykorzystać, albo (a) sparafrazuj/zanonimizuj fakty zachowując
-strukturę prawną pytania (tak jak zrobiono dla istniejących pozycji golden-setu — żadna nie ma
-prawdziwych nazwisk), albo (b) trzymaj je poza gitem (osobny plik nieśledzony, `--refusals` już i
-tak czyta je live z bazy bez kopiowania do repo). Nie kopiuję ich treści nigdzie indziej w tym
-dokumencie.
+2. **Rozdzielność majątkowa i rozliczenia rozwodowe** — „Jestem w trakcie rozwodu. Jest zrobiona
+   rozdzielność majątkowa 3 lata wstecz. W trakcie tych 3 lat były różne rozliczenia z małżonkiem,
+   teraz on kłamie i mówi, że nie wypłaciłam należnej mu sumy. Czy będzie miało to wpływ na podział
+   majątku?" — prawo rodzinne, rozliczenia majątkowe.
+
+3. **Pogryzienie przez psa** — „Pies mnie ugryzł podczas spokojnego spaceru chodnikiem. Właścicielka
+   nie upilnowała, ten się rzucił i ugryzł mnie w nogę. Zadzwoniłem na 112, przyjechała policja,
+   pogotowie. Okazało się, że pies nieszczepiony. Składałem zeznania na policji, więc teoretycznie
+   będzie sprawa w sądzie. Co w tej sprawie zrobić?" — odpowiedzialność za zwierzęta, art. 431 k.c.
+
+4. **180 dni w areszcie przez zagubione pismo sądowe** — „Zostałem zatrzymany i osadzony w areszcie
+   1 marca 2024 r. Rozprawa miała być 27 czerwca w Żarach. Dowiedziałem się, że sprawy nie ma, bo
+   zapomniano wysłać odwołania do sądu. Czekałem w areszcie 180 dni, rozprawa odbyła się dopiero
+   29 sierpnia. Jakie są szanse na odszkodowanie?" — odpowiedzialność Skarbu Państwa, niesłuszne
+   tymczasowe aresztowanie (rozdział 58 k.p.k.).
+
+5. **Alimenty przy upadłości i depresji rodzica** — „Była żona wykazała koszty utrzymania dziecka na
+   7 tys. zł miesięcznie (dziecko zdrowe). Trzy lata temu zbankrutowałem z długami 450 tys. zł,
+   pracuję na etacie, mam depresję, po odliczeniu alimentów i zajęć komorniczych zostaje mi 900 zł.
+   Co w tej sytuacji?" — obniżenie alimentów, zmiana okoliczności, art. 138 k.r.o.
+
+6. **Podejrzenie nieuprawnionego dostępu do PUE ZUS przez lekarkę-żonę pracodawcy** — „Jestem na L4.
+   Na koncie ZUS widzę 4 wiadomości o dostępie lekarza do moich danych bez wystawienia zaświadczenia.
+   To żona mojego pracodawcy, stomatolog — nie jestem jej pacjentem (sprawdziłem ze znajomymi z pracy,
+   też byli sprawdzani, nikt nie jest pacjentem). (1) Czy to ciężkie naruszenie obowiązków pracodawcy
+   uzasadniające rozwiązanie umowy z jego winy? (2) Od czego zacząć — ZUS, UODO, Rzecznik Praw
+   Pacjenta, Okręgowa Izba Lekarska, PIP? (3) Jakie roszczenia finansowe mi przysługują?" — ochrona
+   danych osobowych (dane medyczne), prawo pracy (rozwiązanie z winy pracodawcy), tajemnica lekarska.
+
+7. **Spór z deweloperem o wypłatę 80%** — „Deweloper stwierdził, że roboty są zakończone i chce 80%
+   należności, ale prace wykończeniowe terenu są w trakcie, rusztowania stoją, elewacja niedokończona.
+   Deweloper nie chce pokazać wpisu do dzienniczka budowy. Co mogę zrobić? Czy to normalne, że można
+   uznać budowę za zakończoną i nadal wykańczać?" — umowa deweloperska, odbiór robót, prawo budowlane.
+
+Dobór artykułu/aktu do `expectedEli` wymaga tej samej weryfikacji co reszta sekcji 2 — te sprawy są
+wielowątkowe (często 2–3 gałęzie prawa naraz), więc `needsLawyer:true` (jak `lawyer-kredyt-darmowy`)
+jest właściwsze niż twarde `expectedArticle` z jedną poprawną odpowiedzią.
 
 ## 5. Rekomendacja kolejnego kroku
 
