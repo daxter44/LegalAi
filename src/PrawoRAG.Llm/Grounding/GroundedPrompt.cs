@@ -86,6 +86,27 @@ public static class GroundedPrompt
         D4. Zasada 3 (fraza odmowy) bez zmian — dotyczy braku PRAWA w ŹRÓDŁACH, nie braków dokumentu.
         """;
 
+    /// <summary>
+    /// Zasady doklejane do systemu WYŁĄCZNIE gdy wiadomość jest prośbą o sporządzenie dokumentu
+    /// (Horyzont 0 draftingu, rozmowa 2026-08-28; detekcja: <c>DraftingRequestDetector</c>).
+    /// Bez tej doklejki zachowanie było niezdefiniowane: w korpusie nie ma wzorów pism, więc model
+    /// albo odmawiał („źródła nie pozwalają" — fałszywy sygnał w metryce odmów), albo generował
+    /// pseudo-dokument poszyty cytatami. Kontrakt: jasna granica + checklist wymogów ze źródłami.
+    /// Wzorem <see cref="DocumentRules"/> — bez prośby o pismo system prompt zostaje bajt w bajt.
+    /// </summary>
+    public const string DraftingRules =
+        """
+        PROŚBA O DOKUMENT — zasady dodatkowe (użytkownik prosi o sporządzenie pisma/umowy):
+        P1. NIE sporządzaj dokumentu ani jego szkicu. Zacznij od JEDNEGO zdania: nie przygotowujesz
+            projektów pism, ale wyjaśnisz, co taki dokument musi zawierać i na jakiej podstawie.
+        P2. Następnie podaj — WYŁĄCZNIE na podstawie ŹRÓDEŁ, z cytowaniami [n] — wymagania prawne
+            dla tego typu dokumentu: elementy konieczne, wymaganą formę (pisemna, akt notarialny…),
+            terminy, podstawy prawne, skutki braków. Użyj listy punktowanej.
+        P3. Jeśli ŹRÓDŁA pokrywają tylko część wymogów, podaj tę część i wskaż wprost, czego
+            źródła nie regulują. Zasada 3 (fraza odmowy) tylko gdy źródła nie mówią NIC na temat.
+        P4. Zakończ jednym zdaniem, że projekt dokumentu warto skonsultować z prawnikiem.
+        """;
+
     /// <summary>Ile ostatnich zakończonych tur rozmowy wchodzi do promptu (kontekst follow-upów).</summary>
     public const int HistoryTurnsTaken = 4;
 
@@ -126,7 +147,7 @@ public static class GroundedPrompt
     /// </summary>
     public static (LlmRequest Request, IReadOnlyList<SourceRef> Sources) Build(
         string question, IReadOnlyList<RetrievedChunk> chunks, IReadOnlyList<ChatTurn> history,
-        IReadOnlyList<string> docFragments)
+        IReadOnlyList<string> docFragments, bool draftingRequest = false)
     {
         var sources = new List<SourceRef>(chunks.Count);
         var sb = new StringBuilder();
@@ -172,8 +193,11 @@ public static class GroundedPrompt
               .Append(chunks[i].Text).Append("\n\n");
         }
 
-        // Warunkowy system prompt (DOC-2): zasady o dokumencie tylko gdy sekcja DOKUMENT istnieje.
+        // Warunkowy system prompt (DOC-2): zasady o dokumencie tylko gdy sekcja DOKUMENT istnieje;
+        // zasady o prośbie o pismo tylko gdy wykryta (Horyzont 0 draftingu) — poza tymi przypadkami
+        // prompt bajt w bajt dzisiejszy (strojony pod Bielika, patrz diagnoza 5e).
         var system = docFragments.Count > 0 ? SystemPrompt + "\n" + DocumentRules : SystemPrompt;
+        if (draftingRequest) system += "\n" + DraftingRules;
         var messages = new List<ChatMessage> { new(ChatRole.System, system) };
         AppendHistory(messages, history);
         AddCoalescing(messages, new ChatMessage(ChatRole.User, sb.ToString()));

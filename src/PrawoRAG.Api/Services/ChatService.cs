@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PrawoRAG.Domain;
 using PrawoRAG.Domain.Embeddings;
@@ -18,7 +19,8 @@ public sealed class ChatService(
     IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> options,
     IEmbeddingProvider embedder, IOptions<DocumentsOptions> documents,
     IIntentRouter? router = null, IOptions<GroundingOptions>? groundingOptions = null,
-    IQueryReformulator? reformulator = null) : IChatService
+    IQueryReformulator? reformulator = null,
+    ILogger<ChatService>? logger = null) : IChatService
 {
     private readonly bool _documentsEnabled = documents.Value.Enabled;
 
@@ -64,13 +66,27 @@ public sealed class ChatService(
             NeighbourhoodTokenBudget = o.NeighbourhoodTokenBudget,
         };
 
+        // PROŚBA O SPORZĄDZENIE DOKUMENTU (Horyzont 0 draftingu, rozmowa 2026-08-28): system nie
+        // przygotowuje pism — zamiast niezdefiniowanego zachowania odpowiadamy wymogami prawnymi
+        // dokumentu ze źródłami (doklejka DraftingRules do promptu, niżej). Wykrycie WYMUSZA
+        // retrieval (wymogi są w przepisach), więc router nie jest wołany. Log = licznik do bety:
+        // skala takich próśb to sygnał produktowy pod Horyzont 1 (generowanie prostych pism).
+        var draftingRequest = DraftingRequestDetector.IsDraftingRequest(question);
+        if (draftingRequest)
+        {
+            logger?.LogInformation("DRAFTING_REQUEST: {Question}", question);
+            yield return new StageEvent("drafting",
+                "Prośba o dokument — odpowiem wymogami i podstawami prawnymi…", null);
+        }
+
         // ROUTER INTENCJI (Zadanie 8 planu ROU) — jedyne miejsce, w którym tura może pominąć bazę.
-        // Trzy warunki muszą być spełnione JEDNOCZEŚNIE, żeby do tego doszło; każdy z nich jest
+        // Cztery warunki muszą być spełnione JEDNOCZEŚNIE, żeby do tego doszło; każdy z nich jest
         // samodzielną linią obrony:
         //   (1) flaga włączona,               (2) wołający nie wymusił retrievalu (analiza pism!),
-        //   (3) brak jawnego odwołania prawnego w wiadomości  → i dopiero wtedy pytamy model.
-        // Bezpiecznik z (3) jest sprawdzany PRZED routerem także dlatego, że oszczędza wywołanie modelu.
-        if (o.RouterEnabled && !forceRetrieval && router is not null &&
+        //   (3) brak jawnego odwołania prawnego w wiadomości,
+        //   (4) to nie prośba o dokument      → i dopiero wtedy pytamy model.
+        // Bezpieczniki (3)/(4) są sprawdzane PRZED routerem także dlatego, że oszczędzają wywołanie modelu.
+        if (o.RouterEnabled && !forceRetrieval && router is not null && !draftingRequest &&
             !LegalTokenDetector.ContainsLegalReference(question))
         {
             yield return new StageEvent("router", "Rozpoznaję pytanie…", null);
@@ -179,7 +195,7 @@ public sealed class ChatService(
 
         // Do promptu idzie ORYGINALNE pytanie + historia (nie sklejony tekst retrievalu).
         var (request, sources) = GroundedPrompt.Build(question, chunks, history,
-            docFragments.Select(f => f.Text).ToList());
+            docFragments.Select(f => f.Text).ToList(), draftingRequest);
         yield return new SourcesEvent(sources
             .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet, s.AmendmentEffectiveDate, s.LegalBases, s.Neighbour)).ToList());
 

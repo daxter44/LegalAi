@@ -159,6 +159,34 @@ wystarczą**) · monitoring i alarmy nieudanych webhooków (w MVP: panel Stripe 
 3. **US-3.1** (spike) warto wyciągnąć przed resztą E3, żeby stany subskrypcji nie zaskoczyły na końcu.
 4. **E3** po E1.
 
+## Drafting pism — Horyzont 0 zrobiony, Horyzont 1 jako PIERWSZE zadanie po deployu
+
+Decyzja z rozmowy 2026-08-28 (analiza: co system robi przy „przygotuj umowę / wezwanie do zapłaty").
+Drafting to inna klasa zadania niż research: źródła są tam OGRANICZENIAMI (elementy konieczne, forma,
+terminy), nie treścią odpowiedzi — a w korpusie nie ma wzorów pism, więc bez obsługi zachowanie było
+niezdefiniowane (odmowa fałszująca metrykę odmów albo pseudo-dokument poszyty cytatami).
+
+**H0 (zrobione 2026-08-28, w MVP):** `DraftingRequestDetector` (deterministyczny, konserwatywny,
+asymetryczny jak `LegalTokenDetector`) → wykrycie omija router i wymusza retrieval → doklejka
+`GroundedPrompt.DraftingRules`: jedno zdanie o granicy („nie przygotowuję pism") + checklist wymogów
+prawnych dokumentu ze źródłami [n] + sugestia konsultacji z prawnikiem. Każde wykrycie logowane
+(`DRAFTING_REQUEST:` w logu ChatService) — **skala tych próśb w becie to dane wejściowe pod H1**.
+
+**H1 (pierwsze zadanie po deployu MVP — albo równolegle z formalnościami: wybór serwera itd.):**
+generowanie PROSTYCH pism o zamkniętej strukturze (wezwanie do zapłaty, wypowiedzenie najmu,
+odstąpienie od umowy konsumenckiej) — świadomie NIE umowy (otwarta przestrzeń, granica „informacja
+prawna vs pomoc prawna"). Schemat: zebranie faktów (dopytanie albo placeholdery `[DO UZUPEŁNIENIA]`,
+styk z luką CaseFacts z tematu multi-turn) → retrieval wymogów i podstaw → szkielet pisma →
+**przejście weryfikacyjne** gotowego dokumentu względem wymogów ze źródeł (naturalne przedłużenie
+groundingu: źródła jako walidator). Warunek wstępny: eval zdolności pisarskiej modeli PL/UE
+(Bielik/PLLuM/Gemma) na tym zadaniu — jak przy wyborze modelu per rola. Priorytet typów pism
+ustawić po liczbach z licznika `DRAFTING_REQUEST` z bety.
+
+Umowy (Horyzont 2) — poza horyzontem planowania; wracają najwcześniej po H1, zgodnie z kierunkiem
+lexedit (research → memo → pisma), który pozostaje ciekawostką kierunkową, nie wyznacznikiem.
+
+---
+
 ## Co świadomie wypada z MVP — jednym rzutem oka
 
 Kancelarie i organizacje · więcej niż dwa plany · funkcje per plan · zmiana e-maila · usuwanie konta
