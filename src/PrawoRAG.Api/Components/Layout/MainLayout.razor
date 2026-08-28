@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.AnalysisOptions> Analysis
 @inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.Auth.AuthOptions> Auth
+@inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.Billing.BillingOptions> Billing
 @inject PrawoRAG.Api.Services.ICurrentUser CurrentUser
 
 <div class="app-shell">
@@ -20,6 +21,10 @@
             <a href="/o-systemie">O systemie</a>
             @if (CurrentUser.IsAuthenticated)
             {
+                @if (Billing.Value.Enabled)
+                {
+                    <a href="/konto">Konto</a>
+                }
                 <span class="app-user" title="@CurrentUser.DisplayName">@CurrentUser.DisplayName</span>
                 @* Zwykły odnośnik: pod /wylogowanie jest strona z potwierdzeniem, a samo wylogowanie
                    dzieje się POST-em z tokenem (GET-owe wylogowanie da się wywołać z obcej strony). *@

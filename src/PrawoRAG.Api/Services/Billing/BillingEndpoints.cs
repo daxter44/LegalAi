@@ -30,6 +30,22 @@ public static class BillingEndpoints
 
     public static void MapBillingEndpoints(this WebApplication app)
     {
+        // --- strona konta: pokazuje plan + guziki do Checkout/portalu (spike, bez UI Blazor — patrz p.1 wyżej) ---
+        app.MapGet("/konto", async (HttpContext http, IAntiforgery af,
+            UserManager<Storage.Entities.AppUserEntity> users) =>
+        {
+            if (http.User.FindFirstValue(ClaimTypes.NameIdentifier) is not { } userId)
+                return Results.Unauthorized();
+            var user = await users.FindByIdAsync(userId);
+            if (user is null) return Results.Unauthorized();
+
+            var token = af.GetAndStoreTokens(http).RequestToken ?? "";
+            return Results.Content(
+                BillingPages.Konto(TokenField, token, user.PlanId, user.PlanStatus,
+                    user.PlanValidUntilUtc, hasSubscription: !string.IsNullOrEmpty(user.StripeCustomerId)),
+                "text/html; charset=utf-8");
+        }).RequireAuthorization();
+
         // --- start zakupu: Checkout (przekierowanie na stronę Stripe) ---
         app.MapPost("/platnosc/start", async (
             HttpContext http, IAntiforgery af, IOptions<BillingOptions> billing, IOptions<AuthOptions> auth,
@@ -195,13 +211,19 @@ public static class BillingEndpoints
         // Okres rozliczeniowy siedzi na pozycji subskrypcji (od API 2025-03; wcześniej był na samej
         // subskrypcji). Bierzemy z pierwszej pozycji — mamy jeden plan na subskrypcję.
         var item = sub.Items?.Data?.FirstOrDefault();
+        // Anulowanie zaplanowane na koniec okresu potrafi przyjść na dwa sposoby: klasyczne
+        // `cancel_at_period_end=true`, ALBO (zaobserwowane żywcem z Customer Portalu na API
+        // 2026-08-26.dahlia) samo `cancel_at` ustawione na moment końca okresu, z `cancel_at_period_end`
+        // wciąż `false`. Sprawdzamy oba, inaczej rezygnacja zgłoszona w portalu nigdy nie zmienia
+        // statusu na "canceled" mimo poprawnie zaplanowanego końca dostępu po stronie Stripe.
+        var cancelScheduled = sub.CancelAtPeriodEnd || sub.CancelAt is not null;
         return new SubscriptionState(
             CustomerId: sub.CustomerId ?? "",
             SubscriptionId: sub.Id,
             Status: sub.Status ?? "",
             CurrentPeriodStartUtc: item?.CurrentPeriodStart,
             CurrentPeriodEndUtc: item?.CurrentPeriodEnd,
-            CancelAtPeriodEnd: sub.CancelAtPeriodEnd,
+            CancelAtPeriodEnd: cancelScheduled,
             EventTimeUtc: e.Created,
             Deleted: deleted);
     }

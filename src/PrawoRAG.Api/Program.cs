@@ -238,9 +238,14 @@ app.Use(async (ctx, next) =>
     h["X-Content-Type-Options"] = "nosniff";
     h["X-Frame-Options"] = "DENY";
     h["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    // form-action: Chrome sprawdza tę dyrektywę też po przekierowaniu (nie tylko cel formularza),
+    // więc POST /platnosc/start -> 302 na Stripe Checkout wymaga jawnego dopuszczenia hosta Stripe.
+    var formAction = billingOptions.Enabled
+        ? "'self' https://checkout.stripe.com https://billing.stripe.com"
+        : "'self'";
     h["Content-Security-Policy"] =
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
-        "font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+        $"font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action {formAction}";
     await next();
 });
 app.UseRateLimiter();
