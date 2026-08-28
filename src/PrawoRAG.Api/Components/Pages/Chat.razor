@@ -284,10 +284,17 @@
             </span>
         </div>
     }
-    <form class="chat-input" @onsubmit="Send" @onsubmit:preventDefault>
+    @* Enter wysyła, Shift+Enter = nowa linia. Blazor nie pozwala warunkować @onkeydown:preventDefault
+       per-klawisz z poziomu C# (ustawienie jest statyczne per render), a `onkeydown` czystego JS nie
+       da się dodać OBOK `@onkeydown` na TYM SAMYM elemencie (Razor traktuje to jako duplikat atrybutu).
+       Dlatego blokada domyślnego wstawienia znaku nowej linii wisi na <form> (rodzicu) — zdarzenie
+       keydown dochodzi tam przez bąbelkowanie, zanim przeglądarka wykona domyślną akcję na textarea;
+       decyzję „wysłać czy nie" nadal podejmuje OnKeyDown w C# na samej textarea. *@
+    <form class="chat-input" @onsubmit="Send" @onsubmit:preventDefault
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();}">
         <textarea @bind="_input" @bind:event="oninput" @onkeydown="OnKeyDown"
-                  placeholder="Zadaj pytanie prawne… (Ctrl+Enter wysyła)" rows="2" disabled="@_busy"
-                  aria-label="Pytanie"></textarea>
+                  placeholder="Zadaj pytanie prawne… (Enter wysyła, Shift+Enter = nowa linia)" rows="2"
+                  disabled="@_busy" aria-label="Pytanie"></textarea>
         <button type="submit" class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_input))">
             @(_busy ? "…" : "Wyślij")
         </button>
@@ -404,7 +411,7 @@
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && e.CtrlKey) await Send();
+        if (e.Key == "Enter" && !e.ShiftKey) await Send();
     }
 
     private void RemoveDocument()

@@ -1,7 +1,8 @@
 @page "/o-systemie"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
 
-@* Strona informacyjna dla testerów-prawników (język nietechniczny). Statyczna (SSR, bez rendermode)
-   — zero interaktywności, szybkie ładowanie, działa też jako pierwsza strona po zaproszeniu. *@
+@* Strona informacyjna, PUBLICZNA (bez logowania) — ma być czytelna przed rejestracją, nie tylko
+   dla zalogowanych. Statyczna (SSR, bez rendermode) — zero interaktywności, szybkie ładowanie. *@
 
 <PageTitle>PrawoRAG — o systemie</PageTitle>
 
@@ -26,31 +27,20 @@
             po temacie lub sygnaturze.</li>
         <li><strong>Dopytania</strong> — w ramach rozmowy można drążyć temat („a co z § 2?", „rozwiń") —
             system pamięta kontekst rozmowy.</li>
-        <li><strong>Pytania o własny dokument (PDF)</strong> — do pytania można dołączyć 📎 umowę, pismo
-            czy wyrok (PDF z warstwą tekstową, bez skanów). Fakty z dokumentu są cytowane jako
-            <em>[D1], [D2]…</em>, a podstawa prawna nadal wyłącznie ze źródeł [1], [2]… — system nie
-            traktuje dokumentu jako prawa. <strong>Treść załącznika nie jest nigdzie zapisywana</strong> —
-            żyje tylko do końca sesji (po odświeżeniu strony trzeba dołączyć ponownie).</li>
         <li><strong>Historia rozmów</strong> — poprzednie rozmowy są zapisane na pasku bocznym;
             „Nowa rozmowa" zaczyna od zera (nowy temat = nowa rozmowa, będzie trafniej).</li>
-        <li><strong>Analiza dokumentu fragment po fragmencie</strong> (strona „Analiza dokumentów") —
-            po dołączeniu PDF i opisaniu, co sprawdzić, system ocenia KAŻDY paragraf osobno
-            (werdykt OK / RYZYKO / BRAK ŹRÓDEŁ z uzasadnieniem i cytatami), a na końcu streszcza
-            całość. O raport można dopytywać („a co z § 7?"). <strong>Treść dokumentu nie jest
-            zapisywana</strong> — trwale zapisany jest sam raport (werdykty, uzasadnienia, źródła),
-            dostępny później na liście „Moje analizy".</li>
     </ul>
 
     <h2>Czego system NIE umie (jeszcze)</h2>
     <ul>
-        <li><strong>Korpus jest ograniczony</strong> — główne kodeksy i wycinek orzecznictwa apelacyjnego.
-            Nie ma m.in.: prawa UE, interpretacji podatkowych, orzeczeń SN po 2016 r., komentarzy
-            i literatury. Pytanie spoza korpusu → uczciwa odmowa.</li>
+        <li><strong>Korpus jest ograniczony</strong> — główne kodeksy, prawo UE (rozporządzenia
+            i dyrektywy od 2004 r., np. RODO, AI Act, DSA) i wycinek orzecznictwa apelacyjnego.
+            Nie ma m.in.: prawa UE sprzed 2004 r., interpretacji podatkowych, orzeczeń SN po 2016 r.,
+            komentarzy i literatury. Pytanie spoza korpusu → uczciwa odmowa.</li>
+        <li><strong>Nie przyjmuje jeszcze własnych dokumentów</strong> — dołączanie PDF do pytania
+            (umowa, pismo, wyrok) i osobna analiza dokumentu fragment po fragmencie są w przygotowaniu,
+            na razie wyłączone.</li>
         <li><strong>Nie pisze pism procesowych</strong> — to research, nie kancelaryjny kombajn.</li>
-        <li><strong>Nie czyta skanów</strong> — załącznik PDF musi mieć warstwę tekstową (bez OCR);
-            skan zostanie uczciwie odrzucony. Do promptu trafiają <em>najtrafniejsze fragmenty</em>
-            dokumentu, nie całość — przy bardzo długich umowach system może nie widzieć każdego paragrafu
-            (wtedy mówi to wprost).</li>
         <li><strong>Bywa nadostrożny</strong> — czasem odmówi, mimo że odpowiedź jest w korpusie.
             Taka odmowa to dla nas cenna informacja — proszę kliknąć „niepotrzebna odmowa".</li>
     </ul>
