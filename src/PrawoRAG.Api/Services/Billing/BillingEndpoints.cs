@@ -129,11 +129,15 @@ public static class BillingEndpoints
             var o = billing.Value;
             var payload = await new StreamReader(http.Request.Body).ReadToEndAsync(ct);
 
+            // .ToString() na StringValues, NIE niejawna konwersja: brak nagłówka daje wtedy null
+            // (nie pusty string), a Stripe.net dereferencjuje go bez sprawdzenia — NullReferenceException
+            // zamiast czystego 400 (złapane żywcem: curl bez nagłówka -> 500).
+            var signature = http.Request.Headers["Stripe-Signature"].ToString();
+
             Event stripeEvent;
             try
             {
-                stripeEvent = EventUtility.ConstructEvent(
-                    payload, http.Request.Headers["Stripe-Signature"], o.WebhookSecret);
+                stripeEvent = EventUtility.ConstructEvent(payload, signature, o.WebhookSecret);
             }
             catch (StripeException ex)
             {
