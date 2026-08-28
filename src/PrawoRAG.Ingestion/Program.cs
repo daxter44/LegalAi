@@ -137,7 +137,27 @@ switch (mode)
         }
         break;
     }
+    case "backfill-noise":
+    {
+        // Backfill jakości treści chunków (PLAN-NAPRAWA-SZUMU-CHUNKOW-2026-08-28.md): mojibake ze starych
+        // PDF-ów Dz.U., przypisy historii nowelizacji, markery list „⚫". Czyszczenie + TokenCount +
+        // re-embedding TYLKO dotkniętych chunków (~74 tys. = 0,9% korpusu). Oryginały → chunk_noise_backup.
+        // Konfiguracja: Backfill:Problems (csv, domyślnie wszystkie), Backfill:DryRun, Backfill:BatchSize,
+        // Backfill:MaxChunks jako limit chunków do prób na małej porcji (celowo NIE Ingestion:MaxItems —
+        // appsettings ustawia je na 3 dla zwykłego ingestu i po cichu ucinałoby backfill po jednej partii).
+        var problems = (cfg["Backfill:Problems"] ?? "mojibake,footnotes,bullets")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var dryRun = cfg.GetValue<bool?>("Backfill:DryRun") ?? false;
+        var batchSize = cfg.GetValue<int?>("Backfill:BatchSize") ?? 200;
+        var maxChunks = cfg.GetValue<int?>("Backfill:MaxChunks");
+
+        var backfill = host.Services.GetRequiredService<NoiseBackfillRunner>();
+        var results = await backfill.RunAsync(problems, dryRun, batchSize, maxChunks, default);
+        foreach (var r in results)
+            Console.WriteLine($"BACKFILL-NOISE {(dryRun ? "DRY-RUN " : "")}DONE: {r}");
+        break;
+    }
     default:
         throw new InvalidOperationException(
-            $"Nieznany Ingestion:Mode '{mode}'. Dozwolone: fetch | process | fetch-process | stream | reprocess-failed | report | discover | sync-eli.");
+            $"Nieznany Ingestion:Mode '{mode}'. Dozwolone: fetch | process | fetch-process | stream | reprocess-failed | report | discover | sync-eli | backfill-noise.");
 }

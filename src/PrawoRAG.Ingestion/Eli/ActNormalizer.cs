@@ -5,6 +5,7 @@ using HtmlAgilityPack;
 using PrawoRAG.Domain;
 using PrawoRAG.Domain.Documents;
 using PrawoRAG.Domain.Sources;
+using PrawoRAG.Ingestion.Cleaning;
 using PrawoRAG.Ingestion.Saos;
 
 namespace PrawoRAG.Ingestion.Eli;
@@ -170,6 +171,7 @@ public sealed class ActNormalizer : IDocumentNormalizer
         string? article, string? paragraph, string? point, string shortTitle, string? chapter,
         string eliId, string? displayAddress, string? anchor, string? sourceUrl)
     {
+        body = AmendmentFootnoteCleaner.Clean(body); // historia nowelizacji „(Dz.U. …, poz. …)" — balast bibliograficzny
         var artLabel = article is not null
             ? $"Art. {article}" + (paragraph is not null ? $" § {paragraph}" : "") + (point is not null ? $" pkt {point}" : "")
             : paragraph is not null

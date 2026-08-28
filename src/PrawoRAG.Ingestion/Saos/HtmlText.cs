@@ -32,8 +32,16 @@ internal static class HtmlText
         return Normalize(sb.ToString());
     }
 
+    // Markery list wyliczeniowych z HTML uzasadnień („⚫", „●", „•", „▪") — czysta dekoracja, a jako
+    // tokeny w treści zaśmiecają embedding (zmierzone: 35,2 tys. chunków SAOS z „⚫";
+    // patrz PLAN-NAPRAWA-SZUMU-CHUNKOW-2026-08-28.md).
+    private static readonly char[] BulletGlyphs = ['⚫', '●', '•', '▪', '◦', '●', '⬤'];
+
     private static string Normalize(string text)
     {
+        foreach (var g in BulletGlyphs)
+            text = text.Replace(g.ToString(), " ");
+
         var lines = text.Replace("\r", "")
             .Split('\n')
             .Select(l => string.Join(' ', l.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)))
