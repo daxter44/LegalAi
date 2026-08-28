@@ -53,4 +53,22 @@ public sealed class AppUserEntity : IdentityUser
     /// razem z płatnością, a nie w przypadkowym dniu.
     /// </summary>
     public DateTime? BillingAnchorUtc { get; set; }
+
+    // --- powiązanie ze Stripe (E3) ---------------------------------------------------------------
+    // Identyfikatory dostawcy płatności, NIE źródło prawdy o uprawnieniu. Uprawnienie mieszkają
+    // w polach wyżej; te dwa służą wyłącznie do rozpoznania, którego konta dotyczy webhook, i do
+    // otwarcia portalu klienta.
+
+    /// <summary>Identyfikator klienta w Stripe (<c>cus_…</c>).</summary>
+    public string? StripeCustomerId { get; set; }
+
+    /// <summary>Identyfikator bieżącej subskrypcji (<c>sub_…</c>).</summary>
+    public string? StripeSubscriptionId { get; set; }
+
+    /// <summary>
+    /// Czas ZDARZENIA, na podstawie którego ostatnio zmieniliśmy uprawnienie. Webhooki przychodzą
+    /// nie po kolei, więc starsze zdarzenie niż ta data jest ignorowane — inaczej spóźnione
+    /// „anulowano" wyłączyłoby konto, które właśnie się przedłużyło.
+    /// </summary>
+    public DateTime? PlanUpdatedAtUtc { get; set; }
 }

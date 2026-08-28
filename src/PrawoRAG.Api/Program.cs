@@ -8,9 +8,11 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
+using Stripe;
 using Microsoft.Extensions.Options;
 using PrawoRAG.Api.Services;
 using PrawoRAG.Api.Services.Auth;
+using PrawoRAG.Api.Services.Billing;
 using PrawoRAG.Api.Services.Plans;
 using PrawoRAG.Storage.Entities;
 using PrawoRAG.Domain;
@@ -77,6 +79,23 @@ builder.Services.AddSingleton<CostGuard>();
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
 var authOptions = builder.Configuration.GetSection(AuthOptions.SectionName).Get<AuthOptions>() ?? new AuthOptions();
+
+// --- Płatności (E3/US-3.1 — spike) --------------------------------------------------------------
+// Billing:Enabled=false (domyślnie) = trasy /platnosc/* nie istnieją. Wymaga kont: bez konta nie ma
+// czego subskrybować ani komu przypisać planu.
+builder.Services.Configure<BillingOptions>(builder.Configuration.GetSection(BillingOptions.SectionName));
+var billingOptions = builder.Configuration.GetSection(BillingOptions.SectionName).Get<BillingOptions>() ?? new BillingOptions();
+if (billingOptions.Enabled)
+{
+    if (!authOptions.Enabled)
+        throw new InvalidOperationException("Billing:Enabled=true wymaga Auth:Enabled=true (plan przypisuje się do konta).");
+    if (string.IsNullOrWhiteSpace(billingOptions.SecretKey) || string.IsNullOrWhiteSpace(billingOptions.WebhookSecret))
+        throw new InvalidOperationException(
+            "Billing:Enabled=true wymaga Billing:SecretKey i Billing:WebhookSecret. " +
+            "Bez sekretu podpisu webhook nie odróżni zdarzenia Stripe od dowolnego POST-a z internetu.");
+
+    StripeConfiguration.ApiKey = billingOptions.SecretKey;
+}
 
 static void ApiReturns401Instead302(CookieAuthenticationOptions o)
 {
@@ -307,6 +326,9 @@ app.MapGet("/", (HttpContext http) =>
 
 // Konta (E1, blok A) — mapowane TYLKO gdy włączone; inaczej zostaje bramka na kody zaproszeń.
 if (authOptions.Enabled) app.MapAuthEndpoints();
+
+// Płatności (E3/US-3.1 — spike). Bez kont nie ma czego subskrybować, więc wymagają Auth:Enabled.
+if (billingOptions.Enabled) app.MapBillingEndpoints();
 
 if (!authOptions.Enabled)
 {

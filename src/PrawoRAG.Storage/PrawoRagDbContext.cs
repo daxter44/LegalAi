@@ -36,6 +36,9 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options)
     /// <summary>Zużycie planu i capów pojemności (E1/T-10) — trwałe, przeżywa restart.</summary>
     public DbSet<UsageCounterEntity> UsageCounters => Set<UsageCounterEntity>();
 
+    /// <summary>Przetworzone zdarzenia webhooków płatności (E3) — idempotencja.</summary>
+    public DbSet<ProcessedWebhookEntity> ProcessedWebhooks => Set<ProcessedWebhookEntity>();
+
     // --- analiza dokumentów (raport BEZ treści dokumentu — patrz AnalysisEntity) ---
     public DbSet<AnalysisEntity> Analyses => Set<AnalysisEntity>();
     public DbSet<AnalysisUnitEntity> AnalysisUnits => Set<AnalysisUnitEntity>();
@@ -55,6 +58,16 @@ public class PrawoRagDbContext(DbContextOptions<PrawoRagDbContext> options)
             e.Property(x => x.TermsVersion).HasMaxLength(40);
             e.Property(x => x.PlanId).HasMaxLength(40);
             e.Property(x => x.PlanStatus).HasMaxLength(30);
+        });
+
+        b.Entity<ProcessedWebhookEntity>(e =>
+        {
+            e.ToTable("processed_webhooks");
+            // Klucz na identyfikatorze zdarzenia = cała idempotencja. Duplikat rozbija się o klucz,
+            // więc nie ma okna, w którym dwa równoległe dostarczenia zrobiłyby robotę dwa razy.
+            e.HasKey(x => x.EventId);
+            e.Property(x => x.EventId).HasMaxLength(80);
+            e.Property(x => x.EventType).HasMaxLength(120);
         });
 
         b.Entity<UsageCounterEntity>(e =>

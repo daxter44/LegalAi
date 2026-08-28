@@ -54,9 +54,14 @@ public sealed class Entitlements(
         var anchor = account.BillingAnchorUtc ?? account.CreatedAtUtc;
         if (anchor == default) anchor = now; // konto sprzed pola CreatedAtUtc — nie wywracamy się
 
-        // Plan płatny po terminie albo anulowany = plan darmowy. Sprawdzenie przy odczycie, nie w tle.
-        var expired = account.PlanValidUntilUtc is { } until && until <= now;
-        var planId = expired || account.PlanStatus == PlanStatuses.Canceled
+        // Plan płatny wygasa PO TERMINIE — sprawdzenie przy odczycie, nie zadaniem w tle.
+        //
+        // UWAGA: sam status „anulowany" NIE odbiera dostępu. Rezygnacja w połowie okresu oznacza
+        // „nie przedłużaj", a nie „zabierz to, co opłacone" — dostęp kończy się dopiero z datą
+        // ważności. Konto, któremu subskrypcja faktycznie się skończyła, ma tę datę wyzerowaną
+        // przez webhook (SubscriptionSync), więc spada na plan darmowy natychmiast.
+        var expired = account.PlanValidUntilUtc is not { } until || until <= now;
+        var planId = expired && account.PlanId != o.DefaultPlan
             ? o.DefaultPlan
             : account.PlanId;
 
