@@ -91,7 +91,7 @@ public class GroundedPromptSectionsTests
     public void System_prompt_allows_partial_answers_but_keeps_refusal_marker_contract()
     {
         Assert.Contains("CZĘŚĆ pytania", GroundedPrompt.SystemPrompt);
-        Assert.Contains($"\"{GroundedPrompt.RefusalMarker}, aby odpowiedzieć.\"", GroundedPrompt.SystemPrompt);
+        Assert.Contains($"\"{GroundedPrompt.RefusalMarker} dla tego pytania.\"", GroundedPrompt.SystemPrompt);
         Assert.Contains("ŻADNĄ część pytania", GroundedPrompt.SystemPrompt);
     }
 }

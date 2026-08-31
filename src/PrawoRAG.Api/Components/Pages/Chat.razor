@@ -32,7 +32,8 @@
 <aside class="chat-sidebar @(_mobileSidebarOpen ? "open" : "")">
     @* Marka + przełącznik trybów w sidebarze (RED-2.1) — globalny header nie renderuje się na tym
        ekranie (MainLayout.IsAppShellPage). Zakładka Analiza za flagą jak dotąd w headerze. *@
-    <a class="side-brand" href="/" title="Strona główna">
+    @* /start, nie "/" — "/" dla zalogowanego przekierowuje z powrotem do /czat. *@
+    <a class="side-brand" href="/start" title="Strona główna">
         <span class="app-logo-mark" aria-hidden="true"></span>
         <span class="app-title">OmniaSI</span>
     </a>
@@ -75,6 +76,10 @@
             @if (_planLabel is not null)
             {
                 <span class="side-user-plan">@_planLabel</span>
+            }
+            @if (_usageLabel is not null)
+            {
+                <span class="side-user-usage" title="Zużycie w bieżącym okresie rozliczeniowym">@_usageLabel</span>
             }
         </span>
         @if (Billing.Value.Enabled)
@@ -421,6 +426,7 @@
     private bool _srcPanelOpen;
     private bool _srcPanelCollapsed;
     private string? _planLabel;
+    private string? _usageLabel;
 
     /// <summary>Rozmowa, której odpowiedź właśnie się zakończyła — przez chwilę pokazuje ✓ w historii
     /// (przeklikanie 2026-08-31). Czyszczona timerem, best-effort.</summary>
@@ -497,6 +503,7 @@
                     _planLabel = ent.PlanId switch { "free" => "Plan Start", "pro" => "Plan Pro", var x => x };
             }
             catch { /* best-effort */ }
+            await RefreshUsageAsync();
         }
 
         // AUTO-WZNOWIENIE ostatniej rozmowy. _conversationId żyje w pamięci obwodu — odświeżenie strony,
@@ -575,12 +582,30 @@
 
     /// <summary>LLM odmówił NA POZIOMIE TREŚCI (ocenił dostarczone źródła jako nietrafne) — bramka
     /// retrievalu (<c>ex.Abstained</c>) tego nie łapie, bo próg podobieństwa i tak przepuścił. Bez tego
-    /// panel „Źródła" pokazywał nietrafione fragmenty obok odpowiedzi „Nie mam wystarczających źródeł" —
+    /// panel „Źródła" pokazywał nietrafione fragmenty obok odpowiedzi z frazą odmowy —
     /// mylące (zgłoszone przy pytaniu spoza domeny, gdzie retrieval znalazł tylko przypadkowo podobne
-    /// fragmenty prawnicze). Sprawdzane dopiero gdy tura się skończy (Done) — nie przy każdym tokenie.</summary>
+    /// fragmenty prawnicze). Sprawdzane dopiero gdy tura się skończy (Done) — nie przy każdym tokenie.
+    /// Marker legacy: rozmowy zapisane przed 2026-08-31 mają starą frazę — historia musi ją nadal
+    /// rozpoznawać (odczyt wraca przez tę samą ścieżkę co świeże odpowiedzi).</summary>
     private static bool IsRefusal(Exchange ex) =>
-        ex.Done && !ex.Abstained && ex.Answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase);
+        ex.Done && !ex.Abstained
+        && (ex.Answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase)
+            || ex.Answer.Contains(GroundedPrompt.LegacyRefusalMarker, StringComparison.OrdinalIgnoreCase));
 
+
+    /// <summary>Licznik zużycia X/Y w stopce sidebara (leftover RED, addytywne) — best-effort,
+    /// pojawia się tylko gdy plan obowiązuje (UsageAsync zwraca null w trybie bez kont).</summary>
+    private async Task RefreshUsageAsync()
+    {
+        if (!CurrentUser.IsAuthenticated) return;
+        try
+        {
+            _usageLabel = await CostGuard.UsageAsync(_userId) is { } u
+                ? $"{u.Used} / {u.Limit} zapytań"
+                : null;
+        }
+        catch { /* best-effort */ }
+    }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
@@ -748,6 +773,7 @@
             }
             _busy = false;
             await RefreshConversationsAsync(); // nowa rozmowa/tytuł pojawia się w sidebarze
+            await RefreshUsageAsync();         // licznik X/Y w stopce nadąża za właśnie zużytym zapytaniem
             // ✓ przy rozmowie w historii przez kilka sekund po zakończeniu (przeklikanie 2026-08-31).
             _finishedConvId = _conversationId;
             _ = Task.Run(async () =>

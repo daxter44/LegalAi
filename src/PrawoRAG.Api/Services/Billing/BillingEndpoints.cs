@@ -33,6 +33,8 @@ public static class BillingEndpoints
         // --- strona konta: pokazuje plan + guziki do Checkout/portalu (spike, bez UI Blazor — patrz p.1 wyżej) ---
         app.MapGet("/konto", async (HttpContext http, IAntiforgery af,
             UserManager<Storage.Entities.AppUserEntity> users,
+            PrawoRAG.Api.Services.CostGuard guard,
+            PrawoRAG.Api.Services.Plans.IEntitlements entitlements,
             Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.AnalysisOptions> analysis) =>
         {
             if (http.User.FindFirstValue(ClaimTypes.NameIdentifier) is not { } userId)
@@ -40,12 +42,25 @@ public static class BillingEndpoints
             var user = await users.FindByIdAsync(userId);
             if (user is null) return Results.Unauthorized();
 
+            // Zużycie X/Y w bieżącym okresie (leftover RED, addytywne — dane już liczone przez
+            // CostGuard). Best-effort: awaria licznika nie może odbierać dostępu do strony konta.
+            (int Used, int Limit)? usage = null;
+            DateTime? periodEndUtc = null;
+            try
+            {
+                usage = await guard.UsageAsync(userId);
+                if (usage is not null)
+                    periodEndUtc = (await entitlements.ForAsync(userId)).Period.EndUtc;
+            }
+            catch { /* best-effort */ }
+
             var token = af.GetAndStoreTokens(http).RequestToken ?? "";
             return Results.Content(
                 BillingPages.Konto(TokenField, token, user.PlanId, user.PlanStatus,
                     user.PlanValidUntilUtc, hasSubscription: !string.IsNullOrEmpty(user.StripeCustomerId),
                     email: user.Email, emailConfirmed: user.EmailConfirmed,
-                    analysisEnabled: analysis.Value.Enabled),
+                    analysisEnabled: analysis.Value.Enabled,
+                    usage: usage, periodEndUtc: periodEndUtc),
                 "text/html; charset=utf-8");
         }).RequireAuthorization();
 

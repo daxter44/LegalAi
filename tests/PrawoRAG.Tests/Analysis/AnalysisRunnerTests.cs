@@ -371,7 +371,7 @@ public class AnalysisRunnerTests
     public void ParseVerdict_refusal_marker_wins()
     {
         var (v, _) = AnalysisPrompts.ParseVerdict(
-            "WERDYKT: OK\nNie mam wystarczających źródeł, aby odpowiedzieć.");
+            "WERDYKT: OK\nNie znalazłem jednoznacznej podstawy prawnej dla tego pytania.");
         Assert.Equal(UnitVerdict.NoSources, v);
     }
 }

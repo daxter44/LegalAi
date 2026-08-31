@@ -329,6 +329,10 @@ const string LandingHtml = """
     .q{padding:10px 16px;border-radius:12px;background:var(--sl-bg-secondary);font-size:14px;align-self:flex-start}
     .cite{display:inline-flex;padding:1px 7px;border-radius:9999px;background:#fff;color:var(--sl-accent);font-size:11.5px;font-weight:700}
     .foot-note{font-size:13px;color:var(--sl-text-tertiary)}
+    /* Widoczny fokus klawiatury (a11y, leftover RED): akcent na jasnych sekcjach, jaśniejszy
+       błękit na ciemnych (akcent tonie w granacie hero). */
+    a:focus-visible{outline:3px solid var(--sl-accent);outline-offset:2px;border-radius:8px}
+    .nav a:focus-visible,.hero a:focus-visible,.dark a:focus-visible,.table a:focus-visible,footer a:focus-visible{outline-color:var(--sl-on-dark-accent)}
     .table{background:#171B24;border-radius:16px;padding:36px 40px;color:#E7E9F0;margin-top:40px;overflow-x:auto}
     .table h3{font-family:var(--sl-font-display);font-size:26px;margin:0 0 18px}
     .trow{display:grid;grid-template-columns:minmax(0,1fr) 130px 150px;align-items:center;border-bottom:1px solid rgb(199 208 236 / .12);padding:13px 0;font-size:15px;color:var(--sl-on-dark-soft)}
@@ -488,10 +492,25 @@ var landingHtml = authOptions.Enabled
         .Replace("<!--CTA-START-->", """<a class="btn-line" href="/wejscie" style="color:var(--sl-text-primary);border-color:var(--sl-border);margin-top:auto;justify-content:center">Zamknięty test — mam kod</a>""")
         .Replace("<!--CTA-PRO-->", """<span class="foot-note" style="margin-top:auto">Dostępne po starcie publicznym.</span>""");
 
+// Landing dla ZALOGOWANEGO (leftover 2026-08-31: logo ma wracać na stronę główną, a `/` dla
+// zalogowanych nadal przekierowuje do /czat — inwariant zostaje). /start to jawne „pokaż stronę
+// główną" spod logo; CTA prowadzą wtedy do aplikacji/konta, nie do rejestracji.
+var landingHtmlAuthed = LandingHtml
+    .Replace("<!--NAV-CTA-->", """<a class="btn" href="/czat" style="min-height:40px">Przejdź do czatu</a>""")
+    .Replace("<!--CTA-->", """<a class="btn" href="/czat" style="min-height:52px;padding:0 30px;font-size:16.5px">Przejdź do czatu</a>""")
+    .Replace("<!--CTA-START-->", """<span class="foot-note" style="margin-top:auto">Masz już konto.</span>""")
+    .Replace("<!--CTA-PRO-->", billingOptions.Enabled
+        ? """<a class="btn" href="/konto" style="margin-top:auto;justify-content:center">Zarządzaj planem</a>"""
+        : """<span class="foot-note" style="margin-top:auto">Dostępne po starcie publicznym.</span>""");
+
 app.MapGet("/", (HttpContext http) =>
     http.User.Identity?.IsAuthenticated == true
         ? Results.Redirect("/czat")
         : Results.Content(landingHtml, "text/html; charset=utf-8"));
+
+app.MapGet("/start", (HttpContext http) => Results.Content(
+    http.User.Identity?.IsAuthenticated == true ? landingHtmlAuthed : landingHtml,
+    "text/html; charset=utf-8"));
 
 // Placeholdery dokumentów prawnych (RED-4.7): trasy istnieją od teraz (landing, rejestracja i stopki
 // już do nich linkują), treść wchodzi w bloku treści na końcu (decyzja 2026-08-31 o kolejności).

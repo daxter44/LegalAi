@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Encodings.Web;
 using PrawoRAG.Api.Services.Auth;
 
@@ -52,6 +53,12 @@ public static class BillingPages
           .pill-ok{background:var(--sl-success-bg);color:var(--sl-success)}
           .pill-warn{background:var(--sl-warning-bg);color:var(--sl-warning)}
           .muted{color:var(--sl-text-tertiary);font-size:var(--fs-13)}
+          .usage{display:flex;flex-direction:column;gap:var(--s-2)}
+          .usage-head{display:flex;align-items:baseline;gap:var(--s-2);font-size:var(--fs-14);color:var(--sl-text-secondary)}
+          .usage-head .num{margin-left:auto;font-weight:700;color:var(--sl-text-primary);font-variant-numeric:tabular-nums}
+          .usage-head .den{color:var(--sl-text-tertiary);font-weight:500}
+          .meter{height:10px;border-radius:var(--sl-radius-full);background:var(--sl-bg-secondary);overflow:hidden}
+          .meter-fill{height:10px;border-radius:var(--sl-radius-full);background:var(--sl-gradient)}
           .kv{display:flex;align-items:center;gap:var(--s-3);padding:var(--s-3) 0;border-bottom:1px solid var(--sl-border)}
           .kv:last-child{border-bottom:0}
           .kv .k{font-size:var(--fs-13);color:var(--sl-text-tertiary)}
@@ -76,7 +83,7 @@ public static class BillingPages
         </head>
         <body>
         <div class="topbar">
-          <a class="brand" href="/"><span class="mark"></span> {{E(AuthPages.ProductName)}}</a>
+          <a class="brand" href="/start"><span class="mark"></span> {{E(AuthPages.ProductName)}}</a>
           <nav class="nav">
             <a href="/czat">Czat</a>
             {{(analysisEnabled ? """<a href="/analiza">Analiza</a>""" : "")}}
@@ -92,7 +99,7 @@ public static class BillingPages
 
     public static string Konto(string tokenField, string token, string planId, string planStatus,
         DateTime? validUntilUtc, bool hasSubscription, string? email, bool emailConfirmed,
-        bool analysisEnabled)
+        bool analysisEnabled, (int Used, int Limit)? usage = null, DateTime? periodEndUtc = null)
     {
         var initials = string.IsNullOrWhiteSpace(email) ? "?" : char.ToUpperInvariant(email[0]).ToString();
         var planName = planId switch { "free" => "START", "pro" => "PRO", var x => x.ToUpperInvariant() };
@@ -105,6 +112,24 @@ public static class BillingPages
             _ => "",
         };
 
+        // Pasek zużycia X/Y (makieta Konto: „Zużycie w tym okresie") — tylko gdy plan obowiązuje.
+        var usageHtml = "";
+        if (usage is { } u && u.Limit > 0)
+        {
+            var pct = Math.Min(100, (int)Math.Round(100.0 * u.Used / u.Limit));
+            var renews = periodEndUtc is { } end
+                ? $"Licznik odnowi się {end.ToString("d MMMM yyyy", new CultureInfo("pl-PL"))}."
+                : "Licznik odnawia się z początkiem każdego okresu rozliczeniowego.";
+            usageHtml = $"""
+          <div class="usage">
+            <div class="usage-head"><span>Zużycie w tym okresie</span>
+              <span class="num">{u.Used} <span class="den">/ {u.Limit} zapytań</span></span></div>
+            <div class="meter" role="img" aria-label="Zużyto {u.Used} z {u.Limit} zapytań"><div class="meter-fill" style="width:{pct}%"></div></div>
+            <span class="muted">{E(renews)}</span>
+          </div>
+          """;
+        }
+
         return Shell("konto", analysisEnabled, initials, $"""
         <h1>Twoje konto</h1>
 
@@ -113,8 +138,9 @@ public static class BillingPages
             <h2>Plan</h2>
             <span class="pill pill-plan">{E(planName)}</span>
             {statusPill}
-            {(validUntilUtc is { } u ? $"""<span class="muted end" style="margin-left:auto">ważny do {u:yyyy-MM-dd HH:mm} UTC</span>""" : "")}
+            {(validUntilUtc is { } vu ? $"""<span class="muted end" style="margin-left:auto">ważny do {vu:yyyy-MM-dd HH:mm} UTC</span>""" : "")}
           </div>
+          {usageHtml}
           <div class="btns">
             <form method="post" action="/platnosc/start">
               {AuthPages.Token(tokenField, token)}

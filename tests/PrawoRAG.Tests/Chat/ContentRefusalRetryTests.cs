@@ -128,7 +128,7 @@ public class ContentRefusalRetryTests
             Covered("nietrafiony przepis"),
             Covered("art. 50 ust. 2 — oznaczanie treści generowanych"));
         var llm = new SequenceLlm(
-            "Nie mam wystarczających źródeł, aby odpowiedzieć.", // fraza reguły 3 — bez doklejki
+            "Nie znalazłem jednoznacznej podstawy prawnej dla tego pytania.", // fraza reguły 3 — bez doklejki
             "Tak, art. 50 ust. 2 wymaga oznaczania [1].");
         var reformulator = new CountingReformulator("oznaczanie treści wygenerowanej przez AI");
 
@@ -148,7 +148,7 @@ public class ContentRefusalRetryTests
     public async Task Content_refusal_reaching_user_is_marked_abstained()
     {
         var retriever = new CountingRetriever(Covered("x"));
-        var llm = new SequenceLlm("Nie mam wystarczających źródeł, aby odpowiedzieć.");
+        var llm = new SequenceLlm("Nie znalazłem jednoznacznej podstawy prawnej dla tego pytania.");
 
         var events = await Drain(Service(retriever, llm, new CountingReformulator(null))
             .AskAsync("pytanie", [], null, default));

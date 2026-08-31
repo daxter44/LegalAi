@@ -131,7 +131,7 @@ foreach (var item in items)
             var answer = sb.ToString();
 
             // Realna bramka: czy LLM SAM odmówił (fraza z GroundedPrompt), gdy źródła nie odpowiadają.
-            if (answer.Contains("Nie mam wystarczających źródeł", StringComparison.OrdinalIgnoreCase))
+            if (answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase))
             {
                 abstained = true;
             }

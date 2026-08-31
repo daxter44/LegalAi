@@ -147,7 +147,7 @@ public static class LiveReportRunner
     }
 
     /// <summary>
-    /// Odmowa TREŚCIOWA = model napisał frazę z reguły 3 („Nie mam wystarczających źródeł…" —
+    /// Odmowa TREŚCIOWA = model napisał frazę z reguły 3 („Nie znalazłem jednoznacznej podstawy prawnej…" —
     /// <see cref="GroundedPrompt.RefusalMarker"/>), ale to NIE jest komunikat bramki
     /// (<see cref="AbstentionPolicy.Message"/> zaczyna się tym samym markerem, więc sam marker
     /// nie wystarcza do rozróżnienia). STAŁE, nie skopiowane napisy — inaczej zmiana komunikatu

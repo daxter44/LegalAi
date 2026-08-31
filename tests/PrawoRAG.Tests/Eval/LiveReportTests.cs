@@ -92,7 +92,7 @@ public class LiveReportTests
            // musi liczyc obie epoki tak samo.
     public async Task Content_refusal_counted_separately_from_threshold()
     {
-        const string modelRefusal = "Nie mam wystarczających źródeł, aby odpowiedzieć."; // fraza reguły 3, bez doklejki
+        const string modelRefusal = "Nie znalazłem jednoznacznej podstawy prawnej dla tego pytania."; // fraza reguły 3, bez doklejki
         await CleanAsync();
         await SeedAsync(
             ("pytanie 1", AbstentionPolicy.Message, true, null, ChatRoutes.Retrieval, false),  // progowa (bramka)

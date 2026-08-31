@@ -14,7 +14,9 @@
 {
     <div class="app-shell">
         <header class="app-header">
-            <a class="app-brand" href="/" title="Strona główna">
+            @* /start, nie "/" — "/" dla zalogowanego przekierowuje do /czat, a logo ma jawnie
+               wracać na stronę główną (leftover 2026-08-31). *@
+            <a class="app-brand" href="/start" title="Strona główna">
                 <span class="app-logo-mark" aria-hidden="true"></span>
                 <span class="app-title">OmniaSI</span>
             </a>

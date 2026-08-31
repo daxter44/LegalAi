@@ -25,8 +25,15 @@ public static class GroundedPrompt
     /// <summary>Fraza, którą LLM ma napisać DOKŁADNIE (reguła 3 w <see cref="SystemPrompt"/>), gdy źródła
     /// nie odpowiadają na pytanie. UI sprawdza nią odpowiedź (Contains, bez rozróżniania wielkości liter),
     /// żeby ukryć panel źródeł — bramka retrievalu (<c>AbstainEvent</c>) tego przypadku nie łapie, bo to
-    /// odmowa NA POZIOMIE TREŚCI (LLM ocenił dostarczone źródła jako nietrafne), nie brak pokrycia w progu.</summary>
-    public const string RefusalMarker = "Nie mam wystarczających źródeł";
+    /// odmowa NA POZIOMIE TREŚCI (LLM ocenił dostarczone źródła jako nietrafne), nie brak pokrycia w progu.
+    /// Wording „podstawy prawnej", nie „źródeł" (2026-08-31): „w źródłach" wymagało od użytkownika
+    /// domyślenia się, czym są „źródła" systemu. Fraza MUSI pozostać prefiksem
+    /// <c>AbstentionPolicy.Message</c> — eval odróżnia odmowę treściową od bramki po tym prefiksie.</summary>
+    public const string RefusalMarker = "Nie znalazłem jednoznacznej podstawy prawnej";
+
+    /// <summary>Poprzednia fraza odmowy (sprzed 2026-08-31) — utrwalona w zapisanych rozmowach,
+    /// więc odczyt historii musi ją nadal rozpoznawać. NIE używać w nowych promptach.</summary>
+    public const string LegacyRefusalMarker = "Nie mam wystarczających źródeł";
 
     public const string SystemPrompt =
         """
@@ -47,7 +54,7 @@ public static class GroundedPrompt
         3. Jeśli źródła pozwalają odpowiedzieć tylko na CZĘŚĆ pytania — odpowiedz na tę część
            (z odwołaniami [n]) i wskaż wprost, której kwestii źródła nie pokrywają (np. „Źródła
            nie obejmują kwestii…"). Odpowiedź częściowa z uczciwie nazwaną luką jest LEPSZA niż
-           odmowa. Dokładną frazę: "Nie mam wystarczających źródeł, aby odpowiedzieć." napisz
+           odmowa. Dokładną frazę: "Nie znalazłem jednoznacznej podstawy prawnej dla tego pytania." napisz
            TYLKO wtedy, gdy źródła nie pozwalają odpowiedzieć na ŻADNĄ część pytania — wtedy nic
            poza tym nie dodawaj i nie używaj tej frazy w żadnej innej sytuacji.
         4. NIE wymyślaj przepisów, artykułów, sygnatur ani cytatów. Nie korzystaj z wiedzy spoza źródeł.

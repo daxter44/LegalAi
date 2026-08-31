@@ -233,12 +233,20 @@ body {
 .app-nav { margin-left: auto; display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
 .app-nav a { color: var(--c-text-muted); font-size: var(--fs-14); text-decoration: none; white-space: nowrap; }
 .app-nav a:hover { color: var(--c-accent); text-decoration: underline; }
-.about { width: 100%; max-width: 720px; line-height: 1.6; }
-.about h1 { font-size: var(--fs-24); }
-.about h2 { font-size: var(--fs-18); margin-top: var(--s-6); }
-.about-lead { font-size: var(--fs-16); color: var(--c-text); }
+/* O systemie — retusz RED-4.4: nagłówki display, sekcje jako karty (spójne z resztą aplikacji). */
+.about { width: 100%; max-width: 760px; line-height: 1.6; }
+.about h1 { font-family: var(--sl-font-display); font-size: var(--fs-30); letter-spacing: -0.01em; margin-bottom: var(--s-3); }
+.about-lead { font-size: var(--fs-16); color: var(--sl-text-secondary); margin: 0 0 var(--s-5); }
+.about-card {
+    background: var(--sl-surface); border-radius: var(--sl-radius-xl); box-shadow: var(--sl-shadow-card);
+    padding: var(--s-6) var(--s-8); margin: 0 0 var(--s-5);
+}
+.about-card h2 { font-family: var(--sl-font-display); font-size: var(--fs-20); letter-spacing: -0.01em; margin: 0 0 var(--s-3); }
+.about-card ul { margin: 0; padding-left: 1.2rem; }
 .about li { margin-bottom: var(--s-2); }
-.about-cta { display: inline-block; text-decoration: none; padding: var(--s-2) var(--s-4); margin-top: var(--s-4); }
+.about li::marker { color: var(--sl-accent); }
+.about-cta { display: inline-block; text-decoration: none; padding: var(--s-2) var(--s-4); margin-top: var(--s-2); }
+@media (max-width: 640px) { .about-card { padding: var(--s-4) var(--s-5); } }
 
 /* Diagnostyka: badge tokenów in/out (widoczny tylko z flagą Diagnostics:ShowTokenUsage) */
 .badge-tokens { background: var(--c-accent-weak); color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
@@ -294,13 +302,24 @@ body {
 .search-hit-open:hover { text-decoration: underline; }
 
 /* Widok pełnego dokumentu (/dokument/{id}) */
+/* Podgląd dokumentu — retusz RED-4.4: tytuł display, metadane jako chipy, powrót jak przycisk ghost. */
 .docview { width: 100%; max-width: 820px; display: flex; flex-direction: column; gap: var(--s-3); }
-.doc-back { font-size: var(--fs-14); color: var(--c-text-muted); text-decoration: none; align-self: flex-start; }
-.doc-back:hover { color: var(--c-accent); text-decoration: underline; }
-.docview-body { max-width: none; }
-.docview-title { font-size: var(--fs-18); margin: 0 0 var(--s-2); }
-.docview-meta { display: flex; flex-wrap: wrap; gap: var(--s-3); font-size: var(--fs-13); color: var(--c-text-muted); margin-bottom: var(--s-3); }
-.docview-section { font-size: var(--fs-16); margin: var(--s-4) 0 var(--s-1); }
+.doc-back {
+    display: inline-flex; align-items: center; gap: var(--s-1); align-self: flex-start;
+    font-size: var(--fs-14); color: var(--sl-text-secondary); text-decoration: none;
+    padding: var(--s-1) var(--s-3); border-radius: var(--sl-radius-full);
+    transition: color var(--sl-transition-fast), background var(--sl-transition-fast);
+}
+.doc-back:hover { color: var(--sl-accent); background: var(--sl-accent-light); }
+.docview-body { max-width: none; padding: var(--s-6) var(--s-8); }
+.docview-title { font-family: var(--sl-font-display); font-size: var(--fs-24); letter-spacing: -0.01em; line-height: 1.25; margin: 0 0 var(--s-3); }
+.docview-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); font-size: var(--fs-13); color: var(--sl-text-secondary); margin-bottom: var(--s-4); }
+.docview-meta > span {
+    display: inline-flex; align-items: center; padding: 2px var(--s-3);
+    border-radius: var(--sl-radius-full); background: var(--sl-bg-secondary);
+}
+.docview-section { font-family: var(--sl-font-display); font-size: var(--fs-18); letter-spacing: -0.01em; margin: var(--s-5) 0 var(--s-1); }
+@media (max-width: 640px) { .docview-body { padding: var(--s-4) var(--s-5); } }
 .docview-text { white-space: pre-wrap; line-height: 1.6; }
 .docview-note { margin-top: var(--s-4); }
 
@@ -359,6 +378,7 @@ body {
 .side-user-meta { display: flex; flex-direction: column; min-width: 0; }
 .side-user-name { font-size: var(--fs-13); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-user-plan { font-size: var(--fs-12); color: var(--sl-text-tertiary); }
+.side-user-usage { font-size: var(--fs-12); color: var(--sl-text-tertiary); font-variant-numeric: tabular-nums; }
 .side-user-link { margin-left: auto; color: var(--sl-text-tertiary); text-decoration: none; font-size: var(--fs-18); padding: 0 var(--s-2); }
 .side-user-link:hover { color: var(--sl-accent); }
 

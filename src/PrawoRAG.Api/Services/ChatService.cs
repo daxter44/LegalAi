@@ -260,8 +260,8 @@ public sealed class ChatService(
             // w TREŚCI odpowiedzi: model dostał źródła ponad progiem i sam orzekł, że nie odpowiadają
             // na pytanie. Ten przypadek jest u nas normą, nie wyjątkiem — odmowy są treściowe,
             // nie progowe — a bez tego wyzwalacza pętla domykająca w ogóle by go nie widziała.
-            // UWAGA na frazę (fix 2026-08-31): reguła 3 każe modelowi pisać TYLKO „Nie mam
-            // wystarczających źródeł, aby odpowiedzieć." — porównanie z pełnym AbstentionPolicy.Message
+            // UWAGA na frazę (fix 2026-08-31): reguła 3 każe modelowi pisać TYLKO frazę odmowy
+            // (GroundedPrompt.RefusalMarker) — porównanie z pełnym AbstentionPolicy.Message
             // (z doklejką „Zawęź pytanie…", której model nie zna) nigdy nie trafiało, więc wyzwalacz
             // był martwy na realnych odmowach (potwierdzone trzema diagnozami produkcyjnymi:
             // OKI, zaświadczenie/oświadczenie, znak wodny AI Act). Marker, nie pełny komunikat.

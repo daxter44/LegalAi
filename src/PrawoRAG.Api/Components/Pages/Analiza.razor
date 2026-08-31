@@ -37,7 +37,8 @@
 }
 <aside class="chat-sidebar @(_mobileSidebarOpen ? "open" : "")">
     @* Marka + przełącznik trybów jak w czacie (RED-3.1) — spójna nawigacja aplikacji. *@
-    <a class="side-brand" href="/" title="Strona główna">
+    @* /start, nie "/" — "/" dla zalogowanego przekierowuje z powrotem do /czat. *@
+    <a class="side-brand" href="/start" title="Strona główna">
         <span class="app-logo-mark" aria-hidden="true"></span>
         <span class="app-title">OmniaSI</span>
     </a>
@@ -60,6 +61,10 @@
         <span class="side-avatar" aria-hidden="true">@Initials</span>
         <span class="side-user-meta">
             <span class="side-user-name" title="@CurrentUser.DisplayName">@CurrentUser.DisplayName</span>
+            @if (_usageLabel is not null)
+            {
+                <span class="side-user-usage" title="Zużycie w bieżącym okresie rozliczeniowym">@_usageLabel</span>
+            }
         </span>
         @if (Billing.Value.Enabled)
         {
@@ -398,6 +403,7 @@ else
     private bool _followUpBusy;
     private CancellationTokenSource? _cts;
     private string _userId = "demo@local";
+    private string? _usageLabel;
 
     private string Initials
     {
@@ -422,6 +428,21 @@ else
             ? name
             : CurrentUser.UserId;
         await RefreshAnalysesAsync();
+        await RefreshUsageAsync();
+    }
+
+    /// <summary>Licznik zużycia X/Y w stopce sidebara — jak w Chat.razor (czat i analiza liczą się
+    /// do wspólnego limitu planu). Best-effort; null w trybie bez kont.</summary>
+    private async Task RefreshUsageAsync()
+    {
+        if (!CurrentUser.IsAuthenticated) return;
+        try
+        {
+            _usageLabel = await CostGuard.UsageAsync(_userId) is { } u
+                ? $"{u.Used} / {u.Limit} zapytań"
+                : null;
+        }
+        catch { /* best-effort */ }
     }
 
     /// <summary>Lista analiz w sidebarze — best-effort (brak bazy nie blokuje funkcji).</summary>
@@ -705,6 +726,7 @@ else
             ex.Done = true;
             await CostGuard.RecordAsync(_userId, ex.Answer.Length);
             _followUpBusy = false;
+            await RefreshUsageAsync(); // licznik X/Y nadąża za zużytym zapytaniem
             await InvokeAsync(StateHasChanged);
         }
     }

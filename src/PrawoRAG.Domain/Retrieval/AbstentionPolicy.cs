@@ -2,7 +2,7 @@ namespace PrawoRAG.Domain.Retrieval;
 
 /// <summary>
 /// Bramka abstynencji — rdzeń wartości produktu. Gdy retrieval nie ma wystarczającego pokrycia,
-/// system NIE generuje odpowiedzi, tylko mówi „nie mam wystarczających źródeł" (zamiast halucynować).
+/// system NIE generuje odpowiedzi, tylko mówi, że nie znalazł podstawy prawnej (zamiast halucynować).
 /// </summary>
 public static class AbstentionPolicy
 {
@@ -28,6 +28,13 @@ public static class AbstentionPolicy
     public static bool ShouldAbstain(RetrievalResult result, double threshold = DefaultThreshold) =>
         result.Chunks.Count == 0 || (result.ExactMatchHits == 0 && result.MaxSimilarity < threshold);
 
+    /// <summary>
+    /// Wording „podstawy prawnej", nie „w źródłach" (2026-08-31): „źródła" to nasz żargon — użytkownik
+    /// musiał się domyślać, czym są. MUSI zaczynać się frazą odmowy z reguły 3 promptu
+    /// (<c>GroundedPrompt.RefusalMarker</c>) — eval odróżnia odmowę bramki od treściowej po tym,
+    /// że treściowa zawiera marker, ale NIE zawiera tego pełnego komunikatu.
+    /// </summary>
     public const string Message =
-        "Nie mam wystarczających źródeł, aby odpowiedzieć. Zawęź pytanie lub wskaż konkretny akt/sygnaturę.";
+        "Nie znalazłem jednoznacznej podstawy prawnej dla tego pytania. " +
+        "Zawęź pytanie lub wskaż konkretny akt/sygnaturę.";
 }

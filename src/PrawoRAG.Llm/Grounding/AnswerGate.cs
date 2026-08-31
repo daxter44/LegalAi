@@ -37,10 +37,11 @@ public sealed record AnswerDecision(AnswerVerdict Verdict, string Text)
 /// </summary>
 public static class AnswerGate
 {
-    /// <summary>Komunikat odmowy, gdy druga próba nadal cytuje coś, czego nie ma w źródłach.</summary>
+    /// <summary>Komunikat odmowy, gdy druga próba nadal cytuje coś, czego nie ma w źródłach.
+    /// Wording bez „w źródłach" (2026-08-31) — mówimy o podstawie prawnej, nie o naszym żargonie.</summary>
     public const string RefusalMessage =
-        "Nie mogę potwierdzić tej odpowiedzi w dostarczonych źródłach — odwołania, które przywołał " +
-        "model, nie występują w znalezionych fragmentach. Zawęź pytanie lub wskaż konkretny akt/sygnaturę.";
+        "Nie mogę potwierdzić tej odpowiedzi — model przywołał podstawy prawne, których nie ma " +
+        "w znalezionych przepisach i orzeczeniach. Zawęź pytanie lub wskaż konkretny akt/sygnaturę.";
 
     /// <summary>
     /// <paramref name="alreadyRegenerated"/> = czy budżet naprawczy tury został już zużyty (wspólny
