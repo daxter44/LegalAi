@@ -1,0 +1,788 @@
+<title>ShiftLaw → PrawoRAG — Styleguide</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* ============================================================
+     PAGE CHROME TOKENS — dopasowują się do motywu przeglądarki.
+     To NIE są tokeny ShiftLaw (te są zdefiniowane osobno niżej,
+     jako --sl-*, i mają STAŁE wartości niezależnie od motywu —
+     bo dokumentują fakty, nie stylizują tę stronę).
+     ============================================================ */
+  :root {
+    --page-bg: #F3F5F9;
+    --page-bg-soft: #EAECF3;
+    --page-surface: #FFFFFF;
+    --page-border: #DCE0EA;
+    --page-text: #14171F;
+    --page-text-muted: #5B6472;
+    --page-text-faint: #8991A3;
+    --page-accent: #2563EB;
+    --page-accent-soft: #EFF6FF;
+    --page-code-bg: #F1F3F8;
+    --page-shadow: 0 1px 3px rgb(15 23 42 / 0.06), 0 8px 24px -12px rgb(15 23 42 / 0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page-bg: #0F1218;
+      --page-bg-soft: #171B24;
+      --page-surface: #171B24;
+      --page-border: #2A2F3C;
+      --page-text: #E7E9F0;
+      --page-text-muted: #9BA3B7;
+      --page-text-faint: #6E7690;
+      --page-accent: #6E9BFF;
+      --page-accent-soft: #16233F;
+      --page-code-bg: #11141C;
+      --page-shadow: 0 1px 3px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --page-bg: #0F1218; --page-bg-soft: #171B24; --page-surface: #171B24;
+    --page-border: #2A2F3C; --page-text: #E7E9F0; --page-text-muted: #9BA3B7;
+    --page-text-faint: #6E7690; --page-accent: #6E9BFF; --page-accent-soft: #16233F;
+    --page-code-bg: #11141C; --page-shadow: 0 1px 3px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+  }
+  :root[data-theme="light"] {
+    --page-bg: #F3F5F9; --page-bg-soft: #EAECF3; --page-surface: #FFFFFF;
+    --page-border: #DCE0EA; --page-text: #14171F; --page-text-muted: #5B6472;
+    --page-text-faint: #8991A3; --page-accent: #2563EB; --page-accent-soft: #EFF6FF;
+    --page-code-bg: #F1F3F8; --page-shadow: 0 1px 3px rgb(15 23 42 / 0.06), 0 8px 24px -12px rgb(15 23 42 / 0.12);
+  }
+
+  /* ============================================================
+     TOKENY SHIFTLAW — kopia jeden-do-jednego z
+     src/app/shared/styles/{tokens,typography}.css.
+     Wartości STAŁE (nie reagują na motyw przeglądarki) — to fakty
+     o źródłowym systemie, nie stylizacja tej strony referencyjnej.
+     ============================================================ */
+  .sl-scope {
+    --sl-primary: #0A0A0A;
+    --sl-accent: #2563EB;
+    --sl-accent-hover: #1D4ED8;
+    --sl-accent-light: #EFF6FF;
+    --sl-bg: #F3F5F9;
+    --sl-bg-secondary: #EAECF3;
+    --sl-bg-tertiary: #E0E3EC;
+    --sl-surface: #FFFFFF;
+    --sl-border: #D2D6E2;
+    --sl-text-primary: #0A0A0A;
+    --sl-text-secondary: #6B7280;
+    --sl-text-tertiary: #9CA3AF;
+    --sl-text-inverse: #FFFFFF;
+    --sl-success: #16A34A;      --sl-success-bg: #F0FDF4;
+    --sl-warning: #D97706;      --sl-warning-bg: #FFFBEB;
+    --sl-error: #DC2626;        --sl-error-bg: #FEF2F2; --sl-error-border: #FECACA;
+    --sl-gradient: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%);
+    --sl-hero-deep: #142450;
+    --sl-on-dark: #EDEFF8;
+    --sl-on-dark-soft: #C7D0EC;
+    --sl-on-dark-accent: #93B4FF;
+    --sl-font-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --sl-font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+    --sl-font-display: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, 'Times New Roman', serif;
+    --sl-radius-sm: 0.25rem; --sl-radius-md: 0.5rem; --sl-radius-lg: 0.75rem; --sl-radius-xl: 1rem; --sl-radius-full: 9999px;
+    --sl-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.06);
+    --sl-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.11), 0 1px 2px -1px rgb(0 0 0 / 0.11);
+    --sl-shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.12), 0 2px 4px -2px rgb(0 0 0 / 0.08);
+    --sl-shadow-lg: 0 10px 20px -4px rgb(0 0 0 / 0.12), 0 4px 8px -4px rgb(0 0 0 / 0.08);
+    --sl-shadow-card: 0 1px 4px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.07);
+    --sl-shadow-lift: 0 10px 20px -4px rgb(37 99 235 / 0.16), 0 4px 8px -4px rgb(0 0 0 / 0.08);
+    --sl-shadow-accent: 0 8px 18px -8px rgb(37 99 235 / 0.55);
+    --sl-focus-ring: 0 0 0 4px rgb(37 99 235 / 0.12);
+    --sl-transition-fast: 150ms ease; --sl-transition-base: 200ms ease; --sl-transition-slow: 300ms ease;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--page-bg);
+    color: var(--page-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  img, svg { display: block; max-width: 100%; }
+  code, .mono { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace; }
+
+  a { color: var(--page-accent); }
+
+  /* ── Layout ── */
+  .shell {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 2.5rem;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 6rem;
+  }
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+  }
+
+  .railwrap { position: relative; }
+  .rail {
+    position: sticky;
+    top: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+  }
+  @media (max-width: 900px) {
+    .rail {
+      position: static;
+      flex-direction: row;
+      overflow-x: auto;
+      gap: 0;
+      padding-bottom: .5rem;
+      border-bottom: 1px solid var(--page-border);
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+  .rail-eyebrow {
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: .68rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--page-text-faint);
+    margin: 0 0 .6rem;
+  }
+  @media (max-width: 900px) { .rail-eyebrow { display: none; } }
+  .rail a {
+    display: block;
+    padding: .4rem .6rem;
+    border-radius: .4rem;
+    font-size: .84rem;
+    color: var(--page-text-muted);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+  .rail a:hover { background: var(--page-bg-soft); color: var(--page-text); }
+
+  main { min-width: 0; }
+
+  header.intro {
+    max-width: 68ch;
+    margin-bottom: 3rem;
+  }
+  .eyebrow {
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: .72rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--page-accent);
+    margin: 0 0 .8rem;
+  }
+  h1.title {
+    font-size: clamp(1.9rem, 4vw, 2.6rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin: 0 0 1rem;
+    text-wrap: balance;
+  }
+  header.intro p { color: var(--page-text-muted); margin: 0 0 .9rem; }
+  header.intro p:last-child { margin-bottom: 0; }
+  .intro-note {
+    margin-top: 1.4rem;
+    padding: .8rem 1rem;
+    background: var(--page-accent-soft);
+    border-radius: .6rem;
+    font-size: .86rem;
+    color: var(--page-text-muted);
+  }
+
+  section.block { margin-bottom: 4rem; scroll-margin-top: 1.5rem; }
+  section.block h2 {
+    font-size: 1.5rem;
+    letter-spacing: -0.01em;
+    margin: 0 0 .35rem;
+  }
+  section.block > p.lede {
+    color: var(--page-text-muted);
+    max-width: 62ch;
+    margin: 0 0 1.6rem;
+    font-size: .94rem;
+  }
+  h3.sub {
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--page-text-faint);
+    margin: 2rem 0 .9rem;
+  }
+  h3.sub:first-of-type { margin-top: 0; }
+
+  /* ── Karta ogólna (do sampli) ── */
+  .card {
+    background: var(--page-surface);
+    border: 1px solid var(--page-border);
+    border-radius: .8rem;
+    box-shadow: var(--page-shadow);
+  }
+
+  /* ── Kolor ── */
+  .swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: .9rem;
+  }
+  .swatch {
+    border-radius: .7rem;
+    overflow: hidden;
+    border: 1px solid var(--page-border);
+    background: var(--page-surface);
+  }
+  .swatch-fill { height: 64px; }
+  .swatch-meta { padding: .55rem .7rem .7rem; }
+  .swatch-name { font-size: .78rem; font-weight: 600; }
+  .swatch-value { font-size: .72rem; color: var(--page-text-muted); }
+  .swatch-value.mono { font-family: 'SF Mono', 'Fira Code', Consolas, monospace; }
+
+  .role-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+  .role-table th, .role-table td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--page-border); }
+  .role-table th { color: var(--page-text-faint); font-weight: 600; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; }
+  .role-table tr:last-child td { border-bottom: none; }
+  .dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; margin-right: .5rem; vertical-align: -1px; }
+
+  .dark-strip {
+    background: linear-gradient(160deg, #142450 0%, #1A2F6B 55%, #3B1F7A 100%);
+    border-radius: .8rem;
+    padding: 1.6rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.2rem 2rem;
+  }
+  .dark-strip .item { min-width: 150px; }
+  .dark-strip .swatch-name, .dark-strip .swatch-value { color: #EDEFF8; }
+  .dark-strip .swatch-value { color: #BFC9E8; }
+
+  /* ── Typografia ── */
+  .type-sample-hero {
+    font-family: var(--sl-font-display, serif);
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    line-height: 1.2;
+    color: var(--sl-text-primary);
+    margin: 0 0 .4rem;
+  }
+  .type-sample-body {
+    font-family: var(--sl-font-base);
+    font-size: 1rem;
+    line-height: 1.625;
+    color: var(--sl-text-secondary);
+    max-width: 62ch;
+  }
+  .type-ladder { display: flex; flex-direction: column; gap: 1rem; }
+  .type-row {
+    display: grid;
+    grid-template-columns: 90px minmax(0,1fr) auto;
+    align-items: baseline;
+    gap: 1rem;
+    padding: .7rem 0;
+    border-bottom: 1px solid var(--page-border);
+  }
+  .type-row:last-child { border-bottom: none; }
+  .type-row .tag { font-size: .72rem; color: var(--page-text-faint); font-family: 'SF Mono', monospace; }
+  .type-row .sample { font-family: var(--sl-font-base); color: var(--sl-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .type-row .px { font-size: .72rem; color: var(--page-text-faint); font-family: 'SF Mono', monospace; white-space: nowrap; }
+
+  .weight-row { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  .weight-item { font-family: var(--sl-font-base); font-size: 1.05rem; color: var(--sl-text-primary); }
+  .weight-item small { display: block; font-family: 'SF Mono', monospace; font-size: .68rem; color: var(--page-text-faint); margin-top: .2rem; }
+
+  /* ── Odstępy / radius ── */
+  .space-rows { display: flex; flex-direction: column; gap: .55rem; }
+  .space-row { display: grid; grid-template-columns: 70px minmax(0,1fr) 50px; align-items: center; gap: .8rem; }
+  .space-row .tag { font-size: .74rem; font-family: 'SF Mono', monospace; color: var(--page-text-muted); }
+  .space-bar { height: 10px; border-radius: 3px; background: var(--sl-accent, #2563EB); opacity: .85; }
+  .space-row .px { font-size: .74rem; color: var(--page-text-faint); font-family: 'SF Mono', monospace; text-align: right; }
+
+  .radius-grid { display: flex; gap: 1.2rem; flex-wrap: wrap; }
+  .radius-item { text-align: center; }
+  .radius-box {
+    width: 76px; height: 76px;
+    background: var(--sl-accent-light, #EFF6FF);
+    border: 1.5px solid var(--sl-accent, #2563EB);
+  }
+  .radius-item .tag { display: block; margin-top: .5rem; font-size: .72rem; font-family: 'SF Mono', monospace; color: var(--page-text-muted); }
+
+  /* ── Cienie ── */
+  .shadow-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 1.4rem; }
+  .shadow-item { text-align: center; }
+  .shadow-box {
+    height: 90px;
+    background: var(--sl-surface, #fff);
+    border-radius: .7rem;
+    margin-bottom: .7rem;
+  }
+  .shadow-item .tag { font-size: .74rem; font-family: 'SF Mono', monospace; color: var(--page-text-muted); }
+  .shadow-item .desc { font-size: .74rem; color: var(--page-text-faint); margin-top: .15rem; }
+
+  /* ── Ruch ── */
+  .motion-row { display: flex; align-items: center; gap: 2.2rem; flex-wrap: wrap; }
+  .motion-panel {
+    padding: 1.1rem 1.4rem;
+    background: var(--sl-surface, #fff);
+    border: 1px solid var(--sl-border, #D2D6E2);
+    border-radius: var(--sl-radius-xl, 1rem);
+    box-shadow: var(--sl-shadow-card);
+    cursor: pointer;
+    transition: transform var(--sl-transition-fast, 150ms) ease, box-shadow var(--sl-transition-fast, 150ms) ease, border-color var(--sl-transition-fast, 150ms) ease;
+    font-family: var(--sl-font-base);
+    font-size: .88rem;
+    color: var(--sl-text-primary);
+  }
+  .motion-panel:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--sl-shadow-lift);
+    border-color: var(--sl-accent);
+  }
+  @keyframes sg-spin { to { transform: rotate(360deg); } }
+  .sg-spinner {
+    width: 26px; height: 26px;
+    border: 3px solid var(--sl-bg-tertiary, #E0E3EC);
+    border-top-color: var(--sl-accent, #2563EB);
+    border-radius: 50%;
+    animation: sg-spin 700ms linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sg-spinner { animation-duration: 3s; }
+    .motion-panel { transition: none; }
+    .motion-panel:hover { transform: none; }
+  }
+
+  /* ── Komponenty ── */
+  .comp-row { display: flex; gap: .9rem; flex-wrap: wrap; align-items: center; margin-bottom: 1.4rem; }
+  .sl-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+    min-height: 44px; padding: 0 1.25rem;
+    border-radius: var(--sl-radius-lg, .75rem);
+    font-family: var(--sl-font-base);
+    font-size: 1rem; font-weight: 700; line-height: 1;
+    border: 1px solid transparent; cursor: pointer;
+    transition: filter 150ms ease, transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+  .sl-btn:active { transform: translateY(1px); }
+  .sl-btn-primary { background: var(--sl-gradient); color: #fff; box-shadow: var(--sl-shadow-accent); }
+  .sl-btn-primary:hover { filter: brightness(1.07); }
+  .sl-btn-secondary { background: var(--sl-surface, #fff); color: var(--sl-text-primary); border-color: var(--sl-border); }
+  .sl-btn-secondary:hover { border-color: var(--sl-accent); color: var(--sl-accent); }
+  .sl-btn-ghost { background: transparent; color: var(--sl-text-secondary); }
+  .sl-btn-ghost:hover { background: var(--sl-bg-tertiary); }
+  .sl-btn-danger { background: var(--sl-surface, #fff); color: var(--sl-error); border-color: var(--sl-error-border); }
+  .sl-btn-danger:hover { background: var(--sl-error-bg); border-color: var(--sl-error); }
+  .sl-btn-ok { background: var(--sl-success); color: #fff; }
+
+  .field-demo { max-width: 320px; }
+  .field-demo label { display: block; font-family: var(--sl-font-base); font-size: .84rem; font-weight: 600; color: var(--sl-text-primary); margin-bottom: .45rem; }
+  .field-demo input {
+    width: 100%; min-height: 44px; padding: .7rem;
+    font-family: var(--sl-font-base); font-size: 1rem;
+    background: var(--sl-bg); border: 1.5px solid var(--sl-border);
+    border-radius: var(--sl-radius-lg); color: var(--sl-text-primary);
+  }
+  .field-demo input.is-focus { background: var(--sl-surface); border-color: var(--sl-accent); box-shadow: var(--sl-focus-ring); outline: none; }
+  .field-demo input.is-invalid { border-color: var(--sl-error); }
+  .field-demo .hint { font-size: .74rem; color: var(--sl-text-secondary); margin-top: .4rem; }
+  .field-demo .err { font-size: .74rem; color: var(--sl-error); margin-top: .4rem; }
+  .field-caption { font-size: .72rem; font-family: 'SF Mono', monospace; color: var(--page-text-faint); margin-top: .4rem; }
+
+  .pill { display: inline-flex; align-items: center; padding: .25rem .6rem; border-radius: 999px; font-size: .78rem; font-weight: 600; font-family: var(--sl-font-base); }
+
+  .info-note-demo {
+    display: flex; gap: .7rem; padding: .7rem 1rem;
+    background: var(--sl-accent-light); border-radius: var(--sl-radius-lg);
+    font-size: .88rem; color: var(--sl-text-secondary); font-family: var(--sl-font-base);
+    max-width: 480px;
+  }
+
+  /* ── Tabela porównawcza (zastosowanie) ── */
+  .cmp-wrap { overflow-x: auto; }
+  table.cmp { width: 100%; border-collapse: collapse; font-size: .86rem; min-width: 640px; }
+  table.cmp th, table.cmp td { text-align: left; padding: .65rem .8rem; border-bottom: 1px solid var(--page-border); vertical-align: top; }
+  table.cmp th { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--page-text-faint); background: var(--page-bg-soft); }
+  table.cmp td.mono { font-family: 'SF Mono', monospace; font-size: .82rem; }
+  table.cmp tr:last-child td { border-bottom: none; }
+  .flag {
+    display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    padding: .12rem .45rem; border-radius: .3rem; margin-left: .4rem;
+  }
+  .flag-open { background: var(--sl-warning-bg, #FFFBEB); color: var(--sl-warning, #D97706); }
+
+  footer.meta {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--page-border);
+    font-size: .78rem;
+    color: var(--page-text-faint);
+  }
+</style>
+
+<div class="shell">
+  <div class="railwrap">
+    <nav class="rail">
+      <p class="rail-eyebrow">Sekcje</p>
+      <a href="#kolor">Kolor</a>
+      <a href="#typografia">Typografia</a>
+      <a href="#odstepy">Odstępy i promienie</a>
+      <a href="#cienie">Cienie i głębia</a>
+      <a href="#ruch">Ruch</a>
+      <a href="#komponenty">Komponenty</a>
+      <a href="#praworag">Zastosowanie w PrawoRAG</a>
+    </nav>
+  </div>
+
+  <main>
+    <header class="intro">
+      <p class="eyebrow">Design-token reference · źródło: ShiftLaw</p>
+      <h1 class="title">Styleguide UI: ShiftLaw → PrawoRAG</h1>
+      <p>
+        Ten dokument to wierna kopia systemu tokenów ShiftLaw
+        (<code class="mono">tokens.css</code>, <code class="mono">typography.css</code>,
+        <code class="mono">components.css</code>) — kolor, typografia, odstępy, promienie,
+        cienie i ruch w jednym miejscu, jako wspólny punkt odniesienia przy projektowaniu UI
+        dla PrawoRAG.
+      </p>
+      <p>
+        Wartości próbek na tej stronie są <strong>stałe</strong> i nie reagują na Twój motyw
+        systemowy — pokazują dokładnie to, co jest dziś w kodzie ShiftLaw. Sama strona
+        (tło, nawigacja, tekst objaśnień) dopasowuje się do jasnego/ciemnego motywu, bo to
+        narzędzie referencyjne, nie próbka finalnego UI.
+      </p>
+      <div class="intro-note">
+        ShiftLaw dziś <strong>nie ma trybu ciemnego</strong> — jest tylko jeden zestaw tokenów
+        (jasny). Jeśli PrawoRAG ma dostać dark mode, to osobna decyzja projektowa, nie coś, co
+        można "odziedziczyć" z tego źródła.
+      </div>
+    </header>
+
+    <!-- ═══════════════ KOLOR ═══════════════ -->
+    <section class="block sl-scope" id="kolor">
+      <h2>Kolor</h2>
+      <p class="lede">
+        Jeden akcent (niebieski), neutralna szara baza z lekkim chłodnym odcieniem (nie czysta
+        szarość), i osobna paleta semantyczna dla stanów. Gradient akcentu zarezerwowany
+        wyłącznie dla głównego CTA.
+      </p>
+
+      <h3 class="sub">Podstawa</h3>
+      <div class="swatch-grid">
+        <div class="swatch">
+          <div class="swatch-fill" style="background:#0A0A0A"></div>
+          <div class="swatch-meta"><div class="swatch-name">primary / text-primary</div><div class="swatch-value mono">#0A0A0A</div></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-fill" style="background:#2563EB"></div>
+          <div class="swatch-meta"><div class="swatch-name">accent</div><div class="swatch-value mono">#2563EB</div></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-fill" style="background:#1D4ED8"></div>
+          <div class="swatch-meta"><div class="swatch-name">accent-hover</div><div class="swatch-value mono">#1D4ED8</div></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-fill" style="background:#EFF6FF"></div>
+          <div class="swatch-meta"><div class="swatch-name">accent-light</div><div class="swatch-value mono">#EFF6FF</div></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-fill" style="background:#F3F5F9"></div>
+          <div class="swatch-meta"><div class="swatch-name">bg</div><div class="swatch-value mono">#F3F5F9</div></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-fill" style="background:#EAECF3"></div>
+          <div class="swatch-meta"><div class="swatch-name">bg-secondary</div><div class="swatch-value mono">#EAECF3</div></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-fill" style="background:#E0E3EC"></div>
+          <div class="swatch-meta"><div class="swatch-name">bg-tertiary</div><div class="swatch-value mono">#E0E3EC</div></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-fill" style="background:#FFFFFF;border-bottom:1px solid #eee"></div>
+          <div class="swatch-meta"><div class="swatch-name">surface</div><div class="swatch-value mono">#FFFFFF</div></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-fill" style="background:#D2D6E2"></div>
+          <div class="swatch-meta"><div class="swatch-name">border</div><div class="swatch-value mono">#D2D6E2</div></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-fill" style="background:#6B7280"></div>
+          <div class="swatch-meta"><div class="swatch-name">text-secondary</div><div class="swatch-value mono">#6B7280</div></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-fill" style="background:#9CA3AF"></div>
+          <div class="swatch-meta"><div class="swatch-name">text-tertiary</div><div class="swatch-value mono">#9CA3AF</div></div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-fill" style="background:var(--sl-gradient)"></div>
+          <div class="swatch-meta"><div class="swatch-name">gradient-primary</div><div class="swatch-value mono">135° #2563EB→#7C3AED</div></div>
+        </div>
+      </div>
+
+      <h3 class="sub">Semantyka (stany)</h3>
+      <div class="swatch-grid">
+        <div class="swatch"><div class="swatch-fill" style="background:#16A34A"></div><div class="swatch-meta"><div class="swatch-name">success</div><div class="swatch-value mono">#16A34A</div></div></div>
+        <div class="swatch"><div class="swatch-fill" style="background:#F0FDF4"></div><div class="swatch-meta"><div class="swatch-name">success-bg</div><div class="swatch-value mono">#F0FDF4</div></div></div>
+        <div class="swatch"><div class="swatch-fill" style="background:#D97706"></div><div class="swatch-meta"><div class="swatch-name">warning</div><div class="swatch-value mono">#D97706</div></div></div>
+        <div class="swatch"><div class="swatch-fill" style="background:#FFFBEB"></div><div class="swatch-meta"><div class="swatch-name">warning-bg</div><div class="swatch-value mono">#FFFBEB</div></div></div>
+        <div class="swatch"><div class="swatch-fill" style="background:#DC2626"></div><div class="swatch-meta"><div class="swatch-name">error / urgent</div><div class="swatch-value mono">#DC2626</div></div></div>
+        <div class="swatch"><div class="swatch-fill" style="background:#FEF2F2"></div><div class="swatch-meta"><div class="swatch-name">error-bg</div><div class="swatch-value mono">#FEF2F2</div></div></div>
+      </div>
+
+      <h3 class="sub">Kodowanie znaczenia kolorem — przykład z ShiftLaw</h3>
+      <p class="lede" style="margin-bottom:.9rem">
+        ShiftLaw koduje typ czynności i rolę prawniczą kolorem konsekwentnie w całym UI — wzorzec
+        wart rozważenia dla PrawoRAG przy oznaczaniu np. typu źródła (ustawa / orzeczenie / UE)
+        albo poziomu pewności cytatu.
+      </p>
+      <table class="role-table">
+        <thead><tr><th>Rola / czynność</th><th>Kolor</th><th>Tło</th></tr></thead>
+        <tbody>
+          <tr><td>Adwokat</td><td><span class="dot" style="background:#2563EB"></span>#2563EB</td><td class="mono">#EFF6FF</td></tr>
+          <tr><td>Radca prawny</td><td><span class="dot" style="background:#0891B2"></span>#0891B2</td><td class="mono">#ECFEFF</td></tr>
+          <tr><td>Aplikant adwokacki</td><td><span class="dot" style="background:#D97706"></span>#D97706</td><td class="mono">#FFFBEB</td></tr>
+          <tr><td>Aplikant radcowski</td><td><span class="dot" style="background:#7C3AED"></span>#7C3AED</td><td class="mono">#F5F3FF</td></tr>
+          <tr><td>Rozprawa (czynność)</td><td><span class="dot" style="background:#3B82F6"></span>#3B82F6</td><td class="mono">#EFF6FF</td></tr>
+          <tr><td>Akta (czynność)</td><td><span class="dot" style="background:#8B5CF6"></span>#8B5CF6</td><td class="mono">#F5F3FF</td></tr>
+          <tr><td>Fotokopie (czynność)</td><td><span class="dot" style="background:#10B981"></span>#10B981</td><td class="mono">#ECFDF5</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sub">Ciemne powierzchnie (hero, panel logowania)</h3>
+      <div class="dark-strip">
+        <div class="item"><div class="swatch-name">hero-deep</div><div class="swatch-value mono">#142450</div></div>
+        <div class="item"><div class="swatch-name">hero-a → hero-b</div><div class="swatch-value mono">#1A2F6B → #3B1F7A</div></div>
+        <div class="item"><div class="swatch-name">on-dark (tekst)</div><div class="swatch-value mono">#EDEFF8</div></div>
+        <div class="item"><div class="swatch-name">on-dark-soft</div><div class="swatch-value mono">#C7D0EC</div></div>
+        <div class="item"><div class="swatch-name">on-dark-accent</div><div class="swatch-value mono">#93B4FF</div></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ TYPOGRAFIA ═══════════════ -->
+    <section class="block sl-scope" id="typografia">
+      <h2>Typografia</h2>
+      <p class="lede">
+        Dwa kroje: szeryfowy do nagłówków i kwot (charakter, powaga), bezszeryfowy do reszty UI.
+        Krój mono wyłącznie do etykiet tokenów i danych tabelarycznych.
+      </p>
+
+      <h3 class="sub">Display — nagłówki, kwoty</h3>
+      <p class="type-sample-hero">Ustawa z dnia 6 czerwca 1997 r. – Kodeks postępowania karnego</p>
+      <p class="field-caption">--font-family-display: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, 'Times New Roman', serif — wyłącznie fonty systemowe, bez CDN.</p>
+
+      <h3 class="sub">Body / UI</h3>
+      <p class="type-sample-body">
+        Retrieval łączy tor gęsty (embedding, podobieństwo semantyczne) z torem rzadkim (BM25,
+        dopasowanie leksykalne) przez fuzję RRF — dwa niezależne spojrzenia na to samo pytanie,
+        żeby żaden pojedynczy błąd dopasowania nie decydował sam.
+      </p>
+      <p class="field-caption">--font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif — w tym dokumencie renderowane przez fallback systemowy (CSP artefaktu blokuje CDN fontów; nie ładujemy Google Fonts w tle bez pokazania tego wprost).</p>
+
+      <h3 class="sub">Skala rozmiaru</h3>
+      <div class="type-ladder">
+        <div class="type-row"><span class="tag">xs</span><span class="sample" style="font-size:.75rem">Etykieta pomocnicza, podpis</span><span class="px">12px</span></div>
+        <div class="type-row"><span class="tag">sm</span><span class="sample" style="font-size:.875rem">Tekst drugorzędny, hinty formularza</span><span class="px">14px</span></div>
+        <div class="type-row"><span class="tag">base</span><span class="sample" style="font-size:1rem">Tekst podstawowy interfejsu</span><span class="px">16px</span></div>
+        <div class="type-row"><span class="tag">lg</span><span class="sample" style="font-size:1.125rem">Tytuł panelu, podtytuł</span><span class="px">18px</span></div>
+        <div class="type-row"><span class="tag">xl</span><span class="sample" style="font-size:1.25rem">Nagłówek sekcji, pusty stan</span><span class="px">20px</span></div>
+        <div class="type-row"><span class="tag">2xl</span><span class="sample" style="font-size:1.5rem">Nagłówek karty</span><span class="px">24px</span></div>
+        <div class="type-row"><span class="tag">3xl</span><span class="sample" style="font-size:1.875rem;font-family:var(--sl-font-display)">Tytuł ekranu auth</span><span class="px">30px</span></div>
+      </div>
+
+      <h3 class="sub">Waga</h3>
+      <div class="weight-row">
+        <div class="weight-item" style="font-weight:400">Regular<small>400</small></div>
+        <div class="weight-item" style="font-weight:500">Medium<small>500</small></div>
+        <div class="weight-item" style="font-weight:600">Semibold<small>600</small></div>
+        <div class="weight-item" style="font-weight:700">Bold<small>700</small></div>
+      </div>
+
+      <h3 class="sub">Interlinia i odstęp liter</h3>
+      <table class="role-table">
+        <thead><tr><th>Token</th><th>Wartość</th><th>Zastosowanie</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">line-height-tight</td><td>1.25</td><td>Nagłówki wielowierszowe</td></tr>
+          <tr><td class="mono">line-height-snug</td><td>1.375</td><td>Podtytuły, hinty</td></tr>
+          <tr><td class="mono">line-height-base</td><td>1.5</td><td>Domyślny tekst UI</td></tr>
+          <tr><td class="mono">line-height-relaxed</td><td>1.625</td><td>Dłuższy tekst czytany (prose)</td></tr>
+          <tr><td class="mono">letter-spacing-tight</td><td>-0.025em</td><td>Duże nagłówki display</td></tr>
+          <tr><td class="mono">letter-spacing-widest</td><td>0.1em</td><td>Wersaliki, eyebrow</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ═══════════════ ODSTĘPY / PROMIENIE ═══════════════ -->
+    <section class="block sl-scope" id="odstepy">
+      <h2>Odstępy i promienie</h2>
+      <p class="lede">Skala odstępów bazuje na 4px. Promienie rosną z rangą elementu — im większa karta, tym większe zaokrąglenie.</p>
+
+      <h3 class="sub">Spacing scale</h3>
+      <div class="space-rows">
+        <div class="space-row"><span class="tag">space-1</span><div class="space-bar" style="width:4px"></div><span class="px">4px</span></div>
+        <div class="space-row"><span class="tag">space-2</span><div class="space-bar" style="width:8px"></div><span class="px">8px</span></div>
+        <div class="space-row"><span class="tag">space-3</span><div class="space-bar" style="width:12px"></div><span class="px">12px</span></div>
+        <div class="space-row"><span class="tag">space-4</span><div class="space-bar" style="width:16px"></div><span class="px">16px</span></div>
+        <div class="space-row"><span class="tag">space-5</span><div class="space-bar" style="width:20px"></div><span class="px">20px</span></div>
+        <div class="space-row"><span class="tag">space-6</span><div class="space-bar" style="width:24px"></div><span class="px">24px</span></div>
+        <div class="space-row"><span class="tag">space-8</span><div class="space-bar" style="width:32px"></div><span class="px">32px</span></div>
+        <div class="space-row"><span class="tag">space-10</span><div class="space-bar" style="width:40px"></div><span class="px">40px</span></div>
+        <div class="space-row"><span class="tag">space-12</span><div class="space-bar" style="width:48px"></div><span class="px">48px</span></div>
+        <div class="space-row"><span class="tag">space-16</span><div class="space-bar" style="width:64px"></div><span class="px">64px</span></div>
+      </div>
+
+      <h3 class="sub">Border radius</h3>
+      <div class="radius-grid">
+        <div class="radius-item"><div class="radius-box" style="border-radius:.25rem"></div><span class="tag">sm · 4px</span></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:.5rem"></div><span class="tag">md · 8px</span></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:.75rem"></div><span class="tag">lg · 12px</span></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:1rem"></div><span class="tag">xl · 16px</span></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:9999px"></div><span class="tag">full</span></div>
+      </div>
+      <p class="field-caption" style="margin-top:.9rem">lg → pola formularzy i przyciski · xl → karty i panele · full → pigułki, avatary, spinner</p>
+    </section>
+
+    <!-- ═══════════════ CIENIE ═══════════════ -->
+    <section class="block sl-scope" id="cienie">
+      <h2>Cienie i głębia</h2>
+      <p class="lede">Cztery poziomy ogólne (xs–lg) plus trzy cienie specjalnego przeznaczenia, każdy z jasno przypisaną rolą — cień nie jest ozdobą, tylko sygnałem hierarchii.</p>
+
+      <h3 class="sub">Skala ogólna</h3>
+      <div class="shadow-grid">
+        <div class="shadow-item"><div class="shadow-box" style="box-shadow:var(--sl-shadow-xs)"></div><div class="tag">shadow-xs</div><div class="desc">Delikatne rozgraniczenie</div></div>
+        <div class="shadow-item"><div class="shadow-box" style="box-shadow:var(--sl-shadow-sm)"></div><div class="tag">shadow-sm</div><div class="desc">Karta w spoczynku</div></div>
+        <div class="shadow-item"><div class="shadow-box" style="box-shadow:var(--sl-shadow-md)"></div><div class="tag">shadow-md</div><div class="desc">Karta wyróżniona</div></div>
+        <div class="shadow-item"><div class="shadow-box" style="box-shadow:var(--sl-shadow-lg)"></div><div class="tag">shadow-lg</div><div class="desc">Modal, dropdown</div></div>
+      </div>
+
+      <h3 class="sub">Specjalnego przeznaczenia</h3>
+      <div class="shadow-grid">
+        <div class="shadow-item"><div class="shadow-box" style="box-shadow:var(--sl-shadow-card)"></div><div class="tag">shadow-card</div><div class="desc">Domyślny cień karty/panelu</div></div>
+        <div class="shadow-item"><div class="shadow-box" style="box-shadow:var(--sl-shadow-lift)"></div><div class="tag">shadow-lift</div><div class="desc">Hover na klikalnej karcie (zabarwiony akcentem)</div></div>
+        <div class="shadow-item"><div class="shadow-box" style="box-shadow:var(--sl-shadow-accent);background:var(--sl-gradient)"></div><div class="tag">shadow-accent</div><div class="desc">Pod przyciskiem primary / FAB</div></div>
+        <div class="shadow-item"><div class="shadow-box" style="box-shadow:var(--sl-focus-ring);border:1.5px solid var(--sl-accent)"></div><div class="tag">focus-ring</div><div class="desc">Fokus klawiaturowy na polu</div></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ RUCH ═══════════════ -->
+    <section class="block sl-scope" id="ruch">
+      <h2>Ruch</h2>
+      <p class="lede">Trzy czasy trwania, jeden cel: przejścia mają być odczuwalne, nie zauważalne. Wszystko respektuje <code class="mono">prefers-reduced-motion</code>.</p>
+
+      <table class="role-table" style="margin-bottom:1.6rem">
+        <thead><tr><th>Token</th><th>Czas</th><th>Zastosowanie</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">transition-fast</td><td>150ms</td><td>Hover, focus, kolor, obramowanie</td></tr>
+          <tr><td class="mono">transition-base</td><td>200ms</td><td>Transformacje, cień</td></tr>
+          <tr><td class="mono">transition-slow</td><td>300ms</td><td>Wejścia/wyjścia większych elementów</td></tr>
+        </tbody>
+      </table>
+
+      <h3 class="sub">Na żywo (najedź kursorem)</h3>
+      <div class="motion-row">
+        <div class="motion-panel">panel--interactive · najedź, żeby zobaczyć unoszenie + shadow-lift</div>
+        <div class="sg-spinner"></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════ KOMPONENTY ═══════════════ -->
+    <section class="block sl-scope" id="komponenty">
+      <h2>Komponenty</h2>
+      <p class="lede">Prymitywy współdzielone w całym ShiftLaw — jeden plik <code class="mono">components.css</code>, żeby nikt nie kopiował lokalnej wersji przycisku czy pola.</p>
+
+      <h3 class="sub">Przyciski</h3>
+      <div class="comp-row">
+        <button class="sl-btn sl-btn-primary">Wykup plan</button>
+        <button class="sl-btn sl-btn-secondary">Anuluj</button>
+        <button class="sl-btn sl-btn-ghost">Pomiń</button>
+        <button class="sl-btn sl-btn-danger">Usuń konto</button>
+        <button class="sl-btn sl-btn-ok">Potwierdź</button>
+        <button class="sl-btn sl-btn-primary" disabled style="opacity:.5;cursor:not-allowed">Wysyłanie…</button>
+      </div>
+
+      <h3 class="sub">Pola formularza</h3>
+      <div class="comp-row" style="align-items:flex-start;gap:2rem">
+        <div class="field-demo">
+          <label>Adres e-mail</label>
+          <input type="text" value="marcin@omniasi.pl" placeholder="jan@kancelaria.pl">
+          <p class="field-caption">domyślny</p>
+        </div>
+        <div class="field-demo">
+          <label>Pytanie do asystenta</label>
+          <input type="text" class="is-focus" value="Jaki jest termin na wniesienie apelacji?">
+          <p class="field-caption">:focus — border-color: accent + focus-ring</p>
+        </div>
+        <div class="field-demo">
+          <label>Sygnatura akt</label>
+          <input type="text" class="is-invalid" value="II CK">
+          <p class="err">Nieprawidłowy format sygnatury</p>
+        </div>
+      </div>
+
+      <h3 class="sub">Pigułki stanu</h3>
+      <div class="comp-row">
+        <span class="pill" style="background:#F0FDF4;color:#16A34A">Aktywny</span>
+        <span class="pill" style="background:#FFFBEB;color:#D97706">Oczekuje</span>
+        <span class="pill" style="background:#FEF2F2;color:#DC2626">Wygasł</span>
+        <span class="pill" style="background:#EFF6FF;color:#2563EB">Ustawa</span>
+        <span class="pill" style="background:#F5F3FF;color:#8B5CF6">Orzeczenie</span>
+        <span class="pill" style="background:#ECFEFF;color:#0891B2">Prawo UE</span>
+      </div>
+
+      <h3 class="sub">Notka informacyjna</h3>
+      <div class="info-note-demo">ℹ️ Odpowiedź może pominąć nowelizacje, które jeszcze nie weszły w życie — sprawdź datę obowiązywania przy cytowanym przepisie.</div>
+    </section>
+
+    <!-- ═══════════════ ZASTOSOWANIE W PRAWORAG ═══════════════ -->
+    <section class="block" id="praworag">
+      <h2>Zastosowanie w PrawoRAG</h2>
+      <p class="lede">
+        Dzisiejszy <code class="mono">wwwroot/css/tokens.css</code> PrawoRAG jest dużo skromniejszy
+        (jeden akcent granatowy, jeden promień, jeden cień, font systemowy bez display face).
+        Poniżej — co da się przenieść wprost, a co wymaga świadomej decyzji.
+      </p>
+
+      <div class="cmp-wrap">
+        <table class="cmp">
+          <thead>
+            <tr><th>Dzisiaj w PrawoRAG</th><th>Odpowiednik ShiftLaw</th><th>Uwaga</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">--c-accent: #1f3a8a</td>
+              <td class="mono">--accent: #2563EB</td>
+              <td>Inny odcień niebieskiego. <span class="flag flag-open">decyzja</span> zostać przy granacie (spójność z dotychczasowym UI PrawoRAG) czy przejść na niebieski ShiftLaw (spójność między produktami)?</td>
+            </tr>
+            <tr>
+              <td class="mono">--radius: 10px (jeden)</td>
+              <td class="mono">--radius-{sm,md,lg,xl,full}</td>
+              <td>Bezpieczne do przejęcia wprost — czysty dodatek, nic nie psuje.</td>
+            </tr>
+            <tr>
+              <td class="mono">--shadow (jeden)</td>
+              <td class="mono">--shadow-{xs,sm,md,lg} + card/lift/accent</td>
+              <td>Bezpieczne do przejęcia — <code class="mono">shadow-lift</code> przydałby się już dziś na <code class="mono">.source-card</code> w czacie.</td>
+            </tr>
+            <tr>
+              <td class="mono">--font-sans: system-ui…</td>
+              <td class="mono">--font-family-base: Inter…</td>
+              <td>Inter dociąga przez Google Fonts w ShiftLaw — do rozstrzygnięcia, czy PrawoRAG akceptuje zależność od CDN czy zostaje przy stosie systemowym.</td>
+            </tr>
+            <tr>
+              <td class="mono">brak</td>
+              <td class="mono">--font-family-display: Palatino…</td>
+              <td>Bezpieczne — sam font systemowy, można od razu użyć na tytule odpowiedzi czatu / nagłówkach źródeł.</td>
+            </tr>
+            <tr>
+              <td class="mono">brak</td>
+              <td>kodowanie kolorem (rola/typ)</td>
+              <td>Naturalny wzorzec dla typu źródła w PrawoRAG: ustawa / orzeczenie / prawo UE — patrz sekcja Kolor wyżej.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="meta">
+      Źródła: <code class="mono">shiftlaw/src/shiftlawweb/src/app/shared/styles/{tokens,typography,components}.css</code>
+      i <code class="mono">src/styles.css</code>. Zrzut na 2026-08-31 — jeśli te pliki się zmienią,
+      ten dokument trzeba odświeżyć ręcznie, nie jest generowany automatycznie.
+    </footer>
+  </main>
+</div>
