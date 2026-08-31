@@ -146,3 +146,19 @@ zaproszeń nienaruszona · redirect / → /czat dla zalogowanych.
 
 1. **RED-4.3**: Szukaj jako trzecia zakładka czy bez zakładki?
 2. Kolejność realizacji proponowana: 0 → 1 → 2 → 3 → 4.1/4.2 → 4.5 → 4.6/4.7 → 5.
+
+## Poprawki po przeklikaniu właściciela (2026-08-31, wdrożone)
+
+1. Panel źródeł zwijany na desktopie (✕ zwija, boczna szyna „Źródła" przywraca; kotwica pod
+   odpowiedzią i klik [n] też rozwijają).
+2. Fix: panel świecił pustką przy >1 wiadomości — kotwica wskazująca turę bez źródeł spada teraz
+   ZAWSZE na najnowszą turę ze źródłami.
+3. Historia rozmów: spinner przy rozmowie generującej odpowiedź + ✓ przez 5 s po zakończeniu;
+   zablokowane pozycje z tytułem „Poczekaj na zakończenie…".
+
+## Follow-up do decyzji: przełączanie rozmów W TRAKCIE generowania
+
+Dziś strumień odpowiedzi żyje w stanie widoku czatu — przełączenie rozmowy w trakcie by go ubiło,
+więc historia jest zablokowana do końca tury (jak przed redesignem; teraz z czytelnym spinnerem).
+Odblokowanie = generowanie w tle per rozmowa (wzorzec AnalysisSessionStore: sesja poza obwodem,
+widok tylko podgląda). To zmiana ZACHOWANIA, nie designu — poza kontraktem RED; do osobnej decyzji.

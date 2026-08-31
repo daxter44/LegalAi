@@ -434,3 +434,25 @@ body {
     background: var(--sl-surface); border-radius: var(--sl-radius-xl); box-shadow: var(--sl-shadow-lg);
     padding: var(--s-8); max-width: 24rem; text-align: center; font-size: var(--fs-14); color: var(--sl-text-secondary);
 }
+
+/* Przeklikanie 2026-08-31: zwijany panel źródeł + statusy rozmów w historii */
+.src-panel.collapsed { display: none; }
+.src-rail {
+    position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 20;
+    display: flex; flex-direction: column; align-items: center; gap: var(--s-1);
+    font: inherit; font-size: var(--fs-12); font-weight: 700; color: var(--sl-accent); cursor: pointer;
+    padding: var(--s-3) var(--s-1); border: 1px solid var(--sl-border); border-right: 0;
+    border-radius: var(--sl-radius-lg) 0 0 var(--sl-radius-lg);
+    background: var(--sl-surface); box-shadow: var(--sl-shadow-md);
+}
+.src-rail-label { writing-mode: vertical-rl; letter-spacing: .08em; }
+.src-rail:hover { background: var(--sl-accent-light); }
+@media (max-width: 1199px) { .src-rail { display: none; } .src-panel.collapsed { display: flex; } }
+
+.conv-spinner {
+    display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; vertical-align: -1px;
+    border: 2px solid var(--sl-border); border-top-color: var(--sl-accent);
+    animation: work-spin 900ms linear infinite; margin-right: var(--s-1);
+}
+.conv-done { color: var(--sl-success); font-weight: 700; margin-right: var(--s-1); }
+.conv-item:disabled { cursor: not-allowed; opacity: .75; }
