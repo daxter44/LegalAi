@@ -124,16 +124,34 @@ public sealed class ActNormalizer : IDocumentNormalizer
             var article = ArticleNumber(node, dataId);
             var chapter = ChapterTitle(node);
 
+            // Jednostki wewnątrz artykułu: „unit_para" to § (kodeksy, rozporządzenia), a „unit_pass"
+            // to USTĘP ustaw — ISAP oznacza je RÓŻNYMI klasami, a przez lata widzieliśmy tylko
+            // pierwszą (diagnoza 2026-08-31: 85% ustaw bez podziału → rozmyte embeddingi długich
+            // artykułów; art. 11 ochrony lokatorów przegrywał z niewłaściwym art. 19p). Preferujemy
+            // §, gdy artykuł ma oba typy (np. § z ustępami) — wtedy ustępy zostają w treści §.
             var paras = node.SelectNodes(
                 ".//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_para ')]");
+            var unitClass = " unit_para ";
+            var paraSymbol = "§";
+            if (paras is not { Count: >= 2 })
+            {
+                var passes = node.SelectNodes(
+                    ".//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_pass ')]");
+                if (passes is { Count: >= 2 })
+                {
+                    paras = passes;
+                    unitClass = " unit_pass ";
+                    paraSymbol = "ust.";
+                }
+            }
 
             if (paras is { Count: >= 2 })
             {
-                // Wstęp artykułu poza §§ (rzadkie, ale kompletność > 0 utraty treści):
-                // klon bez unit_para; z tekstu wypada nagłówek „Art. N." — reszta to wstęp.
+                // Wstęp artykułu poza jednostkami (rzadkie, ale kompletność > 0 utraty treści):
+                // klon bez jednostek; z tekstu wypada nagłówek „Art. N." — reszta to wstęp.
                 var clone = node.CloneNode(true);
                 foreach (var pn in clone.SelectNodes(
-                             ".//div[contains(concat(' ', normalize-space(@class), ' '), ' unit_para ')]") ?? Enumerable.Empty<HtmlNode>())
+                             $".//div[contains(concat(' ', normalize-space(@class), ' '), '{unitClass}')]") ?? Enumerable.Empty<HtmlNode>())
                     pn.Remove();
                 var intro = StripArticleHeading(HtmlText.ToPlainText(clone.OuterHtml));
                 if (intro.Length >= 20)
@@ -141,7 +159,7 @@ public sealed class ActNormalizer : IDocumentNormalizer
                          eliId, displayAddress, htmlId, sourceUrl);
 
                 foreach (var para in paras)
-                    EmitParagraph(segments, full, para, article, chapter, shortTitle, eliId, displayAddress, htmlId, sourceUrl);
+                    EmitParagraph(segments, full, para, article, chapter, shortTitle, eliId, displayAddress, htmlId, sourceUrl, paraSymbol);
             }
             else
             {
@@ -169,13 +187,13 @@ public sealed class ActNormalizer : IDocumentNormalizer
     private static void Emit(
         List<DocumentSegment> segments, StringBuilder full, string body,
         string? article, string? paragraph, string? point, string shortTitle, string? chapter,
-        string eliId, string? displayAddress, string? anchor, string? sourceUrl)
+        string eliId, string? displayAddress, string? anchor, string? sourceUrl, string paraSymbol = "§")
     {
         body = AmendmentFootnoteCleaner.Clean(body); // historia nowelizacji „(Dz.U. …, poz. …)" — balast bibliograficzny
         var artLabel = article is not null
-            ? $"Art. {article}" + (paragraph is not null ? $" § {paragraph}" : "") + (point is not null ? $" pkt {point}" : "")
+            ? $"Art. {article}" + (paragraph is not null ? $" {paraSymbol} {paragraph}" : "") + (point is not null ? $" pkt {point}" : "")
             : paragraph is not null
-                ? $"§ {paragraph}" + (point is not null ? $" pkt {point}" : "")
+                ? $"{paraSymbol} {paragraph}" + (point is not null ? $" pkt {point}" : "")
                 : point is not null ? $"pkt {point}" : null;
         var header = string.Join(", ", new[] { shortTitle, chapter, artLabel }
             .Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -244,7 +262,7 @@ public sealed class ActNormalizer : IDocumentNormalizer
     private static void EmitParagraph(
         List<DocumentSegment> segments, StringBuilder full, HtmlNode para,
         string? article, string? chapter, string shortTitle, string eliId, string? displayAddress,
-        string? htmlIdFallback, string? sourceUrl)
+        string? htmlIdFallback, string? sourceUrl, string paraSymbol = "§")
     {
         var paraId = NullIfEmpty(para.GetAttributeValue("id", ""));
         var paragraph = ParagraphNumber(para, NullIfEmpty(para.GetAttributeValue("data-id", "")));
@@ -262,7 +280,7 @@ public sealed class ActNormalizer : IDocumentNormalizer
             var paraIntro = StripParagraphHeading(HtmlText.ToPlainText(paraClone.OuterHtml));
             if (paraIntro.Length >= 20)
                 Emit(segments, full, paraIntro, article, paragraph, point: null, shortTitle, chapter,
-                     eliId, displayAddress, paraId ?? htmlIdFallback, sourceUrl);
+                     eliId, displayAddress, paraId ?? htmlIdFallback, sourceUrl, paraSymbol);
 
             foreach (var pt in points)
             {
@@ -272,7 +290,7 @@ public sealed class ActNormalizer : IDocumentNormalizer
                 var ptId = NullIfEmpty(pt.GetAttributeValue("id", ""));
                 var point = PointNumber(pt, NullIfEmpty(pt.GetAttributeValue("data-id", "")));
                 Emit(segments, full, ptBody, article, paragraph, point, shortTitle, chapter,
-                     eliId, displayAddress, ptId ?? paraId ?? htmlIdFallback, sourceUrl);
+                     eliId, displayAddress, ptId ?? paraId ?? htmlIdFallback, sourceUrl, paraSymbol);
             }
         }
         else
@@ -280,7 +298,7 @@ public sealed class ActNormalizer : IDocumentNormalizer
             var paraBody = HtmlText.ToPlainText(para.OuterHtml);
             if (string.IsNullOrWhiteSpace(paraBody)) return;
             Emit(segments, full, paraBody, article, paragraph, point: null, shortTitle, chapter,
-                 eliId, displayAddress, paraId ?? htmlIdFallback, sourceUrl);
+                 eliId, displayAddress, paraId ?? htmlIdFallback, sourceUrl, paraSymbol);
         }
     }
 
@@ -306,6 +324,12 @@ public sealed class ActNormalizer : IDocumentNormalizer
         if (dataId is not null && dataId.StartsWith("para_", StringComparison.Ordinal))
         {
             var n = dataId["para_".Length..];
+            if (n.Length > 0) return n;
+        }
+        // Ustęp ustawy: ISAP daje data-id "pass_N" (unit_pass) — ta sama rola co "para_N" dla §.
+        if (dataId is not null && dataId.StartsWith("pass_", StringComparison.Ordinal))
+        {
+            var n = dataId["pass_".Length..];
             if (n.Length > 0) return n;
         }
         var h3 = para.SelectSingleNode(".//h3");

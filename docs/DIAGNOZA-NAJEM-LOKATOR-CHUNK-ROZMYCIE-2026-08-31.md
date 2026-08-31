@@ -152,3 +152,36 @@ Rozporządzenia i kodeksy mają się dobrze, bo ich jednostką jest §.
   ustawie o ochronie lokatorów).
 
 Narzędzia analizy: SQL po `chunks.Locator` (jsonb) na produkcyjnej bazie + surowy HTML z api.sejm.gov.pl.
+
+---
+
+## PILOT NAPRAWY (2026-08-31) — `unit_pass` w ActNormalizer + reprocess DU/2001/733
+
+**Zmiana kodu** (`ActNormalizer`): artykuł bez ≥2 `unit_para` szuka ≥2 `unit_pass` (ustępy ustaw);
+etykieta jednostki „ust. N" (nie „§ N"); `data-id="pass_N"` czytany jak `para_N`. Preferencja
+`unit_para` zachowana (artykuł z §§ i ustępami → dzieli po §). Testy na realnym fixture DU/2001/733
+(art. 11 → segmenty per ust./pkt; „trzy pełne okresy" w osobnym wektorze `Art. 11 ust. 2 pkt 2`;
+art. 1 bez ustępów zostaje w całości; regresja KK zielona) — łącznie 893/893.
+
+**Pilot na produkcji** (backup chunków w `pilot_uopl_chunks_backup`; wymuszenie: `Status='Fetched'`
++ stream-ingest jednego aktu — pipeline transakcyjnie podmienił chunki; treść = t.j. DU/2023/725):
+
+| Miara | PRZED | PO |
+|---|---|---|
+| Chunki dokumentu | 104 (0 z ustępem) | **381 (347 z ustępem)** |
+| Art. 11 | 4 chunki po ~447 tok (mieszane przesłanki) | segment per ust./pkt (ust. 2 pkt 2 = 119 tok, czysty) |
+| Art. 11 na pytaniu-nośniku, exact fp32 | #512 (sim 0,7729) | **wstęp ust. 2: #8 (sim 0,8118)**; ust. 1: #52 |
+| Art. 11 w HNSW (ef=400) | NIEOBECNY w top-200 | **#8** |
+| Art. 11 w puli kandydatów RRF | poza pulą | **WCHODZI (pula 32)** — „dedup: cel zachowuje własny slot" |
+
+Ten sam mechanizm, który przegrywał (#512, niewidoczny dla HNSW), po podziale na ustępy wchodzi
+do kandydatów na #8 — bez zmiany żadnego parametru retrievalu.
+
+**Decyzja pilota:** nowe chunki ZOSTAJĄ na produkcji (ściśle lepsze; backup do czasu pełnego
+rolloutu). Otwarte przed rolloutem na ~3 tys. ustaw:
+- wsadowy mechanizm wymuszonego reprocessingu (dziś ręcznie: `Status='Fetched'` + stream per akt;
+  na 3 tys. aktów potrzebny tryb `reprocess-list` po ExternalId);
+- koszt: pilot pomnożył chunki ~3,7× dla tego aktu — pełny rollout istotnie zwiększy liczbę chunków
+  aktów i czas embeddingu (oszacować przed startem);
+- golden set przed/po jako bramka rolloutu (pilot: pełna regresja jednostkowa zielona; golden set
+  wymaga przebiegu z TEI na M4).
