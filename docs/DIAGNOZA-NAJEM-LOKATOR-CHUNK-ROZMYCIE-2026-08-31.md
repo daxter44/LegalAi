@@ -93,3 +93,62 @@ wygra z regułą szczególną (długa, rozmyta), nawet gdy ta druga powinna mie�
 `--probe-chunk` (dwukrotnie, dla obu konkurujących chunków) + bezpośrednie zapytania SQL do
 `messages.RetrievedSources` (jsonb) na produkcyjnej bazie, żeby zobaczyć DOKŁADNIE co model dostał
 w obu turach, nie tylko co odpowiedział.
+
+---
+
+## ANALIZA UZUPEŁNIAJĄCA (2026-08-31, druga sesja) — root cause ZMIERZONY: `unit_pass` niewidzialny dla normalizera
+
+Diagnoza wyżej przypisała rozmycie „chunkerowi tnącemu wyłącznie wg budżetu tokenów". To prawda,
+ale to skutek, nie przyczyna. Przyczyna siedzi piętro wyżej i jest konkretna:
+
+**ISAP oznacza ustępy USTAW klasą `unit_pass`, a `ActNormalizer` zna wyłącznie `unit_para`.**
+Zmierzone na żywym HTML `DU/2001/733/text.html`: 100 × `unit_pass` (ustępy — w tym wszystkie
+12 ustępów art. 11), 72 × `unit_pint` (punkty), a `unit_para` tylko 11 × i wyłącznie w tekście
+cytowanym (`pro-rplc-text`). Normalizer nie widzi ustępów → emituje CAŁY artykuł jako jeden
+segment → `TokenAwareChunker` tnie go budżetem tokenów w środku jednostek → rozmyty embedding.
+`unit_para` to `§` (rozporządzenia i kodeksy) — dlatego tam podział działa.
+
+### Skala (pełne zliczenia na korpusie, 2026-08-31)
+
+| Miara | Wartość |
+|---|---|
+| Dokumenty ELI z JAKIMKOLWIEK podziałem na jednostki (Paragraph w lokatorze) | 11 348 |
+| Dokumenty ELI CAŁKIEM bez podziału | 3 072 (2 489 tor HTML + 583 tor PDF) |
+| **Rozporządzenia**: z podziałem / bez | 10 810 / 17 (**99,8% działa**) |
+| **Ustawy**: z podziałem / bez | 536 / **3 053** (**85% NIE działa**; te 536 to głównie kodeksy, bo używają §) |
+| Długie chunki artykułowe (≥400 tok) bez ustępu w lokatorze | **62 820** (2 817 dokumentów, 20 297 artykułów) |
+| Artykuły pocięte budżetem tokenów na ≥2 chunki | 16 230 |
+
+Czyli wzorzec z art. 11 nie jest cechą „ustaw ochronnych" — dotyczy **niemal wszystkich ustaw
+w korpusie**, a ustawy to dokładnie ta klasa aktów, o którą pytają użytkownicy nieprawniczy.
+Rozporządzenia i kodeksy mają się dobrze, bo ich jednostką jest §.
+
+### Kierunek naprawy — teraz konkretny (nadal BEZ implementacji, do decyzji)
+
+1. **`ActNormalizer`: obsłużyć `unit_pass` analogicznie do `unit_para`** (podział artykułu na
+   ustępy, ustęp z ≥2 punktami na punkty — logika EmitParagraph istnieje, dochodzi selektor
+   i etykieta: dla ustaw jednostką jest „ust. N", nie „§ N" — do przemyślenia wpływ na format
+   lokatora/cytowań i tor strukturalny).
+2. **Tor PDF (`ActTextParser`)**: 583 dokumenty — parser dzieli tylko po `Art.`/`§`; podział po
+   „N." (ustęp) z płaskiego tekstu jest zawodny (diagnoza w komentarzu parsera) — osobna decyzja,
+   niższy priorytet niż HTML.
+3. **Backfill**: poprawka normalizera działa tylko dla PRZYSZŁYCH ingestów; istniejące ~3 tys.
+   ustaw wymaga ponownego PRZETWORZENIA z magazynu surowych (tryb `process`) — ale idempotencja
+   po content-hash ominie dokumenty bez zmian treści. Potrzebny wariant wymuszonego reprocessingu
+   podzbioru (analogicznie do `reprocess-failed`, po liście ExternalId) + świadomość, że to
+   WYMIENIA chunki (nowe Id, nowe embeddingi ~ dziesiątki godzin na 3060 dla setek tysięcy chunków
+   — to NIE jest tani backfill jak szum znaków; embeddingi ustaw to duża część korpusu aktów).
+4. `CandidatesPerPath` 50→100 — potwierdzone w diagnozie wyżej: NIE naprawia tego przypadku.
+5. Most lex specialis (propozycja c) — komplementarny, ale wtórny wobec naprawy przyczyny;
+   ocenić PO zmierzeniu efektu 1+3 na golden set.
+
+### Otwarte po tej analizie
+
+- Dlaczego w drugiej turze („art. 11 ust. 2 pkt 2 ustawy o ochronie praw lokatorów") tor
+  strukturalny nie wciągnął chunku 29 (ArticleNo='11' jest w indeksie) — osobny wątek do
+  sprawdzenia (dopasowanie aktu po nazwie?).
+- Eval przed/po: probe art. 11 + golden set + pytania-nośniki z tej diagnozy muszą być bramką
+  odbioru ewentualnej naprawy (pomiar przed decyzją o pełnym reprocessingu — np. pilot na samej
+  ustawie o ochronie lokatorów).
+
+Narzędzia analizy: SQL po `chunks.Locator` (jsonb) na produkcyjnej bazie + surowy HTML z api.sejm.gov.pl.
