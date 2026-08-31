@@ -1,5 +1,23 @@
 # Plan wdrożenia redesignu OmniaSI (RED)
 
+> **STAN NA 2026-08-31 (koniec sesji): fazy 0–4 WDROŻONE** (commity `cdb9a20` fazy 0–4,
+> `4c96628` poprawki po przeklikaniu). Testy 889/889, smoke na żywym procesie przeszedł,
+> właściciel przeklikał i zaakceptował z trzema poprawkami (wdrożone — sekcja „Poprawki po
+> przeklikaniu" niżej). Makiety źródłowe: `design/*.dc.html` + artefakt „OmniaSI — makiety UI".
+>
+> **ZOSTAŁO (faza 5 + drobne):**
+> - RED-5.1: przejście checklisty inwariantów na PEŁNYM środowisku (M4: baza + TEI + LLM) —
+>   zwłaszcza pełna tura czatu z klikaniem [n], analiza end-to-end, telefon;
+> - (+) licznik zużycia X/Y w stopce sidebara i na /konto (wymaga zapytania o usage_counters);
+> - RED-4.4: dedykowany retusz /o-systemie i /dokument (dziedziczą tokeny, bez własnej przejrzałki);
+> - hero-CTA landingu w trybie kont a11y-sprawdzić po włączeniu Auth:Enabled (dziś testowane w alfie);
+> - follow-up DO DECYZJI (zmiana zachowania, poza RED): przełączanie rozmów w trakcie generowania —
+>   sekcja na końcu dokumentu.
+>
+> Decyzje podjęte w trakcie: Szukaj bez pozycji w nawigacji (funkcja do dopracowania, trasa
+> zostaje); zmiana hasła = link do istniejącego /haslo/reset (osobnej funkcji nie ma i nie udajemy);
+> panel źródeł kontekstowy per tura (numeracja [n] jest per tura) ze zwijaniem na desktopie.
+
 Data: 2026-08-31. Źródła prawdy: **wygląd = makiety** (`design/*.dc.html`, artefakt „OmniaSI — makiety
 UI"), **zachowanie = obecny kod**. Zasada nienegocjowalna: redesign nie może odebrać ŻADNEJ
 funkcjonalności ani zmienić semantyki działania — każda faza kończy się buildem, kompletem testów
