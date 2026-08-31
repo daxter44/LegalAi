@@ -13,6 +13,7 @@
 @inject CostGuard CostGuard
 @inject AuthenticationStateProvider AuthState
 @inject Microsoft.Extensions.Options.IOptions<AnalysisOptions> Options
+@inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.Billing.BillingOptions> Billing
 @implements IDisposable
 
 <h1 class="sr-only">Analiza dokumentu</h1>
@@ -35,7 +36,16 @@
     <div class="sidebar-backdrop" @onclick="() => _mobileSidebarOpen = false"></div>
 }
 <aside class="chat-sidebar @(_mobileSidebarOpen ? "open" : "")">
-    <button class="btn btn-new-chat" @onclick="Reset">➕ Nowa analiza</button>
+    @* Marka + przełącznik trybów jak w czacie (RED-3.1) — spójna nawigacja aplikacji. *@
+    <a class="side-brand" href="/" title="Strona główna">
+        <span class="app-logo-mark" aria-hidden="true"></span>
+        <span class="app-title">OmniaSI</span>
+    </a>
+    <nav class="side-tabs" aria-label="Tryb pracy">
+        <a class="side-tab" href="/czat">Czat</a>
+        <span class="side-tab active">Analiza</span>
+    </nav>
+    <button class="btn btn-new-chat" @onclick="Reset">＋ Nowa analiza</button>
     <nav class="conv-list" aria-label="Moje analizy">
         @foreach (var a in _analyses)
         {
@@ -46,6 +56,16 @@
             </button>
         }
     </nav>
+    <div class="side-user">
+        <span class="side-avatar" aria-hidden="true">@Initials</span>
+        <span class="side-user-meta">
+            <span class="side-user-name" title="@CurrentUser.DisplayName">@CurrentUser.DisplayName</span>
+        </span>
+        @if (Billing.Value.Enabled)
+        {
+            <a class="side-user-link" href="/konto" title="Konto">›</a>
+        }
+    </div>
 </aside>
 
 <div class="analysis">
@@ -110,6 +130,25 @@ else
     @* ── Postęp / raport ──────────────────────────────────────────────────── *@
     <div class="analysis-head">
         <span>📄 <strong>@snap.FileName</strong> · @snap.Prompt</span>
+        @* (+) Zbiorcze chipy werdyktów (RED-3.3) — policzone z istniejących wyników, addytywne. *@
+        @{ var doneResults = snap.Results.Where(r => r is not null).ToList(); }
+        @if (doneResults.Count > 0)
+        {
+            <span class="verdict-chips">
+                @if (doneResults.Count(r => r!.Verdict == UnitVerdict.Ok) is > 0 and var okN)
+                {
+                    <span class="badge badge-ok">@okN OK</span>
+                }
+                @if (doneResults.Count(r => r!.Verdict == UnitVerdict.Risk) is > 0 and var riskN)
+                {
+                    <span class="badge badge-danger">@riskN RYZYKO</span>
+                }
+                @if (doneResults.Count(r => r!.Verdict == UnitVerdict.NoSources) is > 0 and var nsN)
+                {
+                    <span class="badge badge-warn">@nsN BRAK ŹRÓDEŁ</span>
+                }
+            </span>
+        }
         <span class="analysis-id" title="Id sesji — analiza działa dalej po odświeżeniu strony; raport zostaje na liście">
             sesja: <code>@snap.Id.ToString("N")[..8]</code>
         </span>
@@ -359,6 +398,19 @@ else
     private bool _followUpBusy;
     private CancellationTokenSource? _cts;
     private string _userId = "demo@local";
+
+    private string Initials
+    {
+        get
+        {
+            var name = CurrentUser.DisplayName;
+            if (string.IsNullOrWhiteSpace(name)) return "?";
+            var parts = name.Split(new[] { ' ', '.', '@' }, StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length >= 2
+                ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}"
+                : char.ToUpperInvariant(name[0]).ToString();
+        }
+    }
 
     private AnalysisSnapshot? Snap() => _session?.Snapshot() ?? _storedSnapshot;
 

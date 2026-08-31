@@ -32,7 +32,8 @@ public static class BillingEndpoints
     {
         // --- strona konta: pokazuje plan + guziki do Checkout/portalu (spike, bez UI Blazor — patrz p.1 wyżej) ---
         app.MapGet("/konto", async (HttpContext http, IAntiforgery af,
-            UserManager<Storage.Entities.AppUserEntity> users) =>
+            UserManager<Storage.Entities.AppUserEntity> users,
+            Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.AnalysisOptions> analysis) =>
         {
             if (http.User.FindFirstValue(ClaimTypes.NameIdentifier) is not { } userId)
                 return Results.Unauthorized();
@@ -42,7 +43,9 @@ public static class BillingEndpoints
             var token = af.GetAndStoreTokens(http).RequestToken ?? "";
             return Results.Content(
                 BillingPages.Konto(TokenField, token, user.PlanId, user.PlanStatus,
-                    user.PlanValidUntilUtc, hasSubscription: !string.IsNullOrEmpty(user.StripeCustomerId)),
+                    user.PlanValidUntilUtc, hasSubscription: !string.IsNullOrEmpty(user.StripeCustomerId),
+                    email: user.Email, emailConfirmed: user.EmailConfirmed,
+                    analysisEnabled: analysis.Value.Enabled),
                 "text/html; charset=utf-8");
         }).RequireAuthorization();
 

@@ -14,13 +14,16 @@ namespace PrawoRAG.Api.Services.Auth;
 /// </summary>
 public static class AuthPages
 {
-    public const string ProductName = "PrawoRAG";
+    public const string ProductName = "OmniaSI";
 
     private static string E(string? v) => HtmlEncoder.Default.Encode(v ?? "");
 
     /// <summary>
-    /// Wspólna oprawa: wyśrodkowana karta z marką na górze. Literał jest `$$"""` (podwójny `$`),
-    /// bo w środku jest CSS — pojedyncza klamra musi zostać klamrą, a interpolacje idą przez `{{ }}`.
+    /// Wspólna oprawa (RED-4.1): split-layout z makiety — lewa połowa to ciemny gradient z marką
+    /// i obietnicą, prawa to karta formularza. Poniżej 900px lewa połowa znika (marka przechodzi
+    /// nad kartę). Literał jest `$$"""` (podwójny `$`), bo w środku jest CSS — pojedyncza klamra
+    /// musi zostać klamrą, a interpolacje idą przez `{{ }}`. Formularze, tokeny antiforgery
+    /// i komunikaty konkretnych stron wchodzą w `bodyHtml` bez żadnych zmian.
     /// </summary>
     public static string Page(string title, string bodyHtml) => $$"""
         <!doctype html>
@@ -32,42 +35,74 @@ public static class AuthPages
         <title>{{E(ProductName)}} — {{E(title)}}</title>
         <link rel="stylesheet" href="/css/tokens.css">
         <style>
-          body{font-family:var(--font-sans);background:var(--c-bg);color:var(--c-text);margin:0;
-               line-height:var(--lh-body);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:var(--s-4)}
-          .auth{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);
-                box-shadow:var(--shadow);width:100%;max-width:26rem;padding:var(--s-8) var(--s-8) var(--s-6)}
+          body{font-family:var(--sl-font-base);background:var(--sl-bg);color:var(--sl-text-primary);margin:0;
+               line-height:var(--lh-body);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);min-height:100vh}
+          .auth-side{background:var(--sl-hero-gradient);color:var(--sl-on-dark);
+                     display:flex;flex-direction:column;justify-content:space-between;padding:var(--s-12) var(--s-10)}
+          .auth-side .auth-brand{color:var(--sl-on-dark)}
+          .auth-promise{max-width:30rem;display:flex;flex-direction:column;gap:var(--s-5)}
+          .auth-claim{font-family:var(--sl-font-display);font-size:var(--fs-32);line-height:1.2;font-weight:700;letter-spacing:-0.01em}
+          .auth-points{display:flex;flex-direction:column;gap:var(--s-3);font-size:var(--fs-15);color:var(--sl-on-dark-soft)}
+          .auth-points span::before{content:"\2713\0020";color:var(--sl-on-dark-accent);font-weight:700}
+          .auth-foot{font-size:var(--fs-12);color:var(--sl-on-dark-faint)}
+          .auth-wrap{display:flex;justify-content:center;align-items:center;padding:var(--s-6)}
+          .auth{background:var(--sl-surface);border-radius:var(--sl-radius-xl);
+                box-shadow:var(--sl-shadow-card);width:100%;max-width:27rem;padding:var(--s-10) var(--s-10) var(--s-8)}
           .auth-brand{display:flex;align-items:center;gap:var(--s-2);margin-bottom:var(--s-6);
-                      font-weight:600;text-decoration:none;color:inherit}
-          .auth-brand span.logo{color:var(--c-accent);font-size:var(--fs-24);line-height:1}
-          h1{font-size:var(--fs-18);margin:0 0 var(--s-2)}
-          p{margin:0 0 var(--s-4);color:var(--c-text-muted);font-size:var(--fs-14)}
-          label{display:block;font-size:var(--fs-14);font-weight:600;margin:var(--s-4) 0 var(--s-1)}
+                      font-weight:700;text-decoration:none;color:inherit;
+                      font-family:var(--sl-font-display);font-size:var(--fs-20);letter-spacing:-0.01em}
+          .auth-brand .mark{width:24px;height:24px;border-radius:var(--sl-radius-md);background:var(--sl-gradient);display:inline-block}
+          .auth .auth-brand{display:none}
+          h1{font-family:var(--sl-font-display);font-size:var(--fs-24);letter-spacing:-0.01em;margin:0 0 var(--s-2)}
+          p{margin:0 0 var(--s-4);color:var(--sl-text-secondary);font-size:var(--fs-14)}
+          label{display:block;font-size:var(--fs-13);font-weight:600;margin:var(--s-4) 0 var(--s-2)}
           input[type=email],input[type=password],input[type=text]{
-            width:100%;padding:.6rem .7rem;border:1px solid var(--c-border);border-radius:var(--radius-sm);
-            font-size:var(--fs-16);font-family:inherit;background:var(--c-surface);color:var(--c-text);box-sizing:border-box}
-          input:focus{outline:none;border-color:var(--c-accent);box-shadow:var(--focus)}
-          .hint{font-size:var(--fs-12);color:var(--c-text-muted);margin:var(--s-1) 0 0}
+            width:100%;min-height:44px;padding:.6rem .85rem;border:1.5px solid var(--sl-border);border-radius:var(--sl-radius-lg);
+            font-size:var(--fs-16);font-family:inherit;background:var(--sl-bg);color:var(--sl-text-primary);box-sizing:border-box}
+          input:focus{outline:none;border-color:var(--sl-accent);background:var(--sl-surface);box-shadow:var(--sl-focus-ring)}
+          .hint{font-size:var(--fs-12);color:var(--sl-text-secondary);margin:var(--s-1) 0 0}
           .check{display:flex;gap:var(--s-2);align-items:flex-start;margin:var(--s-4) 0 0;font-size:var(--fs-14)}
           .check input{margin-top:.25rem}
-          button{width:100%;margin-top:var(--s-6);padding:.7rem;border:0;border-radius:var(--radius-sm);
-                 background:var(--c-accent);color:#fff;font-size:var(--fs-16);font-weight:600;cursor:pointer;font-family:inherit}
-          button:hover{filter:brightness(1.08)}
-          button:focus-visible{outline:none;box-shadow:var(--focus)}
-          .alert{padding:var(--s-3);border-radius:var(--radius-sm);font-size:var(--fs-14);margin:0 0 var(--s-4)}
-          .alert-error{background:var(--c-danger-weak);color:var(--c-danger)}
-          .alert-ok{background:var(--c-ok-weak);color:var(--c-ok)}
+          button{width:100%;margin-top:var(--s-6);min-height:48px;padding:.7rem;border:0;border-radius:var(--sl-radius-lg);
+                 background:var(--sl-gradient);color:var(--sl-text-inverse);font-size:var(--fs-16);font-weight:700;
+                 cursor:pointer;font-family:inherit;box-shadow:var(--sl-shadow-accent)}
+          button:hover{filter:brightness(1.07)}
+          button:active{transform:translateY(1px)}
+          button:focus-visible{outline:none;box-shadow:var(--sl-focus-ring),var(--sl-shadow-accent)}
+          .alert{padding:var(--s-3) var(--s-4);border-radius:var(--sl-radius-lg);font-size:var(--fs-14);margin:0 0 var(--s-4)}
+          .alert-error{background:var(--sl-error-bg);color:var(--sl-error)}
+          .alert-ok{background:var(--sl-success-bg);color:var(--sl-success)}
           .alert ul{margin:var(--s-1) 0 0;padding-left:1.1rem}
-          .links{margin-top:var(--s-6);padding-top:var(--s-4);border-top:1px solid var(--c-border);
+          .links{margin-top:var(--s-6);padding-top:var(--s-4);border-top:1px solid var(--sl-border);
                  font-size:var(--fs-14);display:flex;flex-direction:column;gap:var(--s-2)}
-          a{color:var(--c-accent)}
-          .note{font-size:var(--fs-12);color:var(--c-text-muted);margin-top:var(--s-4)}
+          a{color:var(--sl-accent)}a:hover{color:var(--sl-accent-hover)}
+          .note{font-size:var(--fs-12);color:var(--sl-text-tertiary);margin-top:var(--s-4)}
+          @media (max-width:900px){
+            body{grid-template-columns:minmax(0,1fr)}
+            .auth-side{display:none}
+            .auth .auth-brand{display:flex}
+          }
         </style>
         </head>
         <body>
+        <aside class="auth-side">
+          <a class="auth-brand" href="/"><span class="mark"></span> {{E(ProductName)}}</a>
+          <div class="auth-promise">
+            <div class="auth-claim">Research prawny na źródłach, nie na domysłach.</div>
+            <div class="auth-points">
+              <span>Odpowiedzi wyłącznie z przepisów i orzecznictwa, z cytowaniami do weryfikacji</span>
+              <span>Uczciwa odmowa, gdy źródła nie pozwalają odpowiedzieć</span>
+              <span>Twoje pytania i dokumenty nie trenują żadnego modelu</span>
+            </div>
+          </div>
+          <div class="auth-foot">&copy; {{E(ProductName)}} &middot; <a href="/regulamin" style="color:inherit">Regulamin</a> &middot; <a href="/prywatnosc" style="color:inherit">Polityka prywatności</a></div>
+        </aside>
+        <div class="auth-wrap">
         <main class="auth">
-          <a class="auth-brand" href="/"><span class="logo">&sect;</span> {{E(ProductName)}}</a>
+          <a class="auth-brand" href="/"><span class="mark"></span> {{E(ProductName)}}</a>
           {{bodyHtml}}
         </main>
+        </div>
         </body>
         </html>
         """;

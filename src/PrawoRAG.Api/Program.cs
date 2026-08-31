@@ -267,14 +267,14 @@ var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 // przy SignInAsync) + wylogowanie. Zawsze dostępne bez auth. ---
 static string WejscieHtml(string? error) => $$"""
     <!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>PrawoRAG — wejście</title>
+    <title>OmniaSI — wejście</title>
     <style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f4}
     .card{background:#fff;padding:2rem 2.5rem;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);max-width:22rem}
     h1{font-size:1.2rem;margin:0 0 .5rem}p{color:#555;font-size:.9rem}input{width:100%;padding:.6rem;margin:.75rem 0;border:1px solid #ccc;border-radius:8px;box-sizing:border-box}
     button{width:100%;padding:.6rem;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font-size:1rem;cursor:pointer}
     .err{color:#b91c1c;font-size:.85rem}</style></head><body>
     <form class="card" method="post" action="/wejscie">
-      <h1>PrawoRAG — zamknięty test</h1>
+      <h1>OmniaSI — zamknięty test</h1>
       <p>Podaj kod zaproszenia otrzymany od zespołu.</p>
       {{(error is null ? "" : $"<p class=\"err\">{error}</p>")}}
       <input name="code" type="password" placeholder="kod zaproszenia" autofocus required>
@@ -286,48 +286,230 @@ static string WejscieHtml(string? error) => $$"""
 // Zalogowany gość → prosto do aplikacji. Chat przeniesiony na /czat.
 const string LandingHtml = """
     <!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>PrawoRAG — suwerenny research prawny</title>
+    <title>OmniaSI — research prawny na źródłach</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/css/tokens.css">
     <style>
-    :root{--accent:#1d4ed8}
-    *{box-sizing:border-box}body{font-family:system-ui,sans-serif;margin:0;color:#1c1917;background:#f5f5f4;line-height:1.6}
-    .wrap{max-width:52rem;margin:0 auto;padding:2rem 1.25rem}
-    header{display:flex;align-items:center;gap:.5rem;font-weight:600}
-    .logo{color:var(--accent);font-size:1.4rem}.tag{font-size:.75rem;color:#78716c;border:1px solid #d6d3d1;border-radius:6px;padding:.05rem .4rem}
-    h1{font-size:1.9rem;margin:2.5rem 0 .5rem}.lead{font-size:1.15rem;color:#44403c;margin:0 0 2rem}
-    .pillars{display:grid;gap:1rem;grid-template-columns:1fr}@media(min-width:640px){.pillars{grid-template-columns:1fr 1fr 1fr}}
-    .card{background:#fff;border:1px solid #e7e5e4;border-radius:12px;padding:1.1rem}
-    .card h2{font-size:1rem;margin:0 0 .35rem}.card p{font-size:.9rem;color:#57534e;margin:0}
-    .cta{display:inline-block;margin:2rem 0 .5rem;padding:.7rem 1.4rem;background:var(--accent);color:#fff;text-decoration:none;border-radius:8px;font-weight:600}
-    .muted{font-size:.85rem;color:#78716c}.muted a{color:var(--accent)}
-    .note{margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid #e7e5e4;font-size:.85rem;color:#78716c}
-    </style></head><body><div class="wrap">
-    <header><span class="logo">§</span> PrawoRAG <span class="tag">zamknięty test</span></header>
+    *{box-sizing:border-box}body{font-family:var(--sl-font-base);margin:0;color:var(--sl-on-dark);background:#0F1218;line-height:1.6}
+    a{color:var(--sl-accent);text-decoration:none}
+    .nav{display:flex;align-items:center;gap:28px;padding:18px 6vw;background:rgb(23 27 36 / .7);border-bottom:1px solid rgb(199 208 236 / .12)}
+    .brand{display:flex;align-items:center;gap:10px;color:var(--sl-on-dark);font-family:var(--sl-font-display);font-size:24px;font-weight:700;letter-spacing:-.01em}
+    .mark{width:26px;height:26px;border-radius:8px;background:var(--sl-gradient);box-shadow:0 0 24px rgb(37 99 235 / .6)}
+    .nav .links{margin-left:auto;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+    .nav .links a{color:#9BA3B7;font-size:15px;font-weight:500}
+    .btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 22px;border-radius:12px;font-size:15px;font-weight:700;color:#fff;background:var(--sl-gradient);box-shadow:var(--sl-shadow-accent)}
+    .btn-line{display:inline-flex;align-items:center;min-height:44px;padding:0 20px;border-radius:12px;font-size:15px;font-weight:600;color:var(--sl-on-dark);border:1px solid rgb(199 208 236 / .3)}
+    .hero{position:relative;overflow:hidden;padding:90px 6vw 110px;text-align:center;background:linear-gradient(180deg,#0F1218 0%,#142450 70%,#16224A 100%)}
+    .glow1,.glow2{position:absolute;border-radius:9999px;pointer-events:none}
+    .glow1{left:-180px;top:60px;width:560px;height:560px;background:radial-gradient(circle,rgb(37 99 235 / .28) 0%,rgb(37 99 235 / 0) 70%)}
+    .glow2{right:-140px;top:220px;width:620px;height:620px;background:radial-gradient(circle,rgb(124 58 237 / .24) 0%,rgb(124 58 237 / 0) 70%)}
+    .eyebrow{position:relative;display:inline-flex;align-items:center;gap:10px;padding:6px 16px;border-radius:9999px;border:1px solid rgb(147 180 255 / .3);background:rgb(147 180 255 / .08);color:var(--sl-on-dark-accent);font-size:13.5px;font-weight:600}
+    .eyebrow i{width:7px;height:7px;border-radius:9999px;background:var(--sl-on-dark-accent);box-shadow:0 0 10px var(--sl-on-dark-accent)}
+    h1{position:relative;font-family:var(--sl-font-display);font-size:clamp(2.2rem,6vw,4.6rem);line-height:1.1;font-weight:700;letter-spacing:-.015em;margin:26px auto 0;max-width:1000px}
+    .lead{position:relative;font-size:clamp(1rem,2vw,1.2rem);color:var(--sl-on-dark-soft);max-width:62ch;margin:24px auto 0}
+    .heroctas{position:relative;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+    .quiet{position:relative;font-size:13px;color:var(--sl-on-dark-faint);margin-top:18px}
+    .light{background:var(--sl-bg);color:var(--sl-text-primary);padding:90px 6vw}
+    h2{font-family:var(--sl-font-display);font-size:clamp(1.6rem,3.4vw,2.5rem);font-weight:700;letter-spacing:-.01em;margin:0 0 10px}
+    .sub{font-size:17px;color:var(--sl-text-secondary);max-width:72ch;margin:0 0 40px}
+    .bento{display:grid;gap:20px;grid-template-columns:1fr}
+    @media(min-width:960px){.bento{grid-template-columns:2fr 1fr}.span2{grid-column:span 1}}
+    .cardw{background:var(--sl-surface);border-radius:16px;box-shadow:var(--sl-shadow-card);padding:30px;display:flex;flex-direction:column;gap:14px}
+    .k{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--sl-accent)}
+    .cardw h3{font-family:var(--sl-font-display);font-size:24px;line-height:1.25;font-weight:700;margin:0}
+    .cardw p{font-size:15px;line-height:1.65;color:var(--sl-text-secondary);margin:0}
+    .dark{background:var(--sl-hero-gradient);color:var(--sl-on-dark)}
+    .dark p{color:var(--sl-on-dark-soft)}
+    .cmp{display:grid;gap:16px;grid-template-columns:1fr}@media(min-width:760px){.cmp{grid-template-columns:1fr 1fr}}
+    .ans{border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;font-size:13.5px;line-height:1.6}
+    .ans .who{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--sl-text-primary)}
+    .tag{margin-left:auto;display:inline-flex;padding:2px 10px;border-radius:9999px;color:#fff;font-size:11px;font-weight:700;letter-spacing:.03em}
+    .ans-bad{border:1px solid var(--sl-error-border);background:var(--sl-error-bg);color:var(--sl-text-secondary)}
+    .ans-good{border:1.5px solid var(--sl-accent);background:var(--sl-accent-light);color:var(--sl-text-primary);box-shadow:0 4px 12px -2px rgb(37 99 235 / .15)}
+    .q{padding:10px 16px;border-radius:12px;background:var(--sl-bg-secondary);font-size:14px;align-self:flex-start}
+    .cite{display:inline-flex;padding:1px 7px;border-radius:9999px;background:#fff;color:var(--sl-accent);font-size:11.5px;font-weight:700}
+    .foot-note{font-size:13px;color:var(--sl-text-tertiary)}
+    .table{background:#171B24;border-radius:16px;padding:36px 40px;color:#E7E9F0;margin-top:40px;overflow-x:auto}
+    .table h3{font-family:var(--sl-font-display);font-size:26px;margin:0 0 18px}
+    .trow{display:grid;grid-template-columns:minmax(0,1fr) 130px 150px;align-items:center;border-bottom:1px solid rgb(199 208 236 / .12);padding:13px 0;font-size:15px;color:var(--sl-on-dark-soft)}
+    .trow:last-child{border-bottom:0}
+    .trow.h{font-size:13px;font-weight:700;color:#6E7690}
+    .trow .c{text-align:center;font-weight:700}
+    .yes{color:var(--sl-success)}.no{color:#6E7690}
+    .analys{display:grid;gap:48px;grid-template-columns:1fr;align-items:center}
+    @media(min-width:960px){.analys{grid-template-columns:1fr 1fr}}
+    .checks{display:flex;flex-direction:column;gap:12px;font-size:15px}
+    .checks span::before{content:"\2713\0020";color:var(--sl-success);font-weight:700}
+    .unit{border:1px solid var(--sl-border);border-radius:12px;padding:13px 15px;display:flex;flex-direction:column;gap:7px;background:var(--sl-surface);font-size:13px;color:var(--sl-text-secondary)}
+    .u-pill{align-self:flex-start;display:inline-flex;padding:2px 9px;border-radius:9999px;font-size:11px;font-weight:700}
+    .doc{background:var(--sl-surface);border-radius:16px;box-shadow:var(--sl-shadow-lg);padding:24px;display:flex;flex-direction:column;gap:10px}
+    .price{display:grid;gap:24px;grid-template-columns:1fr;max-width:880px;margin:0 auto}
+    @media(min-width:760px){.price{grid-template-columns:1fr 1fr}}
+    .plan{background:var(--sl-surface);border:1px solid var(--sl-border);border-radius:16px;padding:32px;display:flex;flex-direction:column;gap:16px;color:var(--sl-text-primary)}
+    .plan.pro{border:2px solid var(--sl-accent);box-shadow:var(--sl-shadow-lift);position:relative}
+    .plan .badge-top{position:absolute;top:-14px;left:32px;padding:4px 14px;border-radius:9999px;background:var(--sl-gradient);color:#fff;font-size:12.5px;font-weight:700}
+    .plan .name{font-size:14px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--sl-text-secondary)}
+    .plan.pro .name{color:var(--sl-accent)}
+    .plan .amount{font-family:var(--sl-font-display);font-size:44px;font-weight:700}
+    .plan .amount small{font-family:var(--sl-font-base);font-size:15px;color:var(--sl-text-tertiary);font-weight:400}
+    .plan ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;font-size:15px}
+    .plan li::before{content:"\2713\0020";color:var(--sl-success);font-weight:700}
+    footer{padding:40px 6vw;background:#0F1218;color:#9BA3B7}
+    footer .row{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+    footer .row .fbrand{font-family:var(--sl-font-display);font-size:18px;font-weight:700;color:var(--sl-on-dark)}
+    footer .row .flinks{margin-left:auto;display:flex;gap:20px}
+    footer .row .flinks a{color:#C7D0EC;font-size:13.5px}
+    footer .legal{font-size:12.5px;line-height:1.6;color:#6E7690;border-top:1px solid rgb(199 208 236 / .12);padding-top:16px;margin-top:18px}
+    </style></head><body>
 
-    <h1>Research prawny z prawdziwymi, klikalnymi cytatami.</h1>
-    <p class="lead">Asystent dla polskich prawników oparty o orzecznictwo i akty prawne. Gdy brak źródła — mówi wprost, zamiast zmyślać. W 100% polski i europejski stos: Twoje pytania nie trafiają do amerykańskich chmur.</p>
-
-    <div class="pillars">
-      <div class="card"><h2>Cytaty, które można kliknąć</h2><p>Każda teza wskazuje konkretny przepis lub orzeczenie. Odpowiedź bez pokrycia w źródłach to uczciwa odmowa, nie konfabulacja.</p></div>
-      <div class="card"><h2>Suwerenność danych</h2><p>Pytania, rozmowy i źródła nie opuszczają infrastruktury PL/UE. Argument dla tajemnicy zawodowej, którego nie daje research na amerykańskim API.</p></div>
-      <div class="card"><h2>Świeżość prawa</h2><p>System oznacza nowelizacje jeszcze nie wchłonięte do tekstów jednolitych — pokazuje, od kiedy obowiązuje dana zmiana.</p></div>
+    <div class="nav">
+      <span class="brand"><span class="mark"></span> OmniaSI</span>
+      <span class="links"><a href="#roznice">Czym się różnimy</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></span>
     </div>
 
-    <!--CTA-->
-    <p class="muted">Chcesz dołączyć do zamkniętego testu? Napisz do zespołu — liczba miejsc ograniczona pojemnością.</p>
+    <div class="hero">
+      <div class="glow1"></div><div class="glow2"></div>
+      <span class="eyebrow"><i></i>Asystent researchu prawnego · dane i modele w UE</span>
+      <h1>Zna źródła<br>każdej swojej odpowiedzi.</h1>
+      <p class="lead">Przepisy z pilnowaniem nowelizacji, orzecznictwo, cytowania do zweryfikowania jednym kliknięciem — a gdy źródła nie wystarczają, OmniaSI mówi to wprost, zamiast zgadywać.</p>
+      <div class="heroctas"><!--CTA--><a class="btn-line" href="#roznice">Czym się różnimy</a></div>
+      <p class="quiet">Twoje pytania i dokumenty nie trenują żadnego modelu.</p>
+    </div>
 
-    <p class="note">To wstępny research prawny do weryfikacji, nie porada. Zawsze sprawdzaj przy źródle. Więcej: <a href="/o-systemie">co system umie, a czego nie</a>.</p>
-    </div></body></html>
+    <div class="light" id="roznice">
+      <h2>Ogólny chatbot odpowie na wszystko.<br>OmniaSI odpowiada za coś.</h2>
+      <p class="sub">Cztery rzeczy, których nie dostaniesz od uniwersalnego czatu — a które rozstrzygają o tym, czy research nadaje się do pracy.</p>
+      <div class="bento">
+        <div class="cardw">
+          <span class="k">Nowelizacje pod kontrolą</span>
+          <h3>To samo pytanie o zmieniony przepis. Zobacz różnicę.</h3>
+          <span class="q"><strong>Pytanie:</strong> [PYTANIE O PRZEPIS OBJĘTY ŚWIEŻĄ NOWELIZACJĄ]</span>
+          <div class="cmp">
+            <div class="ans ans-bad">
+              <span class="who">Gemini <span class="tag" style="background:var(--sl-error)">NIEAKTUALNY STAN PRAWNY</span></span>
+              <span>[ODPOWIEDŹ OGÓLNEGO CZATU — pewna siebie, oparta na brzmieniu przepisu sprzed nowelizacji, bez źródeł do sprawdzenia]</span>
+            </div>
+            <div class="ans ans-good">
+              <span class="who">OmniaSI <span class="tag" style="background:var(--sl-warning)">NOWELIZACJA — WEJDZIE W ŻYCIE [DATA]</span></span>
+              <span>[ODPOWIEDŹ OMNIASI — zestawia dotychczasowy i nowy stan prawny, podaje dokładną datę wejścia zmiany w życie] <span class="cite">1</span> <span class="cite">2</span></span>
+            </div>
+          </div>
+          <span class="foot-note">Porównanie na rzeczywistym pytaniu — odpowiedzi z [DATA POROWNANIA], pełne zrzuty na życzenie.</span>
+        </div>
+        <div class="cardw dark">
+          <span class="k" style="color:var(--sl-on-dark-accent)">Twoje sprawy zostają Twoje</span>
+          <h3>Pytania i dokumenty nie trenują żadnego modelu.</h3>
+          <p>Całość działa na infrastrukturze w Unii Europejskiej — bez wysyłania danych za ocean. To argument dla tajemnicy zawodowej, którego nie daje research na amerykańskim API.</p>
+        </div>
+        <div class="cardw">
+          <span class="k">Uczciwa odmowa</span>
+          <h3>Woli powiedzieć „nie wiem" niż zmyślić przepis.</h3>
+          <p>Każda odpowiedź przechodzi walidację cytowań — a brak podstaw w źródłach kończy się jawną odmową, nie zmyśloną sygnaturą podaną z pełnym przekonaniem.</p>
+        </div>
+        <div class="cardw">
+          <span class="k">Wszystko ze źródeł</span>
+          <h3>Każda teza z cytowaniem, każde cytowanie do sprawdzenia.</h3>
+          <p>Kodeksy, ustawy i rozporządzenia (ISAP), prawo Unii (EUR-Lex) oraz orzecznictwo SN, sądów powszechnych i administracyjnych — źródło otwierasz jednym kliknięciem <span class="cite" style="background:var(--sl-accent-light)">1</span>.</p>
+        </div>
+      </div>
+
+      <div class="table">
+        <h3>To samo pytanie, dwa różne narzędzia</h3>
+        <div class="trow h"><span></span><span class="c" style="color:var(--sl-on-dark-accent)">OmniaSI</span><span class="c">Ogólny chatbot</span></div>
+        <div class="trow"><span>Odpowiedź wyłącznie ze źródeł, z cytowaniami do weryfikacji</span><span class="c yes">✓</span><span class="c no">✕</span></div>
+        <div class="trow"><span>Pilnowanie nowelizacji: która wersja przepisu obowiązuje dziś</span><span class="c yes">✓</span><span class="c no">✕</span></div>
+        <div class="trow"><span>Przyznaje się, gdy nie ma podstaw do odpowiedzi</span><span class="c yes">✓</span><span class="c no">✕</span></div>
+        <div class="trow"><span>Pytania i dokumenty nie trenują modelu; dane w UE</span><span class="c yes">✓</span><span class="c no">zależnie od planu</span></div>
+      </div>
+    </div>
+
+    <div class="light" style="background:var(--sl-surface)">
+      <div class="analys">
+        <div>
+          <span class="k">Analiza dokumentów</span>
+          <h2>Wgraj umowę.<br>Dostaniesz analizę paragraf po paragrafie.</h2>
+          <p class="sub" style="margin-bottom:20px">Ty ustawiasz kierunek pytaniem — np. <em>„oceń ryzyka dla najemcy"</em> — a OmniaSI ocenia dokument fragment po fragmencie, zderzając każdy z przepisami i orzecznictwem.</p>
+          <div class="checks">
+            <span>Werdykt dla każdego fragmentu: OK / ryzyko / brak źródeł do oceny</span>
+            <span>Uzasadnienie z cytowaniami przy każdej uwadze + streszczenie całości</span>
+            <span>Treść dokumentu nie jest nigdzie zapisywana — przechowujemy tylko raport</span>
+          </div>
+        </div>
+        <div class="doc">
+          <strong style="font-size:14.5px;color:var(--sl-text-primary)">umowa-najmu-lokalu.pdf <span style="font-weight:400;color:var(--sl-text-tertiary)">· 12 fragmentów</span></strong>
+          <div class="unit"><span class="u-pill" style="background:var(--sl-success-bg);color:var(--sl-success)">§ 4 · OK</span>Czynsz i termin płatności określone jednoznacznie — zgodnie z wymogami k.c. <span class="cite" style="background:var(--sl-accent-light)">1</span></div>
+          <div class="unit" style="border:1.5px solid var(--sl-error-border);background:var(--sl-error-bg);color:var(--sl-text-primary)"><span class="u-pill" style="background:var(--sl-error);color:#fff">§ 7 · RYZYKO</span>Kara umowna bez górnej granicy — w orzecznictwie uznawana za rażąco wygórowaną i podlegającą miarkowaniu <span class="cite">2</span> <span class="cite">3</span></div>
+          <div class="unit" style="background:var(--sl-warning-bg)"><span class="u-pill" style="background:var(--sl-warning);color:#fff">§ 11 · BRAK ŹRÓDEŁ</span>Źródła nie pozwalają ocenić tego fragmentu — OmniaSI mówi to wprost zamiast zgadywać</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="light" id="cennik">
+      <h2 style="text-align:center">Prosty cennik</h2>
+      <p class="sub" style="text-align:center;margin-inline:auto">Zacznij za darmo. Przejdź wyżej, gdy research stanie się codziennością.</p>
+      <div class="price">
+        <div class="plan">
+          <span class="name">Start</span>
+          <span class="amount">0 zł <small>/ miesiąc</small></span>
+          <ul><li>15 zapytań miesięcznie</li><li>Pełna baza przepisów i orzecznictwa</li><li>Cytowania, panel źródeł, nowelizacje</li></ul>
+          <!--CTA-START-->
+        </div>
+        <div class="plan pro">
+          <span class="badge-top">DLA PRAKTYKI</span>
+          <span class="name">Pro</span>
+          <span class="amount">[CENA] zł <small>/ miesiąc</small></span>
+          <ul><li>300 zapytań miesięcznie</li><li>Wszystko z planu Start + analiza dokumentów</li><li>Anulujesz w każdej chwili — plan działa do końca okresu</li></ul>
+          <!--CTA-PRO-->
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <div class="row">
+        <span class="fbrand">OmniaSI</span>
+        <span class="flinks"><a href="/regulamin">Regulamin</a><a href="/prywatnosc">Polityka prywatności</a><a href="/o-systemie">O systemie</a></span>
+      </div>
+      <div class="legal">OmniaSI generuje research prawny do weryfikacji przez prawnika — nie świadczy porad prawnych. Treści generowane przez sztuczną inteligencję są oznaczane maszynowo zgodnie z aktem o sztucznej inteligencji (AI Act).</div>
+    </footer>
+    </body></html>
     """;
 
 // Wezwanie do działania na landingu zależy od trybu: konta → rejestracja, alfa → kod zaproszenia.
-var landingHtml = LandingHtml.Replace("<!--CTA-->", authOptions.Enabled
-    ? """<a class="cta" href="/rejestracja">Załóż konto</a> <span class="muted">albo <a href="/logowanie">zaloguj się</a></span>"""
-    : """<a class="cta" href="/wejscie">Mam kod zaproszenia → Wejdź</a>""");
+// CTA zależne od trybu: konta → rejestracja/logowanie, alfa → kod zaproszenia (jak dotąd).
+var landingHtml = authOptions.Enabled
+    ? LandingHtml
+        .Replace("<!--NAV-CTA-->", """<a class="btn-line" href="/logowanie" style="min-height:40px">Zaloguj się</a><a class="btn" href="/rejestracja" style="min-height:40px">Wypróbuj za darmo</a>""")
+        .Replace("<!--CTA-->", """<a class="btn" href="/rejestracja" style="min-height:52px;padding:0 30px;font-size:16.5px">Zacznij za darmo — 15 pytań/mies.</a>""")
+        .Replace("<!--CTA-START-->", """<a class="btn-line" href="/rejestracja" style="color:var(--sl-text-primary);border-color:var(--sl-border);margin-top:auto;justify-content:center">Załóż konto</a>""")
+        .Replace("<!--CTA-PRO-->", """<a class="btn" href="/rejestracja" style="margin-top:auto;justify-content:center">Wybierz Pro</a>""")
+    : LandingHtml
+        .Replace("<!--NAV-CTA-->", """<a class="btn" href="/wejscie" style="min-height:40px">Mam kod zaproszenia</a>""")
+        .Replace("<!--CTA-->", """<a class="btn" href="/wejscie" style="min-height:52px;padding:0 30px;font-size:16.5px">Mam kod zaproszenia → Wejdź</a>""")
+        .Replace("<!--CTA-START-->", """<a class="btn-line" href="/wejscie" style="color:var(--sl-text-primary);border-color:var(--sl-border);margin-top:auto;justify-content:center">Zamknięty test — mam kod</a>""")
+        .Replace("<!--CTA-PRO-->", """<span class="foot-note" style="margin-top:auto">Dostępne po starcie publicznym.</span>""");
 
 app.MapGet("/", (HttpContext http) =>
     http.User.Identity?.IsAuthenticated == true
         ? Results.Redirect("/czat")
         : Results.Content(landingHtml, "text/html; charset=utf-8"));
+
+// Placeholdery dokumentów prawnych (RED-4.7): trasy istnieją od teraz (landing, rejestracja i stopki
+// już do nich linkują), treść wchodzi w bloku treści na końcu (decyzja 2026-08-31 o kolejności).
+static string LegalPlaceholder(string title) => $$"""
+    <!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="robots" content="noindex"><title>OmniaSI — {{title}}</title>
+    <link rel="stylesheet" href="/css/tokens.css">
+    <style>body{font-family:var(--sl-font-base);background:var(--sl-bg);color:var(--sl-text-primary);margin:0;line-height:1.6;
+    display:flex;justify-content:center;align-items:center;min-height:100vh;padding:24px}
+    .card{background:var(--sl-surface);border-radius:16px;box-shadow:var(--sl-shadow-card);max-width:34rem;padding:40px}
+    h1{font-family:var(--sl-font-display);font-size:1.6rem;margin:0 0 .6rem}
+    p{color:var(--sl-text-secondary);font-size:.95rem}a{color:var(--sl-accent)}</style></head><body>
+    <div class="card"><h1>{{title}}</h1>
+    <p>Dokument w przygotowaniu — zostanie opublikowany przed udostępnieniem usługi. W razie pytań napisz do zespołu.</p>
+    <p><a href="/">← Wróć na stronę główną</a></p></div></body></html>
+    """;
+app.MapGet("/regulamin", () => Results.Content(LegalPlaceholder("Regulamin"), "text/html; charset=utf-8"));
+app.MapGet("/prywatnosc", () => Results.Content(LegalPlaceholder("Polityka prywatności"), "text/html; charset=utf-8"));
 
 // Konta (E1, blok A) — mapowane TYLKO gdy włączone; inaczej zostaje bramka na kody zaproszeń.
 if (authOptions.Enabled) app.MapAuthEndpoints();

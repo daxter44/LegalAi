@@ -1,0 +1,64 @@
+{
+  "artboards": [
+    {
+      "file": "Landing.dc.html",
+      "title": "Landing",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 3720
+    },
+    {
+      "file": "Main.dc.html",
+      "title": "Czat — odpowiedź ze źródłami",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 1180
+    },
+    {
+      "file": "CzatPusty.dc.html",
+      "title": "Czat — stan pusty + onboarding",
+      "x": 1560,
+      "y": 1310,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Logowanie.dc.html",
+      "title": "Logowanie",
+      "x": 1560,
+      "y": 2340,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "AnalizaDokumentow.dc.html",
+      "title": "Analiza dokumentów",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 2080
+    },
+    {
+      "file": "Konto.dc.html",
+      "title": "Konto użytkownika",
+      "x": 3120,
+      "y": 2210,
+      "w": 1440,
+      "h": 900
+    }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -170,
+      "w": 460,
+      "text": "OmniaSI — makiety UI w systemie ShiftLaw (styles/styleguide.html).\nUklad czatu: minimalizm jak ChatGPT. Ceny planu Pro: [CENA] do uzupelnienia.\nOnboarding: krok 1/3 aktywny na artboardzie stanu pustego."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

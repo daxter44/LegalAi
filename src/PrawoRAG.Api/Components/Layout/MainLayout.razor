@@ -3,36 +3,62 @@
 @inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.Auth.AuthOptions> Auth
 @inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.Billing.BillingOptions> Billing
 @inject PrawoRAG.Api.Services.ICurrentUser CurrentUser
+@inject NavigationManager Nav
 
-<div class="app-shell">
-    <header class="app-header">
-        <a class="app-brand" href="/" title="Strona główna">
-            <span class="app-logo">§</span>
-            <span class="app-title">PrawoRAG</span>
-            <span class="app-tag">demo</span>
-        </a>
-        <nav class="app-nav">
-            <a href="/czat">Czat</a>
-            <a href="/szukaj">Wyszukiwarka</a>
-            @if (Analysis.Value.Enabled)
-            {
-                <a href="/analiza">Analiza dokumentów</a>
-            }
-            <a href="/o-systemie">O systemie</a>
-            @if (CurrentUser.IsAuthenticated)
-            {
-                @if (Billing.Value.Enabled)
+@* Ekrany robocze (czat, analiza) mają własny sidebar z marką i przełącznikiem trybów (RED-4.5) —
+   globalny header renderuje się tylko na pozostałych stronach (konto/o-systemie/szukaj/dokument).
+   Linki i warunki flag NIETKNIĘTE względem stanu sprzed redesignu (inwarianty RED).
+   Wyszukiwarka celowo BEZ pozycji w nawigacji (decyzja 2026-08-31: funkcja do dopracowania;
+   trasa /szukaj zostaje dostępna z adresu). *@
+@if (!IsAppShellPage)
+{
+    <div class="app-shell">
+        <header class="app-header">
+            <a class="app-brand" href="/" title="Strona główna">
+                <span class="app-logo-mark" aria-hidden="true"></span>
+                <span class="app-title">OmniaSI</span>
+            </a>
+            <nav class="app-nav">
+                <a href="/czat">Czat</a>
+                @if (Analysis.Value.Enabled)
                 {
-                    <a href="/konto">Konto</a>
+                    <a href="/analiza">Analiza</a>
                 }
-                <span class="app-user" title="@CurrentUser.DisplayName">@CurrentUser.DisplayName</span>
-                @* Zwykły odnośnik: pod /wylogowanie jest strona z potwierdzeniem, a samo wylogowanie
-                   dzieje się POST-em z tokenem (GET-owe wylogowanie da się wywołać z obcej strony). *@
-                <a href="@(Auth.Value.Enabled ? "/wylogowanie" : "/wyjscie")">Wyloguj</a>
-            }
-        </nav>
-    </header>
-    <main class="app-main">
-        @Body
-    </main>
-</div>
+                <a href="/o-systemie">O systemie</a>
+                @if (CurrentUser.IsAuthenticated)
+                {
+                    @if (Billing.Value.Enabled)
+                    {
+                        <a href="/konto">Konto</a>
+                    }
+                    <span class="app-user" title="@CurrentUser.DisplayName">@CurrentUser.DisplayName</span>
+                    @* Zwykły odnośnik: pod /wylogowanie jest strona z potwierdzeniem, a samo wylogowanie
+                       dzieje się POST-em z tokenem (GET-owe wylogowanie da się wywołać z obcej strony). *@
+                    <a href="@(Auth.Value.Enabled ? "/wylogowanie" : "/wyjscie")">Wyloguj</a>
+                }
+            </nav>
+        </header>
+        <main class="app-main">
+            @Body
+        </main>
+    </div>
+}
+else
+{
+    <div class="app-shell">
+        <main class="app-main app-main-flush">
+            @Body
+        </main>
+    </div>
+}
+
+@code {
+    private bool IsAppShellPage
+    {
+        get
+        {
+            var path = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+            return path is "/czat" or "/analiza";
+        }
+    }
+}

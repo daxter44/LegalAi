@@ -150,7 +150,28 @@ wystarczą**) · monitoring i alarmy nieudanych webhooków (w MVP: panel Stripe 
 
 ---
 
-## Kolejność
+## Kolejność — ZREWIDOWANA 2026-08-31 (decyzja właściciela)
+
+**Nazwa aplikacji: OmniaSI** (opracowana; domena jeszcze NIE rezerwowana — celowo).
+
+Zasada: **najpierw domknąć CAŁY development, potem jednym blokiem usługi zewnętrzne i treści** —
+bez wracania do aplikacji („jeszcze tu coś trzeba"). Konkretnie:
+
+1. **BLOK DEV (teraz, do końca):** branding na nazwie OmniaSI (US-2.2/2.3), landing z cennikiem
+   (US-2.4), ekrany kont + uspójnienie + telefon (US-2.5/2.6/2.7), disclaimer w UI (US-2.8),
+   **placeholdery** stron regulaminu/polityki prywatności (podlinkowane, treść później), zapis zgód
+   z wersją dokumentu (US-2.10), część KODOWA AI Act (maszynowe oznaczanie treści generowanej;
+   deklaracja przeznaczenia = placeholder), ogon E3: link do zakupu przy limicie (US-3.9),
+   weryfikacja past_due w trybie testowym (US-3.7), pakowanie wdrożeniowe (US-3.10).
+2. **BLOK ZEWNĘTRZNY (po zakończeniu dev, po kolei):** domena + Resend, hosting/serwer,
+   API LLM w EU (blocker sprzedaży), produkcyjny Stripe + realny cennik (US-3.2), backup
+   z odtworzeniem (US-1.12).
+3. **BLOK TREŚCI (na końcu):** regulamin, polityka prywatności, teksty AI Act — wypełnienie
+   placeholderów; niepowiązane z developmentem.
+
+Drafting H1 — zgodnie z wcześniejszą decyzją: po deployu MVP albo równolegle z blokiem 2/3.
+
+### Kolejność pierwotna (2026-08-27, zastąpiona powyższym)
 
 1. **E1** — ścieżka krytyczna, ale po rezygnacji z migracji rozmów cały epik jest tani: to głównie
    złożenie Identity z istniejącymi limitami.

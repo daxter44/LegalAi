@@ -13,6 +13,9 @@
 @inject AuthenticationStateProvider AuthState
 @inject Microsoft.Extensions.Options.IOptions<DiagnosticsOptions> Diagnostics
 @inject Microsoft.Extensions.Options.IOptions<DocumentsOptions> Documents
+@inject Microsoft.Extensions.Options.IOptions<AnalysisOptions> Analysis
+@inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.Billing.BillingOptions> Billing
+@inject PrawoRAG.Api.Services.Plans.IEntitlements Entitlements
 @implements IDisposable
 
 <h1 class="sr-only">Czat z asystentem prawnym</h1>
@@ -27,7 +30,20 @@
     <div class="sidebar-backdrop" @onclick="() => _mobileSidebarOpen = false"></div>
 }
 <aside class="chat-sidebar @(_mobileSidebarOpen ? "open" : "")">
-    <button class="btn btn-new-chat" @onclick="NewConversation" disabled="@_busy">➕ Nowa rozmowa</button>
+    @* Marka + przełącznik trybów w sidebarze (RED-2.1) — globalny header nie renderuje się na tym
+       ekranie (MainLayout.IsAppShellPage). Zakładka Analiza za flagą jak dotąd w headerze. *@
+    <a class="side-brand" href="/" title="Strona główna">
+        <span class="app-logo-mark" aria-hidden="true"></span>
+        <span class="app-title">OmniaSI</span>
+    </a>
+    <nav class="side-tabs" aria-label="Tryb pracy">
+        <span class="side-tab active">Czat</span>
+        @if (Analysis.Value.Enabled)
+        {
+            <a class="side-tab" href="/analiza">Analiza</a>
+        }
+    </nav>
+    <button class="btn btn-new-chat" @onclick="NewConversation" disabled="@_busy">＋ Nowa rozmowa</button>
     <nav class="conv-list" aria-label="Historia rozmów">
         @foreach (var c in _conversations)
         {
@@ -38,6 +54,20 @@
             </button>
         }
     </nav>
+    <div class="side-user">
+        <span class="side-avatar" aria-hidden="true">@Initials</span>
+        <span class="side-user-meta">
+            <span class="side-user-name" title="@CurrentUser.DisplayName">@CurrentUser.DisplayName</span>
+            @if (_planLabel is not null)
+            {
+                <span class="side-user-plan">@_planLabel</span>
+            }
+        </span>
+        @if (Billing.Value.Enabled)
+        {
+            <a class="side-user-link" href="/konto" title="Konto">›</a>
+        }
+    </div>
 </aside>
 
 <div class="chat">
@@ -45,8 +75,15 @@
         @if (_exchanges.Count == 0)
         {
             <div class="empty">
-                <p class="empty-title">Zapytaj o przepis lub orzeczenie</p>
-                <p class="empty-hint">Odpowiedzi powstają wyłącznie z cytowanych źródeł. To wstępny research — zawsze weryfikuj przy źródle.</p>
+                <span class="empty-mark" aria-hidden="true"></span>
+                <p class="empty-title">W czym mogę pomóc?</p>
+                <p class="empty-hint">Opisz sytuację po ludzku — znalezienie właściwych przepisów to moja praca. Odpowiedzi powstają wyłącznie z cytowanych źródeł; to wstępny research, zawsze weryfikuj przy źródle.</p>
+                <div class="empty-examples">
+                    @foreach (var q in ExampleQuestions)
+                    {
+                        <button class="example-chip" @onclick="() => _input = q" disabled="@_busy">@q</button>
+                    }
+                </div>
                 <p class="empty-hint">Pierwszy raz? <a href="/o-systemie">Przeczytaj, co system umie, a czego nie</a>.</p>
             </div>
         }
@@ -145,82 +182,19 @@
                         </details>
                     }
 
-                    @if (ex.DocFragments.Count > 0 && !IsRefusal(ex))
+                    @* Źródła żyją w PANELU po prawej (RED-2.3) — pod odpowiedzią zostaje kotwica,
+                       która przełącza panel na tę turę (numeracja [n] jest per tura). Na wąskim
+                       ekranie ta sama kotwica otwiera panel jako wysuwany arkusz. *@
+                    @if ((ex.Sources.Count > 0 || ex.DocFragments.Count > 0) && !IsRefusal(ex))
                     {
-                        <details class="sources" open>
-                            <summary>📄 Twój dokument: @ex.DocFileName (@ex.DocFragments.Count użyte fragmenty)</summary>
-                            @foreach (var f in ex.DocFragments)
-                            {
-                                <div class="source-card" id="docsrc-@(ex.AnchorId)-@f.Index">
-                                    <div class="source-head"><span class="source-n">[D@(f.Index)]</span></div>
-                                    <blockquote class="source-snippet">@f.Snippet</blockquote>
-                                </div>
-                            }
-                        </details>
+                        <button class="src-anchor @(ex.AnchorId == _activeAnchor ? "active" : "")"
+                                data-src-btn="@ex.AnchorId" @onclick="() => ActivateSources(ex)">
+                            <span aria-hidden="true">⌕</span>
+                            Źródła (@ex.Sources.Count)@(ex.DocFragments.Count > 0 ? $" · dokument ({ex.DocFragments.Count})" : "")
+                            <span aria-hidden="true">›</span>
+                        </button>
                     }
 
-                    @if (ex.Sources.Count > 0 && !IsRefusal(ex))
-                    {
-                        <details class="sources" open>
-                            <summary>Źródła (@ex.Sources.Count)</summary>
-                            @* Grupowanie po dokumencie (Zadanie 3 planu SAS): przy rozszerzeniu
-                               sąsiedztwa aktu źródeł bywa kilkadziesiąt i płaska lista przestaje być
-                               czytelna. Numeracja [n] i kotwice #src-… zostają NIETKNIĘTE — na nich
-                               stoją klikalne cytowania. Grupa jednoelementowa renderuje się bez
-                               nagłówka: dla zwykłych pytań (źródła z różnych dokumentów) panel
-                               wygląda dokładnie jak dotąd. *@
-                            @foreach (var group in ex.Sources.GroupBy(s => s.Title))
-                            {
-                            @if (group.Count() > 1)
-                            {
-                                <div class="source-group-head">
-                                    <span class="source-group-title">@group.Key</span>
-                                    <span class="source-group-count">@group.Count() fragmentów</span>
-                                    @if (group.Any(s => s.Neighbour))
-                                    {
-                                        <span class="badge badge-ok" title="Artykuły dociągnięte jako kontekst obok trafień — progi i wyjątki w ustawach stoją przy przepisie, który modyfikują">
-                                            + @group.Count(s => s.Neighbour) z sąsiedztwa
-                                        </span>
-                                    }
-                                </div>
-                            }
-                            @foreach (var s in group)
-                            {
-                                <div class="source-card @(s.Neighbour ? "source-neighbour" : "")" id="src-@(ex.AnchorId)-@s.Index">
-                                    <div class="source-head">
-                                        <span class="source-n">[@s.Index]</span>
-                                        <span class="source-label">@s.Label</span>
-                                        @if (s.Neighbour)
-                                        {
-                                            <span class="source-neighbour-tag" title="Nie było trafieniem wyszukiwania — dociągnięte jako przepis sąsiadujący">kontekst</span>
-                                        }
-                                        @if (!string.IsNullOrWhiteSpace(s.AmendmentEffectiveDate))
-                                        {
-                                            <span class="badge badge-warn" title="Fragment nowelizacji jeszcze niewchłoniętej do tekstu jednolitego">🕓 nowelizacja — obowiązuje od @s.AmendmentEffectiveDate</span>
-                                        }
-                                        @if (!string.IsNullOrWhiteSpace(s.Url))
-                                        {
-                                            <a class="source-link" href="@s.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
-                                        }
-                                    </div>
-                                    <blockquote class="source-snippet">@s.Snippet</blockquote>
-                                    @if (s.LegalBases is { Count: > 0 })
-                                    {
-                                        <details class="legal-bases-details">
-                                            <summary>Podstawa prawna (@s.LegalBases.Count)</summary>
-                                            <div class="legal-bases">
-                                                @foreach (var b in s.LegalBases)
-                                                {
-                                                    <span class="legal-basis-chip">@b</span>
-                                                }
-                                            </div>
-                                        </details>
-                                    }
-                                </div>
-                            }
-                            }
-                        </details>
-                    }
                 }
                 @if (ex.Error is not null)
                 {
@@ -299,7 +273,106 @@
             @(_busy ? "…" : "Wyślij")
         </button>
     </form>
+    <p class="chat-disclaimer">OmniaSI generuje research do weryfikacji przez prawnika — to nie porada prawna.</p>
 </div>
+
+@* PANEL ŹRÓDEŁ (RED-2.3): kontekstowy — pokazuje źródła JEDNEJ tury (numeracja [n] jest per tura,
+   więc nagłówek zawsze nazywa turę). Domyślnie najnowsza tura ze źródłami (wypełnia się w trakcie
+   generowania — SourcesEvent przychodzi przed tokenami); kotwica pod odpowiedzią i klik w chip [n]
+   przełączają. Markup kart 1:1 z dotychczasowej sekcji inline (kotwice #src-… nietknięte).
+   Na wąskim ekranie (<1200px) panel jest wysuwanym arkuszem otwieranym tą samą kotwicą. *@
+@if (_srcPanelOpen)
+{
+    <div class="src-backdrop" @onclick="() => _srcPanelOpen = false"></div>
+}
+<aside class="src-panel @(_srcPanelOpen ? "open" : "")" aria-label="Źródła odpowiedzi">
+    @if (ActiveSourcesExchange is { } act)
+    {
+        <div class="src-panel-head">
+            <div class="src-panel-title">
+                <span>Źródła</span>
+                <span class="src-count">@act.Sources.Count</span>
+                <button class="src-close" @onclick="() => _srcPanelOpen = false" aria-label="Zamknij panel źródeł">✕</button>
+            </div>
+            <div class="src-panel-context" title="@act.Question">do odpowiedzi: <em>„@Truncate(act.Question, 70)"</em></div>
+        </div>
+        <div class="src-panel-body">
+            @if (act.DocFragments.Count > 0)
+            {
+                <div class="src-section-head">📄 Twój dokument: @act.DocFileName (@act.DocFragments.Count użyte fragmenty)</div>
+                @foreach (var f in act.DocFragments)
+                {
+                    <div class="source-card" id="docsrc-@(act.AnchorId)-@f.Index">
+                        <div class="source-head"><span class="source-n">[D@(f.Index)]</span></div>
+                        <blockquote class="source-snippet">@f.Snippet</blockquote>
+                    </div>
+                }
+            }
+            @* Grupowanie po dokumencie (Zadanie 3 planu SAS): przy rozszerzeniu sąsiedztwa aktu
+               źródeł bywa kilkadziesiąt i płaska lista przestaje być czytelna. Numeracja [n]
+               i kotwice #src-… zostają NIETKNIĘTE — na nich stoją klikalne cytowania. *@
+            @foreach (var group in act.Sources.GroupBy(s => s.Title))
+            {
+            @if (group.Count() > 1)
+            {
+                <div class="source-group-head">
+                    <span class="source-group-title">@group.Key</span>
+                    <span class="source-group-count">@group.Count() fragmentów</span>
+                    @if (group.Any(s => s.Neighbour))
+                    {
+                        <span class="badge badge-ok" title="Artykuły dociągnięte jako kontekst obok trafień — progi i wyjątki w ustawach stoją przy przepisie, który modyfikują">
+                            + @group.Count(s => s.Neighbour) z sąsiedztwa
+                        </span>
+                    }
+                </div>
+            }
+            @foreach (var s in group)
+            {
+                <div class="source-card @(s.Neighbour ? "source-neighbour" : "")" id="src-@(act.AnchorId)-@s.Index">
+                    <div class="source-head">
+                        <span class="source-n">[@s.Index]</span>
+                        <span class="source-label">@s.Label</span>
+                        @if (s.Neighbour)
+                        {
+                            <span class="source-neighbour-tag" title="Nie było trafieniem wyszukiwania — dociągnięte jako przepis sąsiadujący">kontekst</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(s.AmendmentEffectiveDate))
+                        {
+                            <span class="badge badge-warn" title="Fragment nowelizacji jeszcze niewchłoniętej do tekstu jednolitego">🕓 nowelizacja — obowiązuje od @s.AmendmentEffectiveDate</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(s.Url))
+                        {
+                            <a class="source-link" href="@s.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
+                        }
+                    </div>
+                    <blockquote class="source-snippet">@s.Snippet</blockquote>
+                    @if (s.LegalBases is { Count: > 0 })
+                    {
+                        <details class="legal-bases-details">
+                            <summary>Podstawa prawna (@s.LegalBases.Count)</summary>
+                            <div class="legal-bases">
+                                @foreach (var b in s.LegalBases)
+                                {
+                                    <span class="legal-basis-chip">@b</span>
+                                }
+                            </div>
+                        </details>
+                    }
+                </div>
+            }
+            }
+        </div>
+    }
+    else
+    {
+        <div class="src-panel-head">
+            <div class="src-panel-title"><span>Źródła</span></div>
+        </div>
+        <div class="src-panel-empty">
+            <p>Tu pojawią się przepisy i orzeczenia, na których powstaje odpowiedź — każde cytowanie [n] w tekście wskazuje kartę w tym panelu.</p>
+        </div>
+    }
+</aside>
 </div>
 
 @code {
@@ -319,6 +392,51 @@
     private bool _docLoading;
     private string? _docNotice;
 
+    // PANEL ŹRÓDEŁ (RED-2.3): kotwica tury, której źródła pokazuje panel + stan arkusza na mobile.
+    private string? _activeAnchor;
+    private bool _srcPanelOpen;
+    private string? _planLabel;
+
+    private static readonly string[] ExampleQuestions =
+    [
+        "Najemca nie płaci czynszu — czy mogę wypowiedzieć umowę?",
+        "Jakie odsetki mogę naliczyć od zaległej faktury B2B?",
+        "Co grozi za prowadzenie działalności bez rejestracji?",
+    ];
+
+    private string Initials
+    {
+        get
+        {
+            var name = CurrentUser.DisplayName;
+            if (string.IsNullOrWhiteSpace(name)) return "?";
+            var parts = name.Split(new[] { ' ', '.', '@' }, StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length >= 2
+                ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}"
+                : char.ToUpperInvariant(name[0]).ToString();
+        }
+    }
+
+    /// <summary>Tura, której źródła pokazuje panel: wskazana kotwicą, z fallbackiem na najnowszą
+    /// niosącą źródła. Tura z odmową nie ma czego pokazywać (IsRefusal — jak dotąd przy inline).</summary>
+    private Exchange? ActiveSourcesExchange
+    {
+        get
+        {
+            var byAnchor = _exchanges.LastOrDefault(e => e.AnchorId == _activeAnchor);
+            var ex = byAnchor ?? _exchanges.LastOrDefault(e => e.Sources.Count > 0 || e.DocFragments.Count > 0);
+            return ex is null || IsRefusal(ex) || (ex.Sources.Count == 0 && ex.DocFragments.Count == 0) ? null : ex;
+        }
+    }
+
+    private void ActivateSources(Exchange ex)
+    {
+        _activeAnchor = ex.AnchorId;
+        _srcPanelOpen = true; // desktop ignoruje (panel zawsze widoczny); mobile otwiera arkusz
+    }
+
+    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
+
     protected override async Task OnInitializedAsync()
     {
         // Tożsamość z AuthenticationState (niezawodna w obwodzie Blazora), NIE z IHttpContextAccessor —
@@ -329,6 +447,18 @@
             ? name
             : CurrentUser.UserId; // bramka wyłączona (dev/M4) → placeholder jak dotąd
         await RefreshConversationsAsync();
+
+        // Etykieta planu w stopce sidebara (RED-2.1, addytywne) — best-effort, nie blokuje czatu.
+        if (CurrentUser.IsAuthenticated)
+        {
+            try
+            {
+                var ent = await Entitlements.ForAsync(_userId);
+                if (ent.PlanApplies)
+                    _planLabel = ent.PlanId switch { "free" => "Plan Start", "pro" => "Plan Pro", var x => x };
+            }
+            catch { /* best-effort */ }
+        }
 
         // AUTO-WZNOWIENIE ostatniej rozmowy. _conversationId żyje w pamięci obwodu — odświeżenie strony,
         // rekonekt SignalR albo wejście na /o-systemie i powrót NISZCZĄ komponent; bez wznowienia każde
@@ -356,6 +486,8 @@
         _notice = null;
         _input = "";
         _mobileSidebarOpen = false;
+        _activeAnchor = null;
+        _srcPanelOpen = false;
     }
 
     /// <summary>Wczytuje rozmowę z historii: pary user/assistant → Exchange. Follow-upy działają
@@ -398,6 +530,8 @@
                 current = null;
             }
         }
+        _activeAnchor = _exchanges.LastOrDefault(e => e.Sources.Count > 0)?.AnchorId;
+        _srcPanelOpen = false;
     }
 
     /// <summary>LLM odmówił NA POZIOMIE TREŚCI (ocenił dostarczone źródła jako nietrafne) — bramka
@@ -536,7 +670,7 @@
                     // do pierwszej (brudnej) — użytkownik ma zobaczyć poprawioną odpowiedź, nie sklejkę.
                     case RegeneratingEvent: ex.Answer = ""; ex.Regenerated = true; break;
                     case RetryingRetrievalEvent rr: ex.RetriedQuery = rr.NewQuery; break;
-                    case SourcesEvent s: ex.Sources = s.Sources; break;
+                    case SourcesEvent s: ex.Sources = s.Sources; _activeAnchor = ex.AnchorId; break;
                     case DocSourcesEvent d: ex.DocFileName = d.FileName; ex.DocFragments = d.Fragments; break;
                     case TokenEvent t: ex.Answer += t.Text; break;
                     // Delta rozumowania dopisuje (na żywo), ReasoningEvent na końcu NADPISUJE całością —

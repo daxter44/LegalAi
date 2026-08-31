@@ -1,31 +1,101 @@
-/* System projektowy — tokeny (FE-1.1). Spójność przez zmienne, nie przez konwencje w głowie. */
+/* System projektowy OmniaSI 2.0 — wartości z design systemu ShiftLaw (styles/styleguide.html),
+   zaakceptowane na makietach (design/*.dc.html, plan RED). Sekcja pierwsza = tokeny źródłowe,
+   sekcja druga = ALIASY starych nazw (FE-1.1) — istniejące reguły działają bez zmian, dopóki
+   restyle (RED-0.3+) nie przepisze ich na nazwy źródłowe. Nie usuwać aliasów przed końcem RED. */
 :root {
-    /* Kolor: neutralna baza + jeden akcent (atrament/granat) + semantyczne */
-    --c-bg: #f7f8fa;
-    --c-surface: #ffffff;
-    --c-border: #e2e5ea;
-    --c-text: #1a1f2b;
-    --c-text-muted: #5b6472;
-    --c-accent: #1f3a8a;
-    --c-accent-weak: #eaf0ff;
-    --c-ok: #1b7f4b;
-    --c-ok-weak: #e7f6ee;
-    --c-warn: #8a5a00;
-    --c-warn-weak: #fdf3e0;
-    --c-danger: #a11b2e;
-    --c-danger-weak: #fdecef;
+    /* ── Kolor: neutralna, chłodna baza + akcent + gradient ── */
+    --sl-bg: #F3F5F9;
+    --sl-bg-secondary: #EAECF3;
+    --sl-bg-tertiary: #E0E3EC;
+    --sl-surface: #FFFFFF;
+    --sl-border: #D2D6E2;
+    --sl-text-primary: #0A0A0A;
+    --sl-text-secondary: #6B7280;
+    --sl-text-tertiary: #9CA3AF;
+    --sl-text-inverse: #FFFFFF;
 
-    /* Typografia */
-    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    --fs-12: .75rem; --fs-14: .875rem; --fs-16: 1rem; --fs-18: 1.125rem; --fs-24: 1.5rem; --fs-32: 2rem;
+    --sl-accent: #2563EB;
+    --sl-accent-hover: #1D4ED8;
+    --sl-accent-light: #EFF6FF;
+    --sl-gradient: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%);
+    --sl-violet: #7C3AED;
+    --sl-violet-light: #F5F3FF;
+
+    /* Ciemna scena (hero landingu, lewa połowa auth) */
+    --sl-hero-deep: #142450;
+    --sl-hero-gradient: linear-gradient(160deg, #142450 0%, #1A2F6B 55%, #3B1F7A 100%);
+    --sl-on-dark: #EDEFF8;
+    --sl-on-dark-soft: #C7D0EC;
+    --sl-on-dark-faint: #6E7690;
+    --sl-on-dark-accent: #93B4FF;
+
+    /* Semantyka stanów */
+    --sl-success: #16A34A;      --sl-success-bg: #F0FDF4;
+    --sl-warning: #D97706;      --sl-warning-bg: #FFFBEB;
+    --sl-error: #DC2626;        --sl-error-bg: #FEF2F2;   --sl-error-border: #FECACA;
+
+    /* ── Typografia: Inter (self-hosted, latin+latin-ext) + Palatino display ── */
+    --sl-font-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --sl-font-display: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+    --sl-font-mono: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+    --fs-12: .75rem; --fs-13: .8125rem; --fs-14: .875rem; --fs-15: .9375rem; --fs-16: 1rem;
+    --fs-18: 1.125rem; --fs-20: 1.25rem; --fs-24: 1.5rem; --fs-30: 1.875rem; --fs-32: 2rem;
+    --fs-40: 2.5rem;
     --lh-body: 1.6;
 
-    /* Spacing */
-    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-6: 24px; --s-8: 32px; --s-12: 48px;
+    /* ── Spacing ── */
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px;
+    --s-8: 32px; --s-10: 40px; --s-12: 48px;
 
-    /* Kształt / głębia */
-    --radius: 10px;
-    --radius-sm: 6px;
-    --shadow: 0 1px 3px rgba(20, 25, 40, .08), 0 4px 12px rgba(20, 25, 40, .05);
-    --focus: 0 0 0 3px var(--c-accent-weak);
+    /* ── Kształt / głębia / ruch ── */
+    --sl-radius-sm: 4px; --sl-radius-md: 8px; --sl-radius-lg: 12px; --sl-radius-xl: 16px;
+    --sl-radius-full: 9999px;
+    --sl-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.06);
+    --sl-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.11), 0 1px 2px -1px rgb(0 0 0 / 0.11);
+    --sl-shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.12), 0 2px 4px -2px rgb(0 0 0 / 0.08);
+    --sl-shadow-lg: 0 10px 20px -4px rgb(0 0 0 / 0.12), 0 4px 8px -4px rgb(0 0 0 / 0.08);
+    --sl-shadow-card: 0 1px 4px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.07);
+    --sl-shadow-lift: 0 10px 20px -4px rgb(37 99 235 / 0.16), 0 4px 8px -4px rgb(0 0 0 / 0.08);
+    --sl-shadow-accent: 0 8px 18px -8px rgb(37 99 235 / 0.55);
+    --sl-focus-ring: 0 0 0 4px rgb(37 99 235 / 0.12);
+    --sl-transition-fast: 150ms ease; --sl-transition-base: 200ms ease;
+
+    /* ── ALIASY starych nazw (do wygaszenia po RED) ── */
+    --c-bg: var(--sl-bg);
+    --c-surface: var(--sl-surface);
+    --c-border: var(--sl-border);
+    --c-text: var(--sl-text-primary);
+    --c-text-muted: var(--sl-text-secondary);
+    --c-accent: var(--sl-accent);
+    --c-accent-weak: var(--sl-accent-light);
+    --c-ok: var(--sl-success);
+    --c-ok-weak: var(--sl-success-bg);
+    --c-warn: var(--sl-warning);
+    --c-warn-weak: var(--sl-warning-bg);
+    --c-danger: var(--sl-error);
+    --c-danger-weak: var(--sl-error-bg);
+    --font-sans: var(--sl-font-base);
+    --radius: var(--sl-radius-lg);
+    --radius-sm: var(--sl-radius-md);
+    --shadow: var(--sl-shadow-card);
+    --focus: var(--sl-focus-ring);
+}
+
+/* Inter — self-hosted (CSP font-src 'self'; suwerenność: zero zewnętrznych hostów).
+   Plik variable-weight: jedna twarz obsługuje 400–700. latin-ext niezbędny dla polskich znaków. */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url('../fonts/inter-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url('../fonts/inter-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
