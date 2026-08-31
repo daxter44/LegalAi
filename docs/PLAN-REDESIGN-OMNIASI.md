@@ -7,12 +7,17 @@
 >
 > **ZOSTAŁO (faza 5 + drobne):**
 > - RED-5.1: przejście checklisty inwariantów na PEŁNYM środowisku (M4: baza + TEI + LLM) —
->   zwłaszcza pełna tura czatu z klikaniem [n], analiza end-to-end, telefon;
-> - (+) licznik zużycia X/Y w stopce sidebara i na /konto (wymaga zapytania o usage_counters);
-> - RED-4.4: dedykowany retusz /o-systemie i /dokument (dziedziczą tokeny, bez własnej przejrzałki);
-> - hero-CTA landingu w trybie kont a11y-sprawdzić po włączeniu Auth:Enabled (dziś testowane w alfie);
+>   zwłaszcza pełna tura czatu z klikaniem [n], analiza end-to-end, telefon; przy okazji rzut oka
+>   na kontrast hero-CTA landingu w trybie kont (focus-visible już dodany, sesja 2026-08-31);
 > - follow-up DO DECYZJI (zmiana zachowania, poza RED): przełączanie rozmów w trakcie generowania —
->   sekcja na końcu dokumentu.
+>   sekcja na końcu dokumentu (decyzja 2026-08-31: na razie zostaje jak jest).
+>
+> **DOMKNIĘTE w sesji 2026-08-31 (poza fazami 0–4):** licznik zużycia X/Y w stopce sidebara
+> (czat + analiza) i pasek zużycia na /konto; RED-4.4 retusz /o-systemie (sekcje-karty) i /dokument
+> (typografia display, chipy metadanych); focus-visible na landingu; logo → strona główna przez
+> /start (redirect / → /czat dla zalogowanych bez zmian); wording odmów „Nie znalazłem jednoznacznej
+> podstawy prawnej…" zamiast „w źródłach" (prompt reguły 3 + bramka + walidator, marker legacy dla
+> zapisanych rozmów).
 >
 > Decyzje podjęte w trakcie: Szukaj bez pozycji w nawigacji (funkcja do dopracowania, trasa
 > zostaje); zmiana hasła = link do istniejącego /haslo/reset (osobnej funkcji nie ma i nie udajemy);
