@@ -116,6 +116,7 @@ public static class IngestionServiceCollectionExtensions
         services.AddSingleton<AmendmentRelinkRunner>(); // AKT-5.2: relink nowel w stanie ustalonym
         services.AddSingleton<QualityReportRunner>();
         services.AddSingleton<NoiseBackfillRunner>(); // backfill jakości treści chunków (mojibake/przypisy/bullety)
+        services.AddSingleton<UstepReprocessRunner>(); // wymuszony reprocess ustaw pod podział na ustępy (unit_pass)
         return services;
     }
 }

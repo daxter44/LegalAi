@@ -137,6 +137,23 @@ switch (mode)
         }
         break;
     }
+    case "reprocess-ustepy":
+    {
+        // Wymuszony reprocessing ustaw pod podział na ustępy (unit_pass w ActNormalizer, diagnoza
+        // 2026-08-31; pilot: art. 11 ochrony lokatorów #512 -> #8). Cele dobierane automatycznie
+        // (akty ELI/HTML z długim chunkiem artykułowym bez ustępu), wznawialny przez checkpoint.
+        // Konfiguracja: Reprocess:CheckpointFile (domyślnie logs/reprocess-ustepy.done),
+        // Reprocess:DelayMs (domyślnie 250 — grzeczność wobec api.sejm.gov.pl),
+        // Ingestion:MaxItems = limit aktów w TYM biegu (smoke na małej porcji).
+        var checkpoint = cfg["Reprocess:CheckpointFile"] ?? Path.Combine("logs", "reprocess-ustepy.done");
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(checkpoint))!);
+        var delayMs = cfg.GetValue<int?>("Reprocess:DelayMs") ?? 250;
+
+        var ustep = host.Services.GetRequiredService<UstepReprocessRunner>();
+        var summary = await ustep.RunAsync(checkpoint, maxItems, delayMs, default);
+        Console.WriteLine($"REPROCESS-USTEPY DONE: {summary}");
+        break;
+    }
     case "backfill-noise":
     {
         // Backfill jakości treści chunków (PLAN-NAPRAWA-SZUMU-CHUNKOW-2026-08-28.md): mojibake ze starych
@@ -159,5 +176,5 @@ switch (mode)
     }
     default:
         throw new InvalidOperationException(
-            $"Nieznany Ingestion:Mode '{mode}'. Dozwolone: fetch | process | fetch-process | stream | reprocess-failed | report | discover | sync-eli | backfill-noise.");
+            $"Nieznany Ingestion:Mode '{mode}'. Dozwolone: fetch | process | fetch-process | stream | reprocess-failed | report | discover | sync-eli | backfill-noise | reprocess-ustepy.");
 }

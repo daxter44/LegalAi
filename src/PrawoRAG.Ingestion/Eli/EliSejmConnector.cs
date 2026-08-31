@@ -163,6 +163,9 @@ public sealed class EliSejmConnector(
         [property: JsonPropertyName("status")] string? Status,
         [property: JsonPropertyName("textHTML")] bool TextHtml);
 
+    /// <summary>Publiczny fetch JEDNEGO aktu (tryb reprocess-ustepy) — ta sama logika co pętla FetchAsync.</summary>
+    public Task<RawDocument?> FetchOneAsync(string addr, CancellationToken ct) => FetchActAsync(addr, ct);
+
     private async Task<RawDocument?> FetchActAsync(string addr, CancellationToken ct)
     {
         // Pojedynczy błąd nie przerywa całości — pomijamy akt (jak SAOS przy pojedynczym orzeczeniu).
