@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PrawoRAG.Domain.Retrieval;
+using PrawoRAG.Llm.Grounding;
 using PrawoRAG.Storage;
 
 namespace PrawoRAG.Eval;
@@ -58,9 +59,8 @@ public static class LiveReportRunner
             .OrderBy(g => g.Key.Day).ThenBy(g => g.Key.Model)
             .Select(g => new Row(
                 g.Key.Day, g.Key.Model, g.Count(),
-                ThresholdRefusals: g.Count(m => m.Abstained),
-                // STAŁA, nie skopiowany napis — inaczej zmiana komunikatu po cichu wyzerowałaby metrykę.
-                ContentRefusals: g.Count(m => !m.Abstained && m.Content.Contains(AbstentionPolicy.Message)),
+                ThresholdRefusals: g.Count(m => IsAnyRefusal(m.Abstained, m.Content) && !IsContentRefusal(m.Content)),
+                ContentRefusals: g.Count(m => IsContentRefusal(m.Content)),
                 DirtyCitations: g.Count(m => m.CitationClean == false),
                 Regenerated: g.Count(m => m.Regenerated),
                 RouteRetrieval: g.Count(m => m.Route == "retrieval"),
@@ -70,8 +70,8 @@ public static class LiveReportRunner
             .ToList();
 
         var total = messages.Count;
-        var thresholdRefusals = messages.Count(m => m.Abstained);
-        var contentRefusals = messages.Count(m => !m.Abstained && m.Content.Contains(AbstentionPolicy.Message));
+        var contentRefusals = messages.Count(m => IsContentRefusal(m.Content));
+        var thresholdRefusals = messages.Count(m => IsAnyRefusal(m.Abstained, m.Content)) - contentRefusals;
         var dirty = messages.Count(m => m.CitationClean == false);
         var regenerated = messages.Count(m => m.Regenerated);
         var smalltalk = messages.Count(m => m.Route == "smalltalk");
@@ -145,6 +145,25 @@ public static class LiveReportRunner
         }
         return refused;
     }
+
+    /// <summary>
+    /// Odmowa TREŚCIOWA = model napisał frazę z reguły 3 („Nie mam wystarczających źródeł…" —
+    /// <see cref="GroundedPrompt.RefusalMarker"/>), ale to NIE jest komunikat bramki
+    /// (<see cref="AbstentionPolicy.Message"/> zaczyna się tym samym markerem, więc sam marker
+    /// nie wystarcza do rozróżnienia). STAŁE, nie skopiowane napisy — inaczej zmiana komunikatu
+    /// po cichu wyzerowałaby metrykę.
+    /// </summary>
+    private static bool IsContentRefusal(string content) =>
+        content.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase)
+        && !content.Contains(AbstentionPolicy.Message, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Dowolna odmowa — do metryki nadrzędnej. Kolumna <c>Abstained</c> OD wariantu A telemetrii
+    /// (2026-08-31) obejmuje też odmowy treściowe, ale wiersze sprzed tej zmiany mają przy nich
+    /// <c>false</c> — stąd dodatkowo dopasowanie treści, żeby raport liczył obie epoki danych tak samo.
+    /// </summary>
+    private static bool IsAnyRefusal(bool abstainedColumn, string content) =>
+        abstainedColumn || content.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase);
 
     private static string Pct(int part, int total) =>
         total == 0 ? "—" : $"{100.0 * part / total:0.0}%";

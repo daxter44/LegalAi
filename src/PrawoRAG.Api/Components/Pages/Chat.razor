@@ -564,8 +564,13 @@
                 // Route zapisywany zawsze — bez niego raport z żywego ruchu (Zadanie 16) nie odróżni
                 // ścieżek, a trafność routera byłaby niemierzalna.
                 var route = ex.NoRetrievalReason is null ? ChatRoutes.Retrieval : ChatRoutes.Smalltalk;
+                // WARIANT A telemetrii (2026-08-31): do kolumny Abstained trafia KAŻDA odmowa —
+                // progowa (ex.Abstained z bramki) LUB treściowa (IsRefusal — model sam orzekł, że
+                // źródła nie odpowiadają). Dotąd zapisywana była tylko progowa, a że próg = 0.0,
+                // metryka nadrzędna (odsetek odmów z messages.Abstained) pokazywała ~0%.
+                // ex.Abstained w stanie UI zostaje progowe (steruje wyborem treści linijkę wyżej).
                 ex.MessageId = await Try(() => Store.AddAssistantMessageAsync(
-                    cid2, content, ex.Sources, ex.Abstained, ex.Check?.IsClean, ex.Model,
+                    cid2, content, ex.Sources, ex.Abstained || IsRefusal(ex), ex.Check?.IsClean, ex.Model,
                     CancellationToken.None, route, ex.Regenerated));
             }
             _busy = false;

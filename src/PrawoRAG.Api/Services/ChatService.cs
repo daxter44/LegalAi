@@ -260,8 +260,13 @@ public sealed class ChatService(
             // w TREŚCI odpowiedzi: model dostał źródła ponad progiem i sam orzekł, że nie odpowiadają
             // na pytanie. Ten przypadek jest u nas normą, nie wyjątkiem — odmowy są treściowe,
             // nie progowe — a bez tego wyzwalacza pętla domykająca w ogóle by go nie widziała.
+            // UWAGA na frazę (fix 2026-08-31): reguła 3 każe modelowi pisać TYLKO „Nie mam
+            // wystarczających źródeł, aby odpowiedzieć." — porównanie z pełnym AbstentionPolicy.Message
+            // (z doklejką „Zawęź pytanie…", której model nie zna) nigdy nie trafiało, więc wyzwalacz
+            // był martwy na realnych odmowach (potwierdzone trzema diagnozami produkcyjnymi:
+            // OKI, zaświadczenie/oświadczenie, znak wodny AI Act). Marker, nie pełny komunikat.
             if (o.GapClosingEnabled && !extraRoundUsed && o.MaxExtraRounds > 0 && reformulator is not null
-                && answer.Contains(AbstentionPolicy.Message, StringComparison.Ordinal))
+                && answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase))
             {
                 var retryQuery = await reformulator.ReformulateAsync(question, history, ct);
                 if (retryQuery is not null)
@@ -328,8 +333,14 @@ public sealed class ChatService(
             yield return new ReasoningEvent(reasoning);
 
         LatencyLog.Mark("chat.total", chatSw.ElapsedMilliseconds);
-        yield return new DoneEvent(Abstained: false, Model: llm.ModelId, Check: check, Usage: usage,
-            Regenerated: regenerated);
+        // WARIANT A telemetrii (2026-08-31): Abstained znaczy „użytkownik nie dostał odpowiedzi
+        // merytorycznej" niezależnie od mechanizmu. Odmowa treściowa (reguła 3 promptu — u nas
+        // NORMA, bo AbstentionThreshold=0.0 usypia bramkę progową od czasu znaleziska o sygnale
+        // rerankera) kończyła się dotąd Abstained=false, więc metryka nadrzędna (odsetek odmów)
+        // liczona z kolumny messages.Abstained pokazywała ~0% mimo realnych odmów.
+        yield return new DoneEvent(
+            Abstained: answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase),
+            Model: llm.ModelId, Check: check, Usage: usage, Regenerated: regenerated);
     }
 
     /// <summary>

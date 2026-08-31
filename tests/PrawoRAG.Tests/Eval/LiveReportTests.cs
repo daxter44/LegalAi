@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PrawoRAG.Api.Services;
 using PrawoRAG.Domain.Retrieval;
+using PrawoRAG.Llm.Grounding;
 using PrawoRAG.Storage;
 using PrawoRAG.Storage.Entities;
 
@@ -84,19 +85,34 @@ public class LiveReportTests
     }
 
     [Fact] // Odmowa TRESCIOWA liczona OSOBNO od progowej - to rozroznienie jest sercem metryki.
+           // REALISTYCZNE dane: model pisze TYLKO krotka fraze z reguly 3 (bez doklejki "Zawez
+           // pytanie..." z AbstentionPolicy.Message) - stary test zasiewal pelny Message i przez to
+           // nie wykryl, ze produkcyjne odmowy tresciowe nie matchuja (fix 2026-08-31). Do tego
+           // wiersz STAREJ epoki (odmowa tresciowa z Abstained=false, sprzed wariantu A) - raport
+           // musi liczyc obie epoki tak samo.
     public async Task Content_refusal_counted_separately_from_threshold()
     {
+        const string modelRefusal = "Nie mam wystarczających źródeł, aby odpowiedzieć."; // fraza reguły 3, bez doklejki
         await CleanAsync();
         await SeedAsync(
-            ("pytanie 1", AbstentionPolicy.Message, true, null, ChatRoutes.Retrieval, false),   // progowa
-            ("pytanie 2", AbstentionPolicy.Message, false, true, ChatRoutes.Retrieval, false),  // treściowa
-            ("pytanie 3", "Odpowiadasz z art. 415 [1].", false, true, ChatRoutes.Retrieval, false));
+            ("pytanie 1", AbstentionPolicy.Message, true, null, ChatRoutes.Retrieval, false),  // progowa (bramka)
+            ("pytanie 2", modelRefusal, true, true, ChatRoutes.Retrieval, false),              // treściowa, nowa epoka
+            ("pytanie 3", modelRefusal, false, true, ChatRoutes.Retrieval, false),             // treściowa, STARA epoka
+            ("pytanie 4", "Odpowiadasz z art. 415 [1].", false, true, ChatRoutes.Retrieval, false));
 
         var rows = await AssistantRowsAsync();
 
-        Assert.Equal(1, rows.Count(r => r.Abstained));
-        Assert.Equal(1, rows.Count(r => !r.Abstained && r.Content.Contains(AbstentionPolicy.Message)));
-        Assert.Equal(3, rows.Count);
+        // Predykaty identyczne jak w LiveReportRunner (IsContentRefusal / IsAnyRefusal).
+        bool IsContent(AssistantRow r) =>
+            r.Content.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase)
+            && !r.Content.Contains(AbstentionPolicy.Message, StringComparison.Ordinal);
+        bool IsAny(AssistantRow r) =>
+            r.Abstained || r.Content.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Equal(3, rows.Count(IsAny));                     // metryka nadrzędna: wszystkie odmowy
+        Assert.Equal(2, rows.Count(IsContent));                 // treściowe: obie epoki
+        Assert.Equal(1, rows.Count(r => IsAny(r) && !IsContent(r))); // progowa
+        Assert.Equal(4, rows.Count);
         await CleanAsync();
     }
 

@@ -118,6 +118,58 @@ public class ContentRefusalRetryTests
             string.Concat(events.OfType<TokenEvent>().Select(t => t.Text))[^30..]);
     }
 
+    [Fact] // REGRESJA (fix 2026-08-31): model pisze TYLKO krotka fraze z reguly 3 promptu, BEZ
+           // doklejki "Zawez pytanie..." z AbstentionPolicy.Message. Wyzwalacz porownujacy z pelnym
+           // Message nigdy jej nie trafial - byl martwy na WSZYSTKICH realnych odmowach (potwierdzone
+           // trzema diagnozami produkcyjnymi). Ten test zasiewa fraze dokladnie tak, jak pisze ja model.
+    public async Task Real_model_refusal_phrase_triggers_second_round()
+    {
+        var retriever = new CountingRetriever(
+            Covered("nietrafiony przepis"),
+            Covered("art. 50 ust. 2 — oznaczanie treści generowanych"));
+        var llm = new SequenceLlm(
+            "Nie mam wystarczających źródeł, aby odpowiedzieć.", // fraza reguły 3 — bez doklejki
+            "Tak, art. 50 ust. 2 wymaga oznaczania [1].");
+        var reformulator = new CountingReformulator("oznaczanie treści wygenerowanej przez AI");
+
+        var events = await Drain(Service(retriever, llm, reformulator)
+            .AskAsync("czy muszę oznaczać tekst znakiem wodnym?", [], null, default));
+
+        Assert.Equal(1, reformulator.Calls);
+        Assert.Equal(2, retriever.Calls);
+        Assert.Equal(2, llm.Calls);
+        Assert.Contains(events, e => e is RetryingRetrievalEvent);
+    }
+
+    [Fact] // WARIANT A telemetrii (2026-08-31): odmowa tresciowa, ktora WYSZLA do uzytkownika
+           // (reformulator null => bez drugiej rundy), konczy sie DoneEvent(Abstained=true) -
+           // metryka nadrzedna (odsetek odmow) liczy sie z tej flagi, a odmowy sa u nas
+           // tresciowe, nie progowe (prog 0.0 od znaleziska o sygnale rerankera).
+    public async Task Content_refusal_reaching_user_is_marked_abstained()
+    {
+        var retriever = new CountingRetriever(Covered("x"));
+        var llm = new SequenceLlm("Nie mam wystarczających źródeł, aby odpowiedzieć.");
+
+        var events = await Drain(Service(retriever, llm, new CountingReformulator(null))
+            .AskAsync("pytanie", [], null, default));
+
+        var done = Assert.IsType<DoneEvent>(events[^1]);
+        Assert.True(done.Abstained);
+    }
+
+    [Fact] // Odpowiedz merytoryczna => Abstained=false (wariant A nie zmienia szczesliwej sciezki).
+    public async Task Substantive_answer_is_not_marked_abstained()
+    {
+        var retriever = new CountingRetriever(Covered("art. 415"));
+        var llm = new SequenceLlm("Ponosisz odpowiedzialność [1].");
+
+        var events = await Drain(Service(retriever, llm, new CountingReformulator(null))
+            .AskAsync("pytanie", [], null, default));
+
+        var done = Assert.IsType<DoneEvent>(events[^1]);
+        Assert.False(done.Abstained);
+    }
+
     [Fact] // Odpowiedz BEZ frazy odmowy => zero przeformulowania i zero dodatkowej rundy.
     public async Task Normal_answer_does_not_trigger_retry()
     {
