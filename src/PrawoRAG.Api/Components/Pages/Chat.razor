@@ -104,7 +104,12 @@
         @foreach (var ex in _exchanges)
         {
             <div class="msg msg-user">@ex.Question</div>
-            <div class="msg msg-assistant">
+            @* US-2.11 (AI Act art. 50 ust. 2): maszynowe oznaczenie pochodzenia w warstwie, którą
+               widzi skrypt/crawler. Odmowa bramki (Abstained) to szablon systemowy, nie generacja. *@
+            <div class="msg msg-assistant"
+                 data-ai-generated="@((!ex.Abstained).ToString().ToLowerInvariant())"
+                 data-ai-model="@ex.Model"
+                 data-ai-generated-at="@(ex.GeneratedAt?.ToString("O"))">
                 @if (ex.Abstained)
                 {
                     <div class="banner banner-warn" role="status">@ex.AbstainMessage</div>
@@ -173,7 +178,7 @@
                     @if (ex.Done && !IsRefusal(ex) && ex.NoRetrievalReason is null)
                     {
                         <div class="verify-banner" role="note">
-                            ⚖️ Wstępny research do weryfikacji — sprawdź w źródłach poniżej.
+                            ⚖️ Treść wygenerowana przez AI — wstępny research do weryfikacji, sprawdź w źródłach poniżej.
                             @* Po Zadaniu 10 ⚠ znaczy „odpowiedź była poprawiana", nie „wypuściliśmy
                                brudną" — brudna po drugiej próbie w ogóle nie wychodzi (odmowa). *@
                             @if (ex.Regenerated)
@@ -594,6 +599,8 @@
                 current.Sources = m.Sources;
                 current.MessageId = m.Id;
                 current.Model = m.Model;
+                // US-2.11: odpowiedź odtworzona z historii niesie to samo oznaczenie co świeża.
+                current.GeneratedAt = m.CreatedAt == default ? null : m.CreatedAt;
                 // CitationCheck z historii: znamy tylko werdykt (bool) — odtwarzamy minimalny obiekt,
                 // żeby badge ✓/⚠ renderował się jak przy świeżej odpowiedzi (UI czyta tylko IsClean).
                 current.Check = m.CitationClean switch
@@ -759,6 +766,8 @@
                 {
                     case StageEvent st: ex.SetStage(st); break;
                     case NoRetrievalEvent nr: ex.NoRetrievalReason = nr.Reason; break;
+                    // US-2.11: oznaczenie pochodzenia — model i czas generacji na turze (atrybuty data-ai-*).
+                    case ProvenanceEvent p: ex.Model ??= p.Model; ex.GeneratedAt = p.GeneratedAt; break;
                     // Bramka zawróciła odpowiedź: czyścimy tekst, żeby druga wersja nie dopisała się
                     // do pierwszej (brudnej) — użytkownik ma zobaczyć poprawioną odpowiedź, nie sklejkę.
                     case RegeneratingEvent: ex.Answer = ""; ex.Regenerated = true; break;
@@ -861,6 +870,9 @@
         public string? AbstainMessage { get; set; }
         public CitationCheck? Check { get; set; }
         public string? Model { get; set; }
+
+        /// <summary>Czas generacji (US-2.11, atrybut data-ai-generated-at); z historii = CreatedAt wiadomości.</summary>
+        public DateTimeOffset? GeneratedAt { get; set; }
         public bool Streaming { get; set; }
         public bool Done { get; set; }
 

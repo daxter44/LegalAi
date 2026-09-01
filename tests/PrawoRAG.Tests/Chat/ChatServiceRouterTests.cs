@@ -131,6 +131,30 @@ public class ChatServiceRouterTests
         Assert.False(Assert.IsType<DoneEvent>(events[^1]).Abstained);
     }
 
+    [Fact] // US-2.11 (AI Act art. 50 ust. 2): oznaczenie pochodzenia PRZED pierwszym tokenem, na OBU
+           // sciezkach (grounded i smalltalk) - konsument urywajacy strumien tez musi je dostac.
+    public async Task Provenance_precedes_first_token_on_both_paths()
+    {
+        foreach (var needsLaw in new[] { true, false })
+        {
+            var events = await Drain(Service(new CountingRetriever(0.9), new FakeLlm("Odpowiedź [1]."),
+                    new StubRouter(needsLaw), routerEnabled: true)
+                .AskAsync("pytanie", [], null, default));
+
+            var provenanceAt = events.FindIndex(e => e is ProvenanceEvent);
+            var firstTokenAt = events.FindIndex(e => e is TokenEvent);
+            Assert.True(provenanceAt >= 0, $"brak ProvenanceEvent (needsLaw={needsLaw})");
+            Assert.True(provenanceAt < firstTokenAt, "oznaczenie musi iść PRZED pierwszym tokenem");
+
+            var p = Assert.IsType<ProvenanceEvent>(events[provenanceAt]);
+            Assert.True(p.AiGenerated);
+            Assert.Equal("fake", p.Model);
+            Assert.StartsWith("OmniaSI/", p.System);
+            Assert.Equal(needsLaw, p.Grounded);
+            Assert.Single(events.OfType<ProvenanceEvent>()); // RAZ na turę
+        }
+    }
+
     [Fact] // Model odpowiedzial niepusto -> serwer NICZEGO nie dokleja (zdanie zastepcze tylko na pustke).
     public async Task Smalltalk_nonempty_output_is_not_modified()
     {

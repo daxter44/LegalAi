@@ -741,6 +741,14 @@ app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever re
 
         await SendSafe("stage", new { stage = "llm", label = "Piszę odpowiedź…", count = (int?)sources.Count });
 
+        // US-2.11 (AI Act art. 50 ust. 2): oznaczenie pochodzenia PRZED pierwszym tokenem — parytet
+        // z ProvenanceEvent w ChatService (tor Blazora); bez tego SSE byłby ścieżką bez oznaczenia.
+        await Send("provenance", new
+        {
+            aiGenerated = true, model = llm.ModelId, system = ChatService.SystemId,
+            generatedAt = DateTimeOffset.UtcNow, grounded = true,
+        });
+
         var full = new StringBuilder();
         var llmSw = System.Diagnostics.Stopwatch.StartNew();
         var firstTokenMs = -1L;

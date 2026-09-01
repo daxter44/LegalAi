@@ -11,7 +11,7 @@ public sealed record ConversationSummary(Guid Id, string Title, DateTimeOffset U
 /// <summary>Wiadomość wczytana z historii — do odtworzenia rozmowy w UI.</summary>
 public sealed record StoredMessage(
     Guid Id, string Role, string Content, IReadOnlyList<ChatSource> Sources,
-    bool Abstained, bool? CitationClean, string? Model);
+    bool Abstained, bool? CitationClean, string? Model, DateTimeOffset CreatedAt = default);
 
 /// <summary>Trwały zapis i ODCZYT rozmów, wiadomości i feedbacku (FE-4). Materiał do golden setu
 /// i kalibracji + historia czatów w UI. Odczyt zawsze filtrowany po <c>userId</c> po stronie serwera
@@ -90,7 +90,7 @@ public sealed class ConversationStore(IServiceScopeFactory scopeFactory) : IConv
             .ToListAsync(ct);
         return rows.Select(m => new StoredMessage(
             m.Id, m.Role, m.Content, ParseSources(m.RetrievedSources),
-            m.Abstained, m.CitationClean, m.Model)).ToList();
+            m.Abstained, m.CitationClean, m.Model, m.CreatedAt)).ToList();
     }
 
     /// <summary>

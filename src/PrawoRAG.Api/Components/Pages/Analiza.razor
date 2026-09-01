@@ -68,7 +68,9 @@
     </div>
 </aside>
 
-<div class="analysis">
+@* US-2.11: raport analizy (werdykty + streszczenie) jest treścią generowaną — oznaczenie na
+   kontenerze, gdy raport istnieje (ekran startowy bez atrybutu: null pomija atrybut). *@
+<div class="analysis" data-ai-generated="@(Snap() is null ? null : "true")">
 @if (Snap() is not { } snap)
 {
     @* ── Ekran startowy: załącznik + intencja ─────────────────────────────── *@
@@ -303,7 +305,11 @@ else
             @foreach (var ex in _followUps)
             {
                 <div class="msg msg-user">@ex.Question</div>
-                <div class="msg msg-assistant">
+                @* US-2.11 (AI Act art. 50 ust. 2): maszynowe oznaczenie pochodzenia — jak w Chat.razor. *@
+                <div class="msg msg-assistant"
+                     data-ai-generated="@((!ex.Abstained).ToString().ToLowerInvariant())"
+                     data-ai-model="@ex.Model"
+                     data-ai-generated-at="@(ex.GeneratedAt?.ToString("O"))">
                     @if (ex.Abstained)
                     {
                         <div class="banner banner-warn" role="status">@ex.AbstainMessage</div>
@@ -720,6 +726,8 @@ else
                     case SourcesEvent s: ex.Sources = s.Sources; break;
                     case TokenEvent t: ex.Answer += t.Text; break;
                     case AbstainEvent a: ex.Abstained = true; ex.AbstainMessage = a.Message; break;
+                    // US-2.11: oznaczenie pochodzenia — model i czas generacji (atrybuty data-ai-*).
+                    case ProvenanceEvent p: ex.Model = p.Model; ex.GeneratedAt = p.GeneratedAt; break;
                     case DoneEvent d: ex.Done = true; break;
                     case ChatErrorEvent err: ex.Error = err.Message; break;
                 }
@@ -791,5 +799,7 @@ else
         public bool Streaming { get; set; }
         public bool Done { get; set; }
         public string? Error { get; set; }
+        public string? Model { get; set; }
+        public DateTimeOffset? GeneratedAt { get; set; }
     }
 }

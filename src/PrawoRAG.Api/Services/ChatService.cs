@@ -229,6 +229,12 @@ public sealed class ChatService(
         CitationCheck check;
         string answer;
 
+        // US-2.11 (AI Act art. 50 ust. 2): oznaczenie pochodzenia PRZED pierwszym tokenem, RAZ na turę
+        // (pętla naprawcza niżej nie emituje drugiego — to wciąż ta sama generowana odpowiedź).
+        yield return new ProvenanceEvent(
+            AiGenerated: true, Model: llm.ModelId, System: SystemId,
+            GeneratedAt: DateTimeOffset.UtcNow, Grounded: true);
+
         while (true)
         {
             yield return new StageEvent("llm", regenerated ? "Poprawiam odpowiedź…" : "Piszę odpowiedź…",
@@ -387,6 +393,11 @@ public sealed class ChatService(
         LlmUsage? usage = null;
         request = request with { OnUsage = u => usage = u };
 
+        // US-2.11: oznaczenie pochodzenia także na ścieżce bez retrievalu (Grounded=false).
+        yield return new ProvenanceEvent(
+            AiGenerated: true, Model: llm.ModelId, System: SystemId,
+            GeneratedAt: DateTimeOffset.UtcNow, Grounded: false);
+
         var emptyOutput = true;
         await foreach (var delta in llm.StreamCompletionAsync(request, ct))
         {
@@ -405,6 +416,12 @@ public sealed class ChatService(
         // wie, że nie może pokazać badge'a „cytaty zgodne" — bo nie było cytatów.
         yield return new DoneEvent(Abstained: false, Model: llm.ModelId, Check: null, Usage: usage);
     }
+
+    /// <summary>Identyfikator naszego SYSTEMU (nie modelu) do oznaczenia pochodzenia — AI Act
+    /// art. 50 ust. 2 adresuje dostawcę systemu, więc oznaczenie mówi „kto wygenerował", nie tylko
+    /// „którym modelem".</summary>
+    internal static readonly string SystemId =
+        $"OmniaSI/{typeof(ChatService).Assembly.GetName().Version?.ToString(3) ?? "dev"}";
 
     private static string Snippet(string text, int max = 300) =>
         text.Length <= max ? text : text[..max] + "…";

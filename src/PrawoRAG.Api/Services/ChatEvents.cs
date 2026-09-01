@@ -39,6 +39,16 @@ public sealed record DocSource(int Index, string Snippet);
 /// <summary>Fragmenty załącznika użyte w tej turze — emitowane PRZED generacją, obok SourcesEvent.</summary>
 public sealed record DocSourcesEvent(string FileName, IReadOnlyList<DocSource> Fragments) : ChatEvent;
 
+/// <summary>
+/// Maszynowe oznaczenie pochodzenia treści (US-2.11, AI Act art. 50 ust. 2 — obowiązek DOSTAWCY
+/// SYSTEMU, niezależny od dostawcy modelu; projekt w ANALIZA-AI-ACT.md §6). Emitowane RAZ,
+/// PRZED pierwszym tokenem — konsument, który urwie strumień w połowie, i tak musi dostać
+/// oznaczenie. Parytet torów: to samo zdarzenie idzie w Blazorze (ChatService) i w SSE
+/// (/api/chat), inaczej powstałaby ścieżka bez oznaczenia.
+/// </summary>
+public sealed record ProvenanceEvent(
+    bool AiGenerated, string? Model, string System, DateTimeOffset GeneratedAt, bool Grounded) : ChatEvent;
+
 /// <summary>Kolejny fragment odpowiedzi LLM (streaming token po tokenie).</summary>
 public sealed record TokenEvent(string Text) : ChatEvent;
 

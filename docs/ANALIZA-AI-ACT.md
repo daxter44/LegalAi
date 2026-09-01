@@ -98,7 +98,7 @@ poza wysokim ryzykiem, a jego brak zostawia sprawę otwartą.
 | | Adresat informacji | Czego wymaga | Stan |
 |---|---|---|---|
 | **ust. 1** | człowiek | ma wiedzieć, że rozmawia z AI | **mamy** |
-| **ust. 2** | maszyna | treść oznaczona **w formacie odczytywalnym maszynowo** | **nie mamy** |
+| **ust. 2** | maszyna | treść oznaczona **w formacie odczytywalnym maszynowo** | **MAMY (kod, 2026-09-01)**: `ProvenanceEvent` przed pierwszym tokenem (Blazor + SSE, parytet), atrybuty `data-ai-*` na odpowiedziach czatu/analizy (świeżych i odtworzonych z historii), etykieta „Treść wygenerowana przez AI" w banerze — wg projektu §6; treści-deklaracje nadal w bloku treści |
 
 ### 5.1. Ustęp 1 — mamy
 
