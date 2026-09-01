@@ -293,7 +293,21 @@ public sealed class ChatService(
                     // generowałaby na gorszym kontekście niż pierwsza.
                     if (!AbstentionPolicy.ShouldAbstain(retryOutcome.Result, o.AbstentionThreshold))
                     {
-                        chunks = GroundedPrompt.OrderForGrounding(retryOutcome.Result.Chunks);
+                        // Lustro rundy 1 (diagnoza 2026-09-01): druga runda POMIJAŁA TemporalAugmenter,
+                        // więc nowele wracały bez markera [NOWELIZACJA] dokładnie tam, gdzie pomoc jest
+                        // najpotrzebniejsza (pierwsza generacja już poległa na dwóch wersjach przepisu).
+                        // Best-effort jak w rundzie 1; PRZED OrderForGrounding, żeby dołożone nowele
+                        // weszły w porządek PRZEPISY→ORZECZNICTWO i numerację [n] walidatora.
+                        var retryChunks = retryOutcome.Result.Chunks;
+                        yield return new StageEvent("augment", "Sprawdzam nowelizacje…", retryChunks.Count);
+                        try
+                        {
+                            retryChunks = await LatencyLog.TimeAsync("augment.retry",
+                                () => augmenter.AugmentAsync(query, retryChunks, ct));
+                        }
+                        catch { /* best-effort */ }
+
+                        chunks = GroundedPrompt.OrderForGrounding(retryChunks);
                         (request, sources) = GroundedPrompt.Build(question, chunks, history, docTexts);
                         contextTexts = chunks
                             .Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();

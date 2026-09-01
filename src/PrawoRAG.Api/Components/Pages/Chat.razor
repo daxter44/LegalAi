@@ -161,9 +161,22 @@
                        domknęło pytania, i CZEGO szukaliśmy zamiast tego (to wyjaśnia dodatkowy czas). *@
                     @if (ex.RetriedQuery is { } retried)
                     {
-                        <div class="retry-note" role="note">
-                            🔁 Źródła z pierwszego wyszukiwania nie domykały pytania — szukałem też:
-                            <em>@retried</em>
+                        @* Na żywo: jawny komunikat „nie znalazłem dla tego brzmienia, ale DALEJ PRACUJĘ
+                           nad przeformułowanym pytaniem" (decyzja 2026-09-01) — kluczowe, żeby czyszczenie
+                           tekstu rundy 1 czytało się jako zmiana strategii, nie wysypanie się systemu.
+                           Po zakończeniu tury adnotacja zostaje w czasie przeszłym. *@
+                        <div class="retry-note" role="status">
+                            @if (ex.Streaming)
+                            {
+                                <span class="work-spinner" aria-hidden="true"></span>
+                                <span>Dla tak zadanego pytania nie znalazłem jednoznacznej podstawy prawnej —
+                                    przeformułowałem je i <strong>szukam dalej</strong>: <em>@retried</em></span>
+                            }
+                            else
+                            {
+                                <span>🔁 Dla pierwotnego brzmienia pytania nie znalazłem jednoznacznej podstawy
+                                    prawnej — szukałem też: <em>@retried</em></span>
+                            }
                         </div>
                     }
 
@@ -768,10 +781,13 @@
                     case NoRetrievalEvent nr: ex.NoRetrievalReason = nr.Reason; break;
                     // US-2.11: oznaczenie pochodzenia — model i czas generacji na turze (atrybuty data-ai-*).
                     case ProvenanceEvent p: ex.Model ??= p.Model; ex.GeneratedAt = p.GeneratedAt; break;
-                    // Bramka zawróciła odpowiedź: czyścimy tekst, żeby druga wersja nie dopisała się
-                    // do pierwszej (brudnej) — użytkownik ma zobaczyć poprawioną odpowiedź, nie sklejkę.
-                    case RegeneratingEvent: ex.Answer = ""; ex.Regenerated = true; break;
-                    case RetryingRetrievalEvent rr: ex.RetriedQuery = rr.NewQuery; break;
+                    // Bramka zawróciła odpowiedź: czyścimy tekst I rozumowanie, żeby druga wersja nie
+                    // dopisała się do pierwszej (brudnej) — użytkownik ma zobaczyć poprawkę, nie sklejkę.
+                    case RegeneratingEvent: ex.Answer = ""; ex.Reasoning = ""; ex.Regenerated = true; break;
+                    // Druga runda na NOWYCH źródłach (diagnoza 2026-09-01): też czyścimy — bez tego tekst
+                    // i rozumowanie rundy 2 doklejały się do rundy 1. Widok przejmuje ŻYWA adnotacja retry
+                    // (markup niżej): użytkownik ma widzieć zmianę strategii i dalszą pracę, nie awarię.
+                    case RetryingRetrievalEvent rr: ex.RetriedQuery = rr.NewQuery; ex.Answer = ""; ex.Reasoning = ""; break;
                     case SourcesEvent s: ex.Sources = s.Sources; _activeAnchor = ex.AnchorId; break;
                     case DocSourcesEvent d: ex.DocFileName = d.FileName; ex.DocFragments = d.Fragments; break;
                     case TokenEvent t: ex.Answer += t.Text; break;

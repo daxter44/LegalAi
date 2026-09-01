@@ -158,12 +158,15 @@ body {
     border: 1px dashed var(--c-border); border-radius: 999px; padding: 0 var(--s-2);
 }
 
-/* Druga runda retrievalu (pętla domykająca lukę) — informacja, nie ostrzeżenie. */
+/* Druga runda retrievalu (pętla domykająca lukę) — informacja, nie ostrzeżenie. Na żywo niesie
+   spinner („szukam dalej…"), po zakończeniu zostaje jako notka w czasie przeszłym. */
 .retry-note {
+    display: flex; align-items: flex-start; gap: var(--s-2);
     margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--radius-sm);
     background: var(--c-surface); border-left: 3px solid var(--c-border);
     font-size: var(--fs-13); color: var(--c-text-muted);
 }
+.retry-note .work-spinner { margin-top: 3px; }
 .retry-note em { color: var(--c-text); font-style: normal; font-weight: 600; }
 
 .badge { font-size: var(--fs-12); padding: 1px var(--s-2); border-radius: 999px; font-weight: 600; }

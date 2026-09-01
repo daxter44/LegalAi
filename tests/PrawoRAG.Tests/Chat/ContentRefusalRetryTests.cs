@@ -48,6 +48,22 @@ public class ContentRefusalRetryTests
             => Task.FromResult(retrieved);
     }
 
+    /// <summary>Augmenter liczący wywołania i doklejający rozpoznawalny chunk-nowelę — dowód, że
+    /// ścieżka faktycznie przeszła przez augmenter (diagnoza 2026-09-01: druga runda go pomijała).</summary>
+    private sealed class MarkingAugmenter : ITemporalAugmenter
+    {
+        public int Calls { get; private set; }
+
+        public Task<IReadOnlyList<RetrievedChunk>> AugmentAsync(
+            RetrievalQuery query, IReadOnlyList<RetrievedChunk> retrieved, CancellationToken ct)
+        {
+            Calls++;
+            IReadOnlyList<RetrievedChunk> result =
+                [.. retrieved, Chunk($"[NOWELIZACJA-TEST-{Calls}] dołożona przez augmenter")];
+            return Task.FromResult(result);
+        }
+    }
+
     private sealed class SequenceLlm(params string[] answers) : ILlmProvider
     {
         private int _call;
@@ -75,8 +91,8 @@ public class ContentRefusalRetryTests
 
     private static ChatService Service(
         IRetriever retriever, ILlmProvider llm, IQueryReformulator? reformulator,
-        bool gapClosing = true, int maxExtraRounds = 1) =>
-        new(retriever, new NoOpAugmenter(), llm,
+        bool gapClosing = true, int maxExtraRounds = 1, ITemporalAugmenter? augmenter = null) =>
+        new(retriever, augmenter ?? new NoOpAugmenter(), llm,
             Options.Create(new RetrievalOptions
             {
                 GapClosingEnabled = gapClosing,
@@ -95,6 +111,26 @@ public class ContentRefusalRetryTests
     /// <summary>Wynik z pokryciem — bramka progowa go przepuszcza, więc odmowa może przyjść
     /// wyłącznie z TREŚCI odpowiedzi.</summary>
     private static RetrievalResult Covered(string text) => new([Chunk(text)], 0.9);
+
+    [Fact] // Diagnoza 2026-09-01: druga runda POMIJALA TemporalAugmenter — nowele wracaly bez markera
+           // [NOWELIZACJA] dokladnie tam, gdzie pierwsza generacja juz polegla. Augmenter ma byc
+           // wolany w OBU rundach, a jego chunki maja wejsc do zrodel drugiej generacji.
+    public async Task Second_round_passes_through_temporal_augmenter()
+    {
+        var retriever = new CountingRetriever(
+            Covered("nietrafiony przepis"),
+            Covered("art. 5 w dwoch wersjach"));
+        var llm = new SequenceLlm(AbstentionPolicy.Message, "Limit wynosi 225% kwartalnie [1].");
+        var augmenter = new MarkingAugmenter();
+
+        var events = await Drain(Service(retriever, llm, new CountingReformulator("limit przychodu"),
+                augmenter: augmenter)
+            .AskAsync("Do jakich obrotów…?", [], null, default));
+
+        Assert.Equal(2, augmenter.Calls); // runda 1 + runda 2 (lustro, nie tylko pierwsza)
+        var lastSources = events.OfType<SourcesEvent>().Last();
+        Assert.Contains(lastSources.Sources, s => s.Snippet.Contains("NOWELIZACJA-TEST-2"));
+    }
 
     [Fact] // Odmowa TRESCIOWA => przeformulowanie, druga runda, druga generacja na NOWYCH zrodlach.
     public async Task Content_refusal_triggers_second_round()
