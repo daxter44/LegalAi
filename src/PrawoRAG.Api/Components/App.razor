@@ -6,7 +6,8 @@
     <base href="/" />
     <link rel="stylesheet" href="css/tokens.css" />
     <link rel="stylesheet" href="css/app.css" />
-    <link rel="stylesheet" href="PrawoRAG.Api.styles.css" />
+    @* Bez linku do PrawoRAG.Api.styles.css: projekt nie ma scoped CSS (*.razor.css), więc bundel
+       nie powstaje i odnośnik kończył się 404 przy każdym wejściu. *@
     <title>OmniaSI — asystent researchu prawnego</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <HeadOutlet />
