@@ -1,83 +1,119 @@
 @page "/o-systemie"
 @attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@inject Microsoft.Extensions.Options.IOptions<AnalysisOptions> Analysis
+@inject Microsoft.Extensions.Options.IOptions<DocumentsOptions> Documents
+@inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.Plans.PlanOptions> Plans
 
 @* Strona informacyjna, PUBLICZNA (bez logowania) — ma być czytelna przed rejestracją, nie tylko
-   dla zalogowanych. Statyczna (SSR, bez rendermode) — zero interaktywności, szybkie ładowanie. *@
+   dla zalogowanych. Statyczna (SSR, bez rendermode) — zero interaktywności, szybkie ładowanie.
+   Przebudowa 2026-09-01: stylistyka sekcji landingu (eyebrow + karty bento + ciemna karta USP),
+   treść zaktualizowana do stanu po testach (konta i plany zamiast kodów zaproszeń); funkcje za
+   flagami (analiza, załącznik PDF) pokazują się tylko, gdy flaga jest włączona. *@
 
 <PageTitle>OmniaSI — o systemie</PageTitle>
 
 <article class="about">
-    <h1>OmniaSI — asystent researchu prawnego</h1>
-    <p class="about-lead">
-        PrawoRAG odpowiada na pytania prawne <strong>wyłącznie na podstawie źródeł, które pokazuje pod
-        odpowiedzią</strong> — przepisów i orzeczeń, z odnośnikami do oryginałów. Jeśli nie ma źródeł,
-        <strong>mówi wprost, że nie wie</strong>, zamiast zmyślać. To odróżnia go od zwykłych czatów AI,
-        które potrafią z pełnym przekonaniem przywołać nieistniejący paragraf.
-    </p>
+    <header class="about-hero">
+        <span class="about-eyebrow"><i></i>Asystent researchu prawnego · dane i modele w UE</span>
+        <h1>Zna źródła każdej swojej odpowiedzi.</h1>
+        <p class="about-lead">
+            OmniaSI odpowiada na pytania prawne <strong>wyłącznie na podstawie źródeł, które pokazuje
+            pod odpowiedzią</strong> — przepisów i orzeczeń, z odnośnikami do oryginałów. Gdy podstawy
+            brakuje, <strong>mówi to wprost</strong> — zamiast, jak zwykłe czaty AI, z pełnym
+            przekonaniem przywołać nieistniejący paragraf.
+        </p>
+    </header>
 
-    <section class="about-card">
-    <h2>Co system umie</h2>
-    <ul>
-        <li><strong>Treść przepisów</strong> — pytania w rodzaju „co mówi art. 52 Kodeksu pracy?" albo
-            opisowe: „kiedy pracodawca może zwolnić bez wypowiedzenia?". Korpus obejmuje główne kodeksy
-            (KC, KPC, KK, KPK, KP i inne) w <em>aktualnych tekstach jednolitych</em>.</li>
-        <li><strong>Świeże nowelizacje</strong> — gdy pytany przepis zmieniła nowela, której nie ma jeszcze
-            w żadnym tekście jednolitym, system dokłada ją do odpowiedzi z oznaczeniem
-            <em>„NOWELIZACJA — obowiązuje od…"</em>. Tego nie robi większość narzędzi.</li>
-        <li><strong>Orzecznictwo</strong> — wyszukiwanie orzeczeń sądów apelacyjnych (baza SAOS)
-            po temacie lub sygnaturze.</li>
-        <li><strong>Dopytania</strong> — w ramach rozmowy można drążyć temat („a co z § 2?", „rozwiń") —
-            system pamięta kontekst rozmowy.</li>
-        <li><strong>Historia rozmów</strong> — poprzednie rozmowy są zapisane na pasku bocznym;
-            „Nowa rozmowa" zaczyna od zera (nowy temat = nowa rozmowa, będzie trafniej).</li>
-    </ul>
+    <div class="about-grid">
+        <section class="about-card">
+            <span class="about-k">Co system umie</span>
+            <ul class="about-checks">
+                <li><strong>Treść przepisów</strong> — pytania wprost („co mówi art. 52 Kodeksu pracy?")
+                    albo opisowe („kiedy pracodawca może zwolnić bez wypowiedzenia?"). Ustawy i kodeksy
+                    w <em>aktualnych tekstach jednolitych</em>.</li>
+                <li><strong>Świeże nowelizacje</strong> — gdy pytany przepis zmieniła nowela, której nie ma
+                    jeszcze w żadnym tekście jednolitym, system dokłada ją do odpowiedzi z oznaczeniem
+                    <em>„NOWELIZACJA — obowiązuje od…"</em>. Tego nie robi większość narzędzi.</li>
+                <li><strong>Prawo Unii Europejskiej</strong> — rozporządzenia i dyrektywy od 2004 r.
+                    (m.in. RODO, AI Act, DSA), obok prawa polskiego w jednej odpowiedzi.</li>
+                <li><strong>Orzecznictwo</strong> — orzeczenia sądów apelacyjnych (baza SAOS)
+                    po temacie lub sygnaturze.</li>
+                <li><strong>Dopytania i historia</strong> — w rozmowie można drążyć temat („a co z § 2?",
+                    „rozwiń"); poprzednie rozmowy czekają na pasku bocznym.</li>
+                @if (Documents.Value.Enabled)
+                {
+                    <li><strong>Załącznik PDF do pytania</strong> — umowa czy pismo jako kontekst faktów;
+                        podstawę prawną system i tak cytuje wyłącznie ze źródeł.</li>
+                }
+                @if (Analysis.Value.Enabled)
+                {
+                    <li><strong>Analiza dokumentu</strong> — PDF sprawdzany fragment po fragmencie,
+                        z werdyktem i źródłami dla każdej jednostki.</li>
+                }
+            </ul>
+        </section>
 
-    </section>
+        <section class="about-card about-card-dark">
+            <span class="about-k about-k-dark">Gdy brak podstawy prawnej</span>
+            <h2>Mówi wprost, że nie wie.</h2>
+            <p>Jeśli znalezione przepisy i orzeczenia nie odpowiadają na pytanie, OmniaSI odmawia,
+               zamiast zmyślać: <em>„Nie znalazłem jednoznacznej podstawy prawnej dla tego pytania."</em></p>
+            <p>Każda odpowiedź przechodzi automatyczną kontrolę cytowań — odpowiedź powołująca się na
+               przepisy, których nie ma w źródłach, w ogóle nie wychodzi.</p>
+            <p>Czasem system bywa nadostrożny i odmawia, mimo że odpowiedź jest w korpusie — kliknięcie
+               „niepotrzebna odmowa" pod odpowiedzią realnie go kalibruje.</p>
+        </section>
 
-    <section class="about-card">
-    <h2>Czego system NIE umie (jeszcze)</h2>
-    <ul>
-        <li><strong>Korpus jest ograniczony</strong> — główne kodeksy, prawo UE (rozporządzenia
-            i dyrektywy od 2004 r., np. RODO, AI Act, DSA) i wycinek orzecznictwa apelacyjnego.
-            Nie ma m.in.: prawa UE sprzed 2004 r., interpretacji podatkowych, orzeczeń SN po 2016 r.,
-            komentarzy i literatury. Pytanie spoza korpusu → uczciwa odmowa.</li>
-        <li><strong>Nie przyjmuje jeszcze własnych dokumentów</strong> — dołączanie PDF do pytania
-            (umowa, pismo, wyrok) i osobna analiza dokumentu fragment po fragmencie są w przygotowaniu,
-            na razie wyłączone.</li>
-        <li><strong>Nie pisze pism procesowych</strong> — to research, nie kancelaryjny kombajn.</li>
-        <li><strong>Bywa nadostrożny</strong> — czasem odmówi, mimo że odpowiedź jest w korpusie.
-            Taka odmowa to dla nas cenna informacja — proszę kliknąć „niepotrzebna odmowa".</li>
-    </ul>
+        <section class="about-card">
+            <span class="about-k">Granice korpusu</span>
+            <ul class="about-limits">
+                <li>Nie ma m.in.: prawa UE sprzed 2004 r., interpretacji podatkowych, orzeczeń SN
+                    po 2016 r., komentarzy ani literatury. Pytanie spoza korpusu kończy się odmową,
+                    nie zgadywaniem.</li>
+                <li>Nie pisze pism procesowych — to research, nie kancelaryjny kombajn.</li>
+                @if (!Documents.Value.Enabled && !Analysis.Value.Enabled)
+                {
+                    <li>Nie przyjmuje jeszcze własnych dokumentów (PDF do pytania i analiza dokumentu
+                        są w przygotowaniu).</li>
+                }
+                <li>Odpowiedź to <strong>wstępny research do weryfikacji przez prawnika</strong> —
+                    nie porada prawna.</li>
+            </ul>
+        </section>
 
-    </section>
+        <section class="about-card">
+            <span class="about-k">Jak czytać odpowiedź</span>
+            <ul class="about-checks">
+                <li>Każda teza ma numer źródła <strong>[1], [2]…</strong> — kliknięcie otwiera panel
+                    źródeł z fragmentami i linkami do ISAP, EUR-Lex i SAOS. <strong>Zawsze warto
+                    zweryfikować przy oryginale.</strong></li>
+                <li><strong>„✓ cytaty zgodne"</strong> — automatyczna kontrola potwierdziła, że przywołane
+                    przepisy i sygnatury faktycznie są w pokazanych źródłach.
+                    <strong>„⚠ cytaty do sprawdzenia"</strong> — kontrola coś zakwestionowała, wskazana
+                    szczególna ostrożność.</li>
+                <li><strong>Oceny odpowiedzi</strong> (👍 / „zła odpowiedź" / „niepotrzebna odmowa") —
+                    każda ocena pomaga kalibrować system.</li>
+            </ul>
+        </section>
 
-    <section class="about-card">
-    <h2>Jak czytać odpowiedź</h2>
-    <ul>
-        <li>Każda teza ma numer źródła <strong>[1], [2]…</strong> — pod odpowiedzią jest panel źródeł
-            z fragmentami i linkami do ISAP/SAOS. <strong>Zawsze można (i warto) zweryfikować przy
-            oryginale</strong> — odpowiedź to wstępny research, nie porada prawna.</li>
-        <li>Znacznik <strong>„✓ cytaty zgodne"</strong> = automatyczna kontrola potwierdziła, że przywołane
-            przepisy i sygnatury faktycznie są w pokazanych źródłach.
-            <strong>„⚠ cytaty do sprawdzenia"</strong> = kontrola coś zakwestionowała — proszę o szczególną
-            ostrożność (i kliknięcie oceny).</li>
-    </ul>
+        <section class="about-card about-card-wide">
+            <span class="about-k">Prywatność i limity</span>
+            <ul class="about-checks">
+                <li><strong>Twoje pytania i dokumenty nie trenują żadnego modelu.</strong> Dane i modele
+                    działają w Unii Europejskiej.</li>
+                <li>Nie wpisuj danych osobowych klientów ani szczegółów spraw — pytaj o stan prawny,
+                    nie o konkretne sprawy.</li>
+                <li>Liczba zapytań zależy od planu: <strong>Start — @FreeLimit/mies.</strong>,
+                    <strong>Pro — @ProLimit/mies.</strong> Bieżące zużycie widać w stopce paska
+                    bocznego i na stronie konta.</li>
+            </ul>
+        </section>
+    </div>
 
-    </section>
-
-    <section class="about-card">
-    <h2>Prośby do testujących</h2>
-    <ul>
-        <li>Pytać pełnym zdaniem, po polsku; jeśli znany jest akt — wskazać go („…w rozumieniu KPC").</li>
-        <li><strong>Oceniać odpowiedzi</strong> (👍 / „zła odpowiedź" / „niepotrzebna odmowa") — każda
-            ocena realnie kalibruje system.</li>
-        <li><strong>Nie wpisywać danych osobowych klientów ani szczegółów spraw</strong> — pytania o stan
-            prawny, nie o konkretne sprawy. Rozmowy są zapisywane na potrzeby poprawy jakości.</li>
-        <li>Obowiązuje dzienny limit zapytań (test ma twardy budżet) — po jego wyczerpaniu system
-            poprosi o powrót jutro.</li>
-    </ul>
-
-    </section>
-
-    <p><a class="btn btn-primary about-cta" href="/czat">Przejdź do czatu →</a></p>
+    <p class="about-cta-row"><a class="btn btn-primary about-cta" href="/czat">Przejdź do czatu →</a></p>
 </article>
+
+@code {
+    private int FreeLimit => Plans.Value.Resolve(PrawoRAG.Api.Services.Plans.PlanIds.Free).RequestsPerMonth;
+    private int ProLimit => Plans.Value.Resolve(PrawoRAG.Api.Services.Plans.PlanIds.Pro).RequestsPerMonth;
+}

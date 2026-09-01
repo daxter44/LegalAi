@@ -242,20 +242,48 @@ body {
 .app-nav a { color: #9BA3B7; font-size: var(--fs-15); font-weight: 500; text-decoration: none; white-space: nowrap; transition: color var(--sl-transition-fast); }
 .app-nav a:hover { color: var(--sl-on-dark); }
 .app-nav a.active { color: var(--sl-on-dark); font-weight: 600; }
-/* O systemie — retusz RED-4.4: nagłówki display, sekcje jako karty (spójne z resztą aplikacji). */
-.about { width: 100%; max-width: 760px; line-height: 1.6; }
-.about h1 { font-family: var(--sl-font-display); font-size: var(--fs-30); letter-spacing: -0.01em; margin-bottom: var(--s-3); }
-.about-lead { font-size: var(--fs-16); color: var(--sl-text-secondary); margin: 0 0 var(--s-5); }
+/* O systemie — przebudowa 2026-09-01 w stylistyce sekcji landingu:
+   eyebrow + display h1 w hero, siatka kart bento z kickerami, ciemna karta USP (odmowa). */
+.about { width: 100%; max-width: 960px; line-height: 1.65; }
+.about-hero { text-align: center; padding: var(--s-8) 0 var(--s-10); }
+.about-eyebrow {
+    display: inline-flex; align-items: center; gap: 10px; padding: 6px 16px;
+    border-radius: var(--sl-radius-full); border: 1px solid rgb(37 99 235 / .25);
+    background: var(--sl-accent-light); color: var(--sl-accent);
+    font-size: var(--fs-13); font-weight: 600;
+}
+.about-eyebrow i { width: 7px; height: 7px; border-radius: var(--sl-radius-full); background: var(--sl-accent); }
+.about-hero h1 {
+    font-family: var(--sl-font-display); font-size: clamp(1.9rem, 4.5vw, 2.9rem);
+    line-height: 1.15; letter-spacing: -0.015em; margin: var(--s-5) auto 0; max-width: 22ch;
+}
+.about-lead { font-size: var(--fs-16); color: var(--sl-text-secondary); max-width: 62ch; margin: var(--s-4) auto 0; }
+.about-grid { display: grid; gap: var(--s-5); grid-template-columns: 1fr; }
+@media (min-width: 900px) {
+    .about-grid { grid-template-columns: 1fr 1fr; }
+    .about-card-wide { grid-column: span 2; }
+}
 .about-card {
     background: var(--sl-surface); border-radius: var(--sl-radius-xl); box-shadow: var(--sl-shadow-card);
-    padding: var(--s-6) var(--s-8); margin: 0 0 var(--s-5);
+    padding: var(--s-6) var(--s-8); display: flex; flex-direction: column; gap: var(--s-3);
 }
-.about-card h2 { font-family: var(--sl-font-display); font-size: var(--fs-20); letter-spacing: -0.01em; margin: 0 0 var(--s-3); }
-.about-card ul { margin: 0; padding-left: 1.2rem; }
-.about li { margin-bottom: var(--s-2); }
-.about li::marker { color: var(--sl-accent); }
-.about-cta { display: inline-block; text-decoration: none; padding: var(--s-2) var(--s-4); margin-top: var(--s-2); }
-@media (max-width: 640px) { .about-card { padding: var(--s-4) var(--s-5); } }
+.about-k {
+    font-size: var(--fs-12); font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--sl-accent);
+}
+.about-card h2 { font-family: var(--sl-font-display); font-size: var(--fs-24); line-height: 1.25; letter-spacing: -0.01em; margin: 0; }
+.about-card ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s-3); }
+.about-card li { padding-left: 1.5rem; position: relative; font-size: var(--fs-15); color: var(--sl-text-secondary); }
+.about-card li strong { color: var(--sl-text-primary); }
+.about-checks li::before { content: "\2713"; position: absolute; left: 0; color: var(--sl-success); font-weight: 700; }
+.about-limits li::before { content: "\2013"; position: absolute; left: 0; color: var(--sl-text-tertiary); font-weight: 700; }
+.about-card-dark { background: var(--sl-hero-gradient); color: var(--sl-on-dark); box-shadow: var(--sl-shadow-lg); }
+.about-card-dark p { margin: 0; color: var(--sl-on-dark-soft); font-size: var(--fs-15); }
+.about-card-dark em { color: var(--sl-on-dark); font-style: italic; }
+.about-k-dark { color: var(--sl-on-dark-accent); }
+.about-cta-row { text-align: center; margin: var(--s-8) 0 var(--s-4); }
+.about-cta { display: inline-block; text-decoration: none; padding: var(--s-3) var(--s-6); font-weight: 700; border-radius: var(--sl-radius-lg); }
+@media (max-width: 640px) { .about-card { padding: var(--s-4) var(--s-5); } .about-hero { padding: var(--s-5) 0 var(--s-6); } }
 
 /* Diagnostyka: badge tokenów in/out (widoczny tylko z flagą Diagnostics:ShowTokenUsage) */
 .badge-tokens { background: var(--c-accent-weak); color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
