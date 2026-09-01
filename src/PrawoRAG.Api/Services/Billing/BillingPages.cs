@@ -28,19 +28,25 @@ public static class BillingPages
         <link rel="stylesheet" href="/css/tokens.css">
         <style>
           body{font-family:var(--sl-font-base);background:var(--sl-bg);color:var(--sl-text-primary);margin:0;line-height:var(--lh-body)}
-          .topbar{display:flex;align-items:center;gap:var(--s-6);padding:var(--s-3) var(--s-10);
-                  background:var(--sl-surface);border-bottom:1px solid var(--sl-border)}
-          .brand{display:flex;align-items:center;gap:var(--s-2);text-decoration:none;color:inherit;
+          /* Topbar 1:1 z globalnym headerem aplikacji (app.css .app-header) — spójność 2026-09-01. */
+          .topbar{display:flex;align-items:center;gap:var(--s-6);min-height:60px;padding:0 var(--s-8);
+                  background:#171B24;border-bottom:1px solid rgb(199 208 236 / .12)}
+          .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--sl-on-dark);
                  font-family:var(--sl-font-display);font-size:var(--fs-20);font-weight:700;letter-spacing:-0.01em}
-          .brand .mark{width:22px;height:22px;border-radius:var(--sl-radius-md);background:var(--sl-gradient);display:inline-block}
-          .nav{display:flex;gap:var(--s-5);font-size:var(--fs-14)}
-          .nav a{color:var(--sl-text-secondary);text-decoration:none}
-          .nav a:hover{color:var(--sl-accent)}
-          .who{margin-left:auto;display:flex;align-items:center;gap:var(--s-3)}
-          .who .active{font-size:var(--fs-14);font-weight:600;color:var(--sl-accent)}
-          .avatar{width:30px;height:30px;border-radius:var(--sl-radius-full);background:var(--sl-bg-tertiary);
+          .brand .mark{width:26px;height:26px;border-radius:var(--sl-radius-md);background:var(--sl-gradient);
+                 box-shadow:0 0 24px rgb(37 99 235 / .6);display:inline-block}
+          .nav{margin-left:auto;display:flex;align-items:center;gap:var(--s-5);font-size:var(--fs-15)}
+          .nav a{color:#9BA3B7;font-weight:500;text-decoration:none;white-space:nowrap}
+          .nav a:hover{color:var(--sl-on-dark)}
+          .topbar a:focus-visible{outline:2px solid var(--sl-on-dark-accent);outline-offset:2px}
+          .who{display:flex;align-items:center;gap:var(--s-3)}
+          .who .active{font-size:var(--fs-15);font-weight:600;color:var(--sl-on-dark)}
+          .avatar{width:30px;height:30px;border-radius:var(--sl-radius-full);background:rgb(199 208 236 / .15);
                   display:inline-flex;align-items:center;justify-content:center;
-                  font-size:var(--fs-12);font-weight:700;color:var(--sl-text-secondary)}
+                  font-size:var(--fs-12);font-weight:700;color:var(--sl-on-dark-soft)}
+          @media(max-width:640px){
+            .topbar{gap:var(--s-4);padding:0 var(--s-4);overflow-x:auto}
+          }
           .content{max-width:48rem;margin:0 auto;padding:var(--s-10) var(--s-4);display:flex;flex-direction:column;gap:var(--s-5)}
           h1{font-family:var(--sl-font-display);font-size:var(--fs-30);letter-spacing:-0.01em;margin:0}
           .card{background:var(--sl-surface);border-radius:var(--sl-radius-xl);box-shadow:var(--sl-shadow-card);
@@ -87,6 +93,7 @@ public static class BillingPages
           <nav class="nav">
             <a href="/czat">Czat</a>
             {{(analysisEnabled ? """<a href="/analiza">Analiza</a>""" : "")}}
+            <a href="/o-systemie">O systemie</a>
           </nav>
           <span class="who"><span class="active">Konto</span><span class="avatar">{{E(initials)}}</span></span>
         </div>

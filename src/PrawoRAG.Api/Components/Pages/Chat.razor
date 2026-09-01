@@ -30,13 +30,8 @@
     <div class="sidebar-backdrop" @onclick="() => _mobileSidebarOpen = false"></div>
 }
 <aside class="chat-sidebar @(_mobileSidebarOpen ? "open" : "")">
-    @* Marka + przełącznik trybów w sidebarze (RED-2.1) — globalny header nie renderuje się na tym
-       ekranie (MainLayout.IsAppShellPage). Zakładka Analiza za flagą jak dotąd w headerze. *@
-    @* /start, nie "/" — "/" dla zalogowanego przekierowuje z powrotem do /czat. *@
-    <a class="side-brand" href="/start" title="Strona główna">
-        <span class="app-logo-mark" aria-hidden="true"></span>
-        <span class="app-title">OmniaSI</span>
-    </a>
+    @* Przełącznik trybów w sidebarze (RED-2.1). Marka zniknęła stąd 2026-09-01 — globalny header
+       (MainLayout) renderuje się teraz też na tym ekranie i niósłby ją podwójnie. *@
     <nav class="side-tabs" aria-label="Tryb pracy">
         <span class="side-tab active">Czat</span>
         @if (Analysis.Value.Enabled)

@@ -36,12 +36,7 @@
     <div class="sidebar-backdrop" @onclick="() => _mobileSidebarOpen = false"></div>
 }
 <aside class="chat-sidebar @(_mobileSidebarOpen ? "open" : "")">
-    @* Marka + przełącznik trybów jak w czacie (RED-3.1) — spójna nawigacja aplikacji. *@
-    @* /start, nie "/" — "/" dla zalogowanego przekierowuje z powrotem do /czat. *@
-    <a class="side-brand" href="/start" title="Strona główna">
-        <span class="app-logo-mark" aria-hidden="true"></span>
-        <span class="app-title">OmniaSI</span>
-    </a>
+    @* Przełącznik trybów jak w czacie (RED-3.1). Marka w globalnym headerze (2026-09-01). *@
     <nav class="side-tabs" aria-label="Tryb pracy">
         <a class="side-tab" href="/czat">Czat</a>
         <span class="side-tab active">Analiza</span>

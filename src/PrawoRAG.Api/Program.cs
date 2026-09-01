@@ -367,7 +367,7 @@ const string LandingHtml = """
     </style></head><body>
 
     <div class="nav">
-      <span class="brand"><span class="mark"></span> OmniaSI</span>
+      <a class="brand" href="/start" style="text-decoration:none"><span class="mark"></span> OmniaSI</a>
       <span class="links"><a href="#roznice">Czym się różnimy</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></span>
     </div>
 
