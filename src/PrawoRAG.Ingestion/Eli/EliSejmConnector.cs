@@ -130,7 +130,8 @@ public sealed class EliSejmConnector(
     /// sieci; para z <see cref="NewestConsolidatedText"/> (oba parsują te same <c>references</c>). Współdzielona
     /// przez <c>ActNormalizer</c> (budowa metadanych) i relink (AKT-5.2, odświeżanie listy w stanie ustalonym).
     /// </summary>
-    public static List<AmendmentRef> ExtractUnabsorbedAmendments(JsonElement p, string? tjId)
+    public static List<AmendmentRef> ExtractUnabsorbedAmendments(
+        JsonElement p, string? tjId, DateOnly? tjAnnouncedDate = null)
     {
         var list = new List<AmendmentRef>();
         if (tjId is null || p.ValueKind != JsonValueKind.Object
@@ -141,11 +142,28 @@ public sealed class EliSejmConnector(
         foreach (var el in arr.EnumerateArray())
         {
             var id = el.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : null;
-            if (id is null || !Consolidation.IsUnabsorbed(id, tjId)) continue;
+            if (id is null) continue;
+            // `date` w „Akty zmieniające" to data WEJŚCIA W ŻYCIE zmiany — razem z datą obwieszczenia
+            // t.j. domyka warunek vacatio legis (nowela ogłoszona przed t.j., wchodząca w życie po nim).
             var date = el.TryGetProperty("date", out var dEl) && dEl.ValueKind == JsonValueKind.String ? dEl.GetString() : null;
+            if (!Consolidation.IsUnabsorbed(id, tjId, date, tjAnnouncedDate)) continue;
             list.Add(new AmendmentRef(id, date));
         }
         return list;
+    }
+
+    /// <summary>Data obwieszczenia aktu (metadane ELI, klucz <c>announcementDate</c>; w odwodzie
+    /// <c>promulgation</c> — data ogłoszenia w Dz.U.). Dla obwieszczenia z tekstem jednolitym to
+    /// przybliżenie daty odcięcia stanu prawnego — wcześniejsza z dat = konserwatywnie (więcej
+    /// nowel zostaje na liście, świeżość nie ucierpi). Null, gdy dat brak/nieparsowalne.</summary>
+    public static DateOnly? PublicationDate(JsonElement meta)
+    {
+        if (meta.ValueKind != JsonValueKind.Object) return null;
+        foreach (var key in (string[])["announcementDate", "promulgation"])
+            if (meta.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.String
+                && DateOnly.TryParse(el.GetString(), out var d))
+                return d;
+        return null;
     }
 
     /// <summary>Pobiera SAME metadane aktu (JSON <c>acts/{addr}</c>) — bez text.html/PDF. Tani ruch sieciowy

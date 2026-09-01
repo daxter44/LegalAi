@@ -13,11 +13,15 @@ namespace PrawoRAG.Ingestion.Eli;
 /// </summary>
 public static class AmendmentRelink
 {
-    /// <summary>Świeży stan z payloadu ELI: najnowszy t.j. + nowele ogłoszone po nim (niewchłonięte).</summary>
-    public static (string? Tj, List<AmendmentRef> Unabsorbed) Recompute(JsonElement payload)
+    /// <summary>Świeży stan z payloadu ELI: najnowszy t.j. + nowele NIEROZSTRZYGNIĘTE w nim —
+    /// ogłoszone po t.j. LUB wchodzące w życie po jego dacie obwieszczenia (vacatio legis, diagnoza
+    /// 2026-09-01). <paramref name="tjAnnouncedDate"/> dostarcza runner (osobny, tani fetch metadanych
+    /// obwieszczenia); null = degradacja do starej reguły (sam klucz ELI).</summary>
+    public static (string? Tj, List<AmendmentRef> Unabsorbed) Recompute(
+        JsonElement payload, DateOnly? tjAnnouncedDate = null)
     {
         var tj = EliSejmConnector.NewestConsolidatedText(payload);
-        return (tj, EliSejmConnector.ExtractUnabsorbedAmendments(payload, tj));
+        return (tj, EliSejmConnector.ExtractUnabsorbedAmendments(payload, tj, tjAnnouncedDate));
     }
 
     /// <summary>Stan zapisany w metadanych dokumentu (jsonb). Brakujące/zniekształcone klucze → wartości puste.</summary>

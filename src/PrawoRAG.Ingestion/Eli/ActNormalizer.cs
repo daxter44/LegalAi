@@ -63,6 +63,10 @@ public sealed class ActNormalizer : IDocumentNormalizer
         // AKT-0: tożsamość konsolidacji + nowele NIEWCHŁONIĘTE (ogłoszone po t.j.) — pod jawność temporalną
         // i dołączanie świeżych zmian do kontekstu (AKT-2). Pre-filtr przez Consolidation (AKT-1) — mała lista.
         var consolidatedTextId = EliSejmConnector.NewestConsolidatedText(p);
+        // Bez daty obwieszczenia t.j. (Normalize jest czysty, bez sieci) — czyli stara reguła po kluczu
+        // ELI, która PRZEGAPIA nowele vacatio legis (ogłoszone przed t.j., wchodzące w życie po nim).
+        // Pełny warunek nakłada relink (AmendmentRelinkRunner) — biegnie po każdym sync-eli i w trybie
+        // Ingestion__Mode=relink; świeżo zaingestowany akt dostaje komplet przy pierwszym relinku.
         var unabsorbed = EliSejmConnector.ExtractUnabsorbedAmendments(p, consolidatedTextId);
 
         var metadata = new Dictionary<string, object?>

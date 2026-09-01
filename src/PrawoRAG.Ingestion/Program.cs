@@ -155,6 +155,15 @@ switch (mode)
         Console.WriteLine($"REPROCESS-USTEPY DONE: {summary}");
         break;
     }
+    case "relink":
+    {
+        // Samodzielny relink (bez fetchu/procesu nowych aktów — patrz sync-eli): odświeża listy
+        // unabsorbedAmendments aktów bazowych (od 2026-09-01 z warunkiem vacatio legis — data
+        // obwieszczenia t.j.) i na końcu przelicza flagi wchłoniętych nowel. Do runbooków.
+        var relinkRunner = host.Services.GetRequiredService<AmendmentRelinkRunner>();
+        Console.WriteLine($"RELINK: {await relinkRunner.RunAsync(maxItems, default)}");
+        break;
+    }
     case "absorbed-flags":
     {
         // Backfill/przeliczenie flagi documents.AbsorbedAmendment (wchłonięte nowelizacje poza torami

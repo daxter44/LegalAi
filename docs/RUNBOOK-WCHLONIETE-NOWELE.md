@@ -112,6 +112,31 @@ UPDATE documents SET "AbsorbedAmendment" = false WHERE "AbsorbedAmendment";
 Filtr przestaje cokolwiek łapać (stan sprzed kroku 4). Reguła 6a promptu zostaje — nieszkodliwa;
 pełny rollback promptu = revert commita.
 
+## Uzupełnienie 2026-09-01: warunek VACATIO LEGIS w relinku (diagnoza działalności nierejestrowanej)
+
+Reguła „niewchłonięta = ogłoszona po t.j." przegapiała nowele ogłoszone PRZED t.j., ale wchodzące
+w życie PO jego dacie odcięcia (ISAP drukuje je w t.j. jako podwójne brzmienie z przypisem — model
+dostawał dwie wersje przepisu bez markera [NOWELIZACJA]; zmierzone: `DU/2025/1168` ↔ Prawo
+przedsiębiorców). Relink porównuje teraz też datę wejścia w życie noweli z datą obwieszczenia t.j.
+(dodatkowy tani fetch metadanych obwieszczenia, cache per bieg).
+
+**Po deployu na M4 (jednorazowo):**
+```bash
+cd src/PrawoRAG.Ingestion
+Ingestion__Mode=relink dotnet run -c Release
+# RELINK: scanned=… refreshed=… (spodziewane: refreshed>0 — dochodzą nowele vacatio legis)
+# + automatycznie: "Flagi wchłoniętych nowel: zmienionych N" (nowele wracają do torów semantycznych)
+```
+
+Weryfikacja:
+```sql
+-- lista Prawa przedsiębiorców MA zawierać DU/2025/1168 (wejście w życie 2026-01-01):
+SELECT "TypedMetadata"->'unabsorbedAmendments' FROM documents WHERE "ExternalId"='DU/2018/646' AND "Source"='ELI';
+```
+Pytanie-nośnik na żywym czacie: „Do jakich obrotów mogę prowadzić działalność nierejestrowaną?" —
+odpowiedź ma podać **225% minimalnego wynagrodzenia kwartalnie** (brzmienie od 2026-01-01,
+marker [NOWELIZACJA — JUŻ OBOWIĄZUJE]), nie odmowę i nie 75%/mies.
+
 ## Stan ustalony (nic do roboty)
 
 `sync-eli` po relinku przelicza flagi automatycznie (log: „Flagi wchłoniętych nowel: zmienionych N").

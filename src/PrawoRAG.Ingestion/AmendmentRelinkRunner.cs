@@ -42,6 +42,26 @@ public sealed class AmendmentRelinkRunner(
 
         log.LogInformation("Relink ELI start: {Count} aktów-kandydatów.", acts.Count);
 
+        // Data obwieszczenia t.j. (warunek vacatio legis) — cache per bieg: kilka aktów bazowych
+        // potrafi wskazywać to samo obwieszczenie, a nieudany fetch nie może wywracać relinku
+        // (null = degradacja do starej reguły po samym kluczu ELI).
+        var tjDates = new Dictionary<string, DateOnly?>();
+        async Task<DateOnly?> TjDateAsync(string tjId)
+        {
+            if (tjDates.TryGetValue(tjId, out var cached)) return cached;
+            DateOnly? date = null;
+            try
+            {
+                using var tjMeta = await connector.FetchActMetadataAsync(tjId, ct);
+                date = EliSejmConnector.PublicationDate(tjMeta.RootElement);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                log.LogWarning(ex, "Relink: brak daty obwieszczenia {Tj} — degradacja do reguły klucza ELI.", tjId);
+            }
+            return tjDates[tjId] = date;
+        }
+
         foreach (var doc in acts)
         {
             if (maxItems is { } max && scanned >= max) break;
@@ -53,7 +73,9 @@ public sealed class AmendmentRelinkRunner(
             try
             {
                 using var metaDoc = await connector.FetchActMetadataAsync(doc.ExternalId, ct);
-                var fresh = AmendmentRelink.Recompute(metaDoc.RootElement);
+                var tjId = EliSejmConnector.NewestConsolidatedText(metaDoc.RootElement);
+                var tjDate = tjId is null ? null : await TjDateAsync(tjId);
+                var fresh = AmendmentRelink.Recompute(metaDoc.RootElement, tjDate);
 
                 if (!AmendmentRelink.NeedsUpdate(stored, fresh)) { unchanged++; continue; }
 
