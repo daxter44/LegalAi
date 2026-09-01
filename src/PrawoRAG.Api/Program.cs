@@ -13,6 +13,7 @@ using Microsoft.Extensions.Options;
 using PrawoRAG.Api.Services;
 using PrawoRAG.Api.Services.Auth;
 using PrawoRAG.Api.Services.Billing;
+using PrawoRAG.Api.Services.Legal;
 using PrawoRAG.Api.Services.Plans;
 using PrawoRAG.Storage.Entities;
 using PrawoRAG.Domain;
@@ -507,7 +508,7 @@ const string LandingHtml = """
     <footer>
       <div class="row">
         <span class="fbrand">OmniaSI</span>
-        <span class="flinks"><a href="/regulamin">Regulamin</a><a href="/prywatnosc">Polityka prywatności</a><a href="/o-systemie">O systemie</a><a href="#" id="cookie-settings">Ustawienia cookies</a></span>
+        <span class="flinks"><a href="/regulamin">Regulamin</a><a href="/prywatnosc">Polityka prywatności</a><a href="/cookies">Cookies</a><a href="/o-systemie">O systemie</a><a href="#" id="cookie-settings">Ustawienia cookies</a></span>
       </div>
       <div class="legal">OmniaSI generuje research prawny do weryfikacji przez prawnika — nie świadczy porad prawnych. Treści generowane przez sztuczną inteligencję są oznaczane maszynowo zgodnie z aktem o sztucznej inteligencji (AI Act).</div>
     </footer>
@@ -568,23 +569,12 @@ app.MapGet("/start", (HttpContext http) =>
     return Results.Content(landingHtmlAuthed.Replace("<!--WHO-->", chip), "text/html; charset=utf-8");
 });
 
-// Placeholdery dokumentów prawnych (RED-4.7): trasy istnieją od teraz (landing, rejestracja i stopki
-// już do nich linkują), treść wchodzi w bloku treści na końcu (decyzja 2026-08-31 o kolejności).
-static string LegalPlaceholder(string title) => $$"""
-    <!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="robots" content="noindex"><title>OmniaSI — {{title}}</title>
-    <link rel="stylesheet" href="/css/tokens.css">
-    <style>body{font-family:var(--sl-font-base);background:var(--sl-bg);color:var(--sl-text-primary);margin:0;line-height:1.6;
-    display:flex;justify-content:center;align-items:center;min-height:100vh;padding:24px}
-    .card{background:var(--sl-surface);border-radius:16px;box-shadow:var(--sl-shadow-card);max-width:34rem;padding:40px}
-    h1{font-family:var(--sl-font-display);font-size:1.6rem;margin:0 0 .6rem}
-    p{color:var(--sl-text-secondary);font-size:.95rem}a{color:var(--sl-accent)}</style></head><body>
-    <div class="card"><h1>{{title}}</h1>
-    <p>Dokument w przygotowaniu — zostanie opublikowany przed udostępnieniem usługi. W razie pytań napisz do zespołu.</p>
-    <p><a href="/">← Wróć na stronę główną</a></p></div>{{AnalyticsSnippet.Html}}</body></html>
-    """;
-app.MapGet("/regulamin", () => Results.Content(LegalPlaceholder("Regulamin"), "text/html; charset=utf-8"));
-app.MapGet("/prywatnosc", () => Results.Content(LegalPlaceholder("Polityka prywatności"), "text/html; charset=utf-8"));
+// Dokumenty prawne (RED-4.7 → treść 2026-09-01): regulamin, polityka prywatności i cookies renderowane
+// z plików Legal/*.md wbudowanych w assembly (LegalPages). Do czasu weryfikacji prawnej treść zawiera
+// pola w nawiasach kwadratowych do uzupełnienia (podmiot, adres, dostawcy) — patrz
+// docs/ANALIZA-DOKUMENTY-PRAWNE-2026-09-01.md. Bez snippetu analityki: strony prawne nie mierzą ruchu.
+foreach (var legalDoc in LegalPages.All)
+    app.MapGet($"/{legalDoc.Slug}", () => Results.Content(LegalPages.GetHtml(legalDoc), "text/html; charset=utf-8"));
 
 // Konta (E1, blok A) — mapowane TYLKO gdy włączone; inaczej zostaje bramka na kody zaproszeń.
 if (authOptions.Enabled) app.MapAuthEndpoints();

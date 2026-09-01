@@ -28,4 +28,10 @@
     <ProjectReference Include="..\PrawoRAG.Llm\PrawoRAG.Llm.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Dokumenty prawne (regulamin, polityka prywatności, cookies) jako zasoby wbudowane:
+         renderuje je Services/Legal/LegalPages.cs. Jedno źródło prawdy dla prawnika i użytkownika. -->
+    <EmbeddedResource Include="Legal\*.md" />
+  </ItemGroup>
+
 </Project>

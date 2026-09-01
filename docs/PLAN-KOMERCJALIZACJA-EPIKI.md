@@ -109,6 +109,7 @@ regulamin, polityka prywatności i oznaczenie treści generowanej są na miejscu
 | US-2.9 | Regulamin i polityka prywatności | Opublikowane i podlinkowane; retencja 6 miesięcy (`RetentionService`), przepływ danych, tryb usuwania konta na żądanie | średni (praca poza kodem) |
 | US-2.10 | Zapis udzielonych zgód | Zgoda przy rejestracji z datą i wersją dokumentu | mały |
 | US-2.11 | AI Act — minimum obowiązkowe | Deklaracja przeznaczenia, potwierdzenie zapoznania z materiałem o systemie, maszynowe oznaczanie treści generowanej (`ANALIZA-AI-ACT.md` §1) | mały–średni; **obowiązek, nie wybór** |
+| US-2.12 | Analityka bez cookies (decyzja 2026-09-01) | Clarity + GA4 (`AnalyticsOptions`, `consent.js`, ciasteczko `omniasi-consent`) ZASTĄPIONE pomiarem ruchu bez cookies i identyfikatorów, hostowanym u nas (Plausible lub Umami, kontener w `infra/compose.yaml`, host w CSP). Banner zgody znika. Warunek prawdziwości polityki cookies „wyłącznie niezbędne" (`Legal/polityka-cookies.md`, `ANALIZA-DOKUMENTY-PRAWNE-2026-09-01.md` R4/K3). Pomiar ruchu jest potrzebny, więc nie „wyłączyć", tylko „wymienić" | mały |
 
 ### Po deployu
 
@@ -162,7 +163,13 @@ bez wracania do aplikacji („jeszcze tu coś trzeba"). Konkretnie:
    **placeholdery** stron regulaminu/polityki prywatności (podlinkowane, treść później), zapis zgód
    z wersją dokumentu (US-2.10), część KODOWA AI Act (maszynowe oznaczanie treści generowanej;
    deklaracja przeznaczenia = placeholder), ogon E3: link do zakupu przy limicie (US-3.9),
-   weryfikacja past_due w trybie testowym (US-3.7), pakowanie wdrożeniowe (US-3.10).
+   weryfikacja past_due w trybie testowym (US-3.7), pakowanie wdrożeniowe (US-3.10),
+   **analityka bez cookies zamiast Clarity/GA (US-2.12, dopisane 2026-09-01)**.
+   Stan 2026-09-01: strony /regulamin, /prywatnosc, /cookies mają już PEŁNE projekty treści
+   (`src/PrawoRAG.Api/Legal/*.md`, u prawnika do weryfikacji), z polami `[DO UZUPEŁNIENIA]`
+   na podmiot, adres i dostawców — blok treści sprowadza się do wypełnienia pól po decyzjach
+   z bloku zewnętrznego. Decyzje 2026-09-01: eksport historii NIE planowany; log z treścią
+   zapytań o pisma ZOSTAJE (ujawniony w polityce prywatności pkt 2.7).
 2. **BLOK ZEWNĘTRZNY (po zakończeniu dev, po kolei):** domena + Resend, hosting/serwer,
    API LLM w EU (blocker sprzedaży), produkcyjny Stripe + realny cennik (US-3.2), backup
    z odtworzeniem (US-1.12).

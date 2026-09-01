@@ -19,7 +19,7 @@ public sealed class AuthOptions
     public string PublicBaseUrl { get; set; } = "";
 
     /// <summary>Wersja regulaminu akceptowana przy rejestracji (zapisywana na koncie).</summary>
-    public string TermsVersion { get; set; } = "2026-08";
+    public string TermsVersion { get; set; } = "2026-09-01";
 
     /// <summary>Wersja treści zgody marketingowej — zapisywana przy jej wyrażeniu (dowód RODO).</summary>
     public string MarketingConsentVersion { get; set; } = "2026-09";
