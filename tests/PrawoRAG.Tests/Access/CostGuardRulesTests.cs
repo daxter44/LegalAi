@@ -55,7 +55,20 @@ public class CostGuardRulesTests
         var denied = await guard.TryAcquireAsync("jan");
         Assert.False(denied.Allowed);
         Assert.Contains("Twój dzienny limit", denied.Message);
+        Assert.False(denied.PlanLimit); // US-3.9: limit dobowy alfy to nie limit planu — bez linku do zakupu
         Assert.True((await guard.TryAcquireAsync("anna")).Allowed); // limit per OSOBA
+    }
+
+    [Fact] // US-3.9: wyczerpany limit PLANU niesie flagę PlanLimit — UI dokłada link do zakupu.
+    public async Task Plan_limit_denial_carries_plan_limit_flag()
+    {
+        var guard = Guard(new AccessOptions { Enabled = false }, Plan(1), new FakeTime());
+
+        Assert.True((await guard.TryAcquireAsync("konto")).Allowed);
+        var denied = await guard.TryAcquireAsync("konto");
+        Assert.False(denied.Allowed);
+        Assert.True(denied.PlanLimit);
+        Assert.Contains("Wykorzystano limit planu", denied.Message);
     }
 
     [Fact]

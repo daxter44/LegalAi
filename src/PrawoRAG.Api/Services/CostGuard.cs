@@ -4,11 +4,14 @@ using PrawoRAG.Api.Services.Plans;
 
 namespace PrawoRAG.Api.Services;
 
-/// <summary>Werdykt bramki kosztów: czy wolno, a jeśli nie — co dokładnie się wyczerpało.</summary>
-public readonly record struct CostDecision(bool Allowed, string? Message)
+/// <summary>Werdykt bramki kosztów: czy wolno, a jeśli nie — co dokładnie się wyczerpało.
+/// <paramref name="PlanLimit"/> = wyczerpał się LIMIT PLANU użytkownika (US-3.9: UI dokłada wtedy
+/// link do konta/zakupu — to miejsce konwersji); limity pojemności/dzienne go nie ustawiają,
+/// bo wyższy plan nic tam nie zmienia.</summary>
+public readonly record struct CostDecision(bool Allowed, string? Message, bool PlanLimit = false)
 {
     public static CostDecision Ok() => new(true, null);
-    public static CostDecision Denied(string message) => new(false, message);
+    public static CostDecision Denied(string message, bool planLimit = false) => new(false, message, planLimit);
 }
 
 /// <summary>
@@ -56,7 +59,7 @@ public sealed class CostGuard(
             var used = await counters.TryIncrementAsync(UsageScopes.UserRequestsPeriod, userId,
                 entitlement.Period.Key, limits.RequestsPerMonth, ct);
             if (used is null)
-                return CostDecision.Denied(PlanLimitMessage(limits, entitlement.Period));
+                return CostDecision.Denied(PlanLimitMessage(limits, entitlement.Period), planLimit: true);
             reserved = true;
         }
         else if (o.Enabled)

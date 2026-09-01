@@ -121,7 +121,10 @@
         </form>
         @if (_notice is not null)
         {
-            <div class="banner banner-warn" role="status">@_notice</div>
+            <div class="banner banner-warn" role="status">@_notice@if (_noticePlanLimit && Billing.Value.Enabled)
+                {
+                    <a class="notice-upgrade" href="/konto">Zwiększ limit — przejdź do konta →</a>
+                }</div>
         }
     </div>
 }
@@ -347,7 +350,10 @@ else
             }
             @if (_notice is not null)
             {
-                <div class="banner banner-warn" role="status">@_notice</div>
+                <div class="banner banner-warn" role="status">@_notice@if (_noticePlanLimit && Billing.Value.Enabled)
+                {
+                    <a class="notice-upgrade" href="/konto">Zwiększ limit — przejdź do konta →</a>
+                }</div>
             }
             <form class="chat-input" @onsubmit="SendFollowUp" @onsubmit:preventDefault>
                 <textarea @bind="_followUpInput" @bind:event="oninput" rows="2" disabled="@_followUpBusy"
@@ -376,6 +382,7 @@ else
     private string? _docNotice;
     private string _prompt = "";
     private string? _notice;
+    private bool _noticePlanLimit;
     private bool _mobileSidebarOpen;
 
     // Bieżący raport: żywa sesja (pełny tryb) ALBO snapshot z DB (tryb ograniczony, _degraded=true).
@@ -460,7 +467,7 @@ else
         if (Snap()?.Id == id) { _mobileSidebarOpen = false; return; }
         DetachSession();
         _followUps.Clear();
-        _notice = null;
+        _notice = null; _noticePlanLimit = false;
         _mobileSidebarOpen = false;
 
         if (Sessions.TryGet(id, _userId) is { } live)
@@ -614,7 +621,7 @@ else
             return;
         }
 
-        _notice = null;
+        _notice = null; _noticePlanLimit = false;
         var session = Sessions.Create(_userId, _fileName, _pdf.PageCount, prompt, _units, _unitsTruncated);
         AttachSession(session);
 
@@ -658,7 +665,7 @@ else
         var question = _followUpInput.Trim();
         if (question.Length == 0 || _followUpBusy) return;
 
-        _notice = null;
+        _notice = null; _noticePlanLimit = false;
         // Żywa sesja mogła wygasnąć w trakcie oglądania — degradacja do rekordu DB zamiast blokady.
         if (_session is not null && Sessions.TryGet(_session.Snapshot().Id, _userId) is null)
         {
@@ -676,6 +683,7 @@ else
         if (await CostGuard.TryAcquireAsync(_userId) is { Allowed: false } limit)
         {
             _notice = limit.Message;
+            _noticePlanLimit = limit.PlanLimit; // US-3.9: tylko limit PLANU dostaje link do zakupu
             return;
         }
 
@@ -736,7 +744,7 @@ else
         DetachSession();
         _followUps.Clear();
         _followUpInput = "";
-        _notice = null;
+        _notice = null; _noticePlanLimit = false;
         _mobileSidebarOpen = false;
         RemoveDocument();
         _prompt = "";
