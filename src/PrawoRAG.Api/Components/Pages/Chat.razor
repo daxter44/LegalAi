@@ -120,6 +120,14 @@
                         {
                             <span class="typing" aria-label="generowanie odpowiedzi">…</span>
                         }
+                        else if (ex.Done)
+                        {
+                            @* Siatka bezpieczeństwa: model (ścieżka bez retrievalu) czasem zwraca pusty
+                               tekst zamiast zdania odmowy — bez tego dymek byłby całkiem pusty, widoczna
+                               zostawałaby tylko belka „nie przeglądałem bazy" pod spodem, co czyta się
+                               jak błąd, nie jak świadoma odmowa. *@
+                            <span class="empty-hint">Nie pomagam w tematach spoza prawa — zapytaj mnie o coś z zakresu prawa polskiego.</span>
+                        }
                     </div>
 
                     @* Pasek etapu pracy: pytanie prawne trwa dziesiątki sekund, a wcześniej jedynym
