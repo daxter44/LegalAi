@@ -45,8 +45,24 @@ public static class BillingPages
           .avatar{width:30px;height:30px;border-radius:var(--sl-radius-full);background:rgb(199 208 236 / .15);
                   display:inline-flex;align-items:center;justify-content:center;
                   font-size:var(--fs-12);font-weight:700;color:var(--sl-on-dark-soft)}
-          @media(max-width:640px){
-            .topbar{gap:var(--s-4);padding:0 var(--s-4);overflow-x:auto}
+          /* Hamburger jak w headerze aplikacji (app.css .nav-burger) — <details> bez JS. */
+          .nav-burger{display:none;position:relative}
+          .nav-burger>summary{list-style:none;cursor:pointer;user-select:none;color:#9BA3B7;
+                 font-size:var(--fs-20);line-height:1;padding:var(--s-2) var(--s-3);border-radius:var(--sl-radius-md)}
+          .nav-burger>summary::-webkit-details-marker{display:none}
+          .nav-burger[open]>summary{color:var(--sl-on-dark);background:rgb(199 208 236 / .12)}
+          .nav-sheet{position:absolute;right:0;top:calc(100% + 8px);z-index:200;min-width:220px;
+                 display:flex;flex-direction:column;gap:var(--s-1);padding:var(--s-2);
+                 background:#171B24;border:1px solid rgb(199 208 236 / .18);
+                 border-radius:var(--sl-radius-lg);box-shadow:var(--sl-shadow-lg)}
+          .nav-sheet a{color:#9BA3B7;text-decoration:none;font-size:var(--fs-15);font-weight:500;
+                 padding:var(--s-2) var(--s-3);border-radius:var(--sl-radius-md);white-space:nowrap}
+          .nav-sheet a:hover{color:var(--sl-on-dark);background:rgb(199 208 236 / .1)}
+          @media(max-width:720px){
+            .topbar{gap:var(--s-4);padding:0 var(--s-4)}
+            .topbar .nav{display:none}
+            .who{margin-left:auto}
+            .nav-burger{display:block}
           }
           .content{max-width:48rem;margin:0 auto;padding:var(--s-10) var(--s-4);display:flex;flex-direction:column;gap:var(--s-5)}
           h1{font-family:var(--sl-font-display);font-size:var(--fs-30);letter-spacing:-0.01em;margin:0}
@@ -97,6 +113,14 @@ public static class BillingPages
             <a href="/o-systemie">O systemie</a>
           </nav>
           <span class="who"><span class="avatar">{{E(initials)}}</span><span class="active">{{E(whoName)}}</span></span>
+          <details class="nav-burger">
+            <summary aria-label="Menu">☰</summary>
+            <nav class="nav-sheet">
+              <a href="/czat">Czat</a>
+              {{(analysisEnabled ? """<a href="/analiza">Analiza</a>""" : "")}}
+              <a href="/o-systemie">O systemie</a>
+            </nav>
+          </details>
         </div>
         <div class="content">
         {{bodyHtml}}

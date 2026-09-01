@@ -39,9 +39,33 @@ body {
     background: var(--c-accent-weak); padding: 1px var(--s-2); border-radius: 999px;
 }
 .app-main { flex: 1; display: flex; justify-content: center; padding: var(--s-6) var(--s-4); }
-@media (max-width: 640px) {
-    /* Jeden rząd zamiast zawijania: przewijalny poziomo, stała wysokość headera. */
-    .app-header { gap: var(--s-4); padding: 0 var(--s-4); overflow-x: auto; }
+
+/* Hamburger (mobile): <details> bez JS — CSP nie dopuszcza skryptów inline, a /konto i landing
+   to czysty HTML. Na desktopie ukryty; na wąskim ekranie zastępuje listę linków. */
+.nav-burger { display: none; position: relative; margin-left: auto; }
+.nav-burger > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    color: #9BA3B7; font-size: var(--fs-20); line-height: 1;
+    padding: var(--s-2) var(--s-3); border-radius: var(--sl-radius-md);
+}
+.nav-burger > summary::-webkit-details-marker { display: none; }
+.nav-burger[open] > summary { color: var(--sl-on-dark); background: rgb(199 208 236 / .12); }
+.nav-sheet {
+    position: absolute; right: 0; top: calc(100% + 8px); z-index: 200; min-width: 220px;
+    display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-2);
+    background: #171B24; border: 1px solid rgb(199 208 236 / .18);
+    border-radius: var(--sl-radius-lg); box-shadow: var(--sl-shadow-lg);
+}
+.nav-sheet a { color: #9BA3B7; text-decoration: none; font-size: var(--fs-15); font-weight: 500;
+    padding: var(--s-2) var(--s-3); border-radius: var(--sl-radius-md); white-space: nowrap; }
+.nav-sheet a:hover { color: var(--sl-on-dark); background: rgb(199 208 236 / .1); }
+.nav-sheet a.active { color: var(--sl-on-dark); font-weight: 600; }
+.nav-sheet .app-who { padding: var(--s-2) var(--s-3); }
+
+@media (max-width: 720px) {
+    .app-header { gap: var(--s-4); padding: 0 var(--s-4); }
+    .app-nav { display: none; }
+    .nav-burger { display: block; }
 }
 
 /* Czat */

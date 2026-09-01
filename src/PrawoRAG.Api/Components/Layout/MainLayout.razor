@@ -11,15 +11,11 @@
    wewnątrz kolumn. Linki i warunki flag NIETKNIĘTE względem stanu sprzed redesignu (inwarianty
    RED). Wyszukiwarka celowo BEZ pozycji w nawigacji (decyzja 2026-08-31: funkcja do dopracowania;
    trasa /szukaj zostaje dostępna z adresu). *@
-<div class="app-shell">
-    <header class="app-header">
-        @* /start, nie "/" — "/" dla zalogowanego przekierowuje do /czat, a logo ma jawnie
-           wracać na stronę główną (leftover 2026-08-31). *@
-        <a class="app-brand" href="/start" title="Strona główna">
-            <span class="app-logo-mark" aria-hidden="true"></span>
-            <span class="app-title">OmniaSI</span>
-        </a>
-        <nav class="app-nav">
+@{
+    // Jedna definicja pozycji nawigacji — renderowana dwa razy: w pasku (desktop) i w „kartce"
+    // hamburgera (mobile, <details> bez JS — CSP nie dopuszcza skryptów inline).
+    RenderFragment navLinks =
+        @<text>
             <a href="/czat" class="@ActiveClass("/czat")">Czat</a>
             @if (Analysis.Value.Enabled)
             {
@@ -55,7 +51,21 @@
                    dzieje się POST-em z tokenem (GET-owe wylogowanie da się wywołać z obcej strony). *@
                 <a href="@(Auth.Value.Enabled ? "/wylogowanie" : "/wyjscie")">Wyloguj</a>
             }
-        </nav>
+        </text>;
+}
+<div class="app-shell">
+    <header class="app-header">
+        @* /start, nie "/" — "/" dla zalogowanego przekierowuje do /czat, a logo ma jawnie
+           wracać na stronę główną (leftover 2026-08-31). *@
+        <a class="app-brand" href="/start" title="Strona główna">
+            <span class="app-logo-mark" aria-hidden="true"></span>
+            <span class="app-title">OmniaSI</span>
+        </a>
+        <nav class="app-nav">@navLinks</nav>
+        <details class="nav-burger">
+            <summary aria-label="Menu">☰</summary>
+            <nav class="nav-sheet">@navLinks</nav>
+        </details>
     </header>
     <main class="app-main @(IsAppShellPage ? "app-main-flush" : null)">
         @Body

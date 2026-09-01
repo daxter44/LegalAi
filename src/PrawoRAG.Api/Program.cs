@@ -307,6 +307,20 @@ const string LandingHtml = """
     .navwho{display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:#9BA3B7;font-size:14px;font-weight:600}
     a.navwho:hover{color:var(--sl-on-dark)}
     .navavatar{width:30px;height:30px;border-radius:9999px;background:rgb(199 208 236 / .15);color:var(--sl-on-dark-soft);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+    /* Hamburger (mobile) — <details> bez JS, jak .nav-burger w aplikacji */
+    .nav-burger{display:none;position:relative;margin-left:auto}
+    .nav-burger>summary{list-style:none;cursor:pointer;user-select:none;color:#9BA3B7;font-size:20px;line-height:1;padding:8px 12px;border-radius:8px}
+    .nav-burger>summary::-webkit-details-marker{display:none}
+    .nav-burger[open]>summary{color:var(--sl-on-dark);background:rgb(199 208 236 / .12)}
+    .nav-sheet{position:absolute;right:0;top:calc(100% + 8px);z-index:200;min-width:230px;display:flex;flex-direction:column;gap:6px;padding:10px;background:#171B24;border:1px solid rgb(199 208 236 / .18);border-radius:12px;box-shadow:0 10px 20px -4px rgb(0 0 0 / .4)}
+    .nav-sheet a{color:#9BA3B7;font-size:15px;font-weight:500;padding:8px 12px;border-radius:8px;white-space:nowrap}
+    .nav-sheet a:hover{color:var(--sl-on-dark);background:rgb(199 208 236 / .1)}
+    .nav-sheet .btn,.nav-sheet .btn-line{justify-content:center;color:#fff}
+    @media(max-width:720px){
+      .nav{gap:14px}
+      .nav .links{display:none}
+      .nav-burger{display:block}
+    }
     .hero{position:relative;overflow:hidden;padding:90px 6vw 110px;text-align:center;background:linear-gradient(180deg,#0F1218 0%,#142450 70%,#16224A 100%)}
     .glow1,.glow2{position:absolute;border-radius:9999px;pointer-events:none}
     .glow1{left:-180px;top:60px;width:560px;height:560px;background:radial-gradient(circle,rgb(37 99 235 / .28) 0%,rgb(37 99 235 / 0) 70%)}
@@ -377,6 +391,10 @@ const string LandingHtml = """
     <div class="nav">
       <a class="brand" href="/start" style="text-decoration:none"><span class="mark"></span> OmniaSI</a>
       <span class="links"><a href="#roznice">Czym się różnimy</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></span>
+      <details class="nav-burger">
+        <summary aria-label="Menu">☰</summary>
+        <nav class="nav-sheet"><a href="#roznice">Czym się różnimy</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></nav>
+      </details>
     </div>
 
     <div class="hero">
