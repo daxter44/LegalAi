@@ -103,7 +103,7 @@ Administrator informuje Użytkowników o zmianie podmiotów z tabeli w pkt 6 prz
 
 1. Serwis wykorzystuje wyłącznie pliki cookies niezbędne do działania: utrzymania sesji zalogowanego Użytkownika oraz ochrony formularzy przed nadużyciami. Szczegóły zawiera Polityka cookies.
 2. Serwis nie wykorzystuje cookies analitycznych, marketingowych ani narzędzi profilujących i nie przekazuje danych o aktywności Użytkowników podmiotom trzecim w celach marketingowych.
-3. Do pomiaru ruchu Serwis wykorzystuje [NARZĘDZIE ANALITYCZNE, np. Plausible lub Umami] uruchomione na infrastrukturze Administratora, które zlicza odwiedziny w formie zagregowanej, bez plików cookies, bez zapisywania adresu IP i bez identyfikowania osób. [DO POTWIERDZENIA u prawnika: brak wymogu zgody dla pomiaru bez cookies i identyfikatorów.]
+3. Do pomiaru ruchu Serwis wykorzystuje narzędzie Umami uruchomione na infrastrukturze Administratora, które zlicza odwiedziny w formie zagregowanej, bez plików cookies, bez zapisywania adresu IP i bez identyfikowania osób (identyfikatory sesji są jednokierunkowo skracane i zmieniają się codziennie). Dane pomiaru nie opuszczają infrastruktury Administratora i nie są przekazywane podmiotom trzecim. [DO POTWIERDZENIA u prawnika: brak wymogu zgody dla pomiaru bez cookies i identyfikatorów.]
 
 ## 11. Bezpieczeństwo
 

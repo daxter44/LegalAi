@@ -98,18 +98,28 @@ public class AuthTests
         Assert.Contains("name=\"marketing\" type=\"checkbox\" value=\"tak\" checked", rerender);
     }
 
-    [Fact] // Analityka: snippet pusty bez konfiguracji; z konfiguracją = consent.js + identyfikatory.
+    [Fact] // US-2.12: snippet pusty bez konfiguracji; z konfiguracją = skrypt Umami (bez bramki
+           // zgody — cookieless) + origin instancji do CSP; zły adres = bezpiecznie wyłączone.
     public void Analytics_snippet_follows_configuration()
     {
         try
         {
             AnalyticsSnippet.Configure(new AnalyticsOptions());
             Assert.Equal("", AnalyticsSnippet.Html);
+            Assert.Equal("", AnalyticsSnippet.CspOrigin);
 
-            AnalyticsSnippet.Configure(new AnalyticsOptions { ClarityProjectId = "cl1", GaMeasurementId = "G-XYZ" });
-            Assert.Contains("/js/consent.js", AnalyticsSnippet.Html);
-            Assert.Contains("data-clarity=\"cl1\"", AnalyticsSnippet.Html);
-            Assert.Contains("data-ga=\"G-XYZ\"", AnalyticsSnippet.Html);
+            AnalyticsSnippet.Configure(new AnalyticsOptions
+            {
+                ScriptUrl = "https://analytics.przyklad.pl/script.js",
+                WebsiteId = "11111111-2222-3333-4444-555555555555",
+            });
+            Assert.Contains("""src="https://analytics.przyklad.pl/script.js""", AnalyticsSnippet.Html);
+            Assert.Contains("""data-website-id="11111111-2222-3333-4444-555555555555""", AnalyticsSnippet.Html);
+            Assert.DoesNotContain("consent", AnalyticsSnippet.Html); // cookieless = bez banera zgody
+            Assert.Equal("https://analytics.przyklad.pl", AnalyticsSnippet.CspOrigin);
+
+            AnalyticsSnippet.Configure(new AnalyticsOptions { ScriptUrl = "nie-adres", WebsiteId = "x" });
+            Assert.Equal("", AnalyticsSnippet.Html);
         }
         finally
         {

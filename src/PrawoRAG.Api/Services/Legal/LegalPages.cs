@@ -123,6 +123,7 @@ public static class LegalPages
             </div></header>
             <main><article>{{bodyHtml}}</article></main>
             <div class="foot">Dokument można zapisać lub wydrukować z poziomu przeglądarki. <a href="/start">Wróć na stronę główną</a>.</div>
+            {{AnalyticsSnippet.Html}}
             </body>
             </html>
             """;

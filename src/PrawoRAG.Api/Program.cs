@@ -85,8 +85,8 @@ var authOptions = builder.Configuration.GetSection(AuthOptions.SectionName).Get<
 // Billing:Enabled=false (domyślnie) = trasy /platnosc/* nie istnieją. Wymaga kont: bez konta nie ma
 // czego subskrybować ani komu przypisać planu.
 builder.Services.Configure<BillingOptions>(builder.Configuration.GetSection(BillingOptions.SectionName));
-// Analityka (Clarity/GA) za zgodą cookies — snippet consent.js konfigurowany RAZ, statycznie,
-// bo część powłok HTML (auth, konto, placeholdery) to statyczne buildery bez DI.
+// Analityka bez cookies (US-2.12, Umami self-hosted) — snippet konfigurowany RAZ, statycznie,
+// bo część powłok HTML (auth, konto, strony prawne) to statyczne buildery bez DI.
 var analyticsOptions = builder.Configuration.GetSection(AnalyticsOptions.SectionName).Get<AnalyticsOptions>() ?? new AnalyticsOptions();
 AnalyticsSnippet.Configure(analyticsOptions);
 var billingOptions = builder.Configuration.GetSection(BillingOptions.SectionName).Get<BillingOptions>() ?? new BillingOptions();
@@ -249,15 +249,13 @@ app.Use(async (ctx, next) =>
     var formAction = billingOptions.Enabled
         ? "'self' https://checkout.stripe.com https://billing.stripe.com"
         : "'self'";
-    // Analityka za zgodą (US: cookie banner): hosty Clarity/GA w CSP TYLKO gdy skonfigurowana —
-    // bez konfiguracji polityka zostaje bajt w bajt jak dotąd. Same skrypty i tak ładuje dopiero
-    // consent.js po zgodzie uzytkownika; CSP jest tu druga linia obrony, nie mechanizmem zgody.
-    var (scriptExtra, connectExtra, imgExtra) = analyticsOptions.Enabled
-        ? (AnalyticsSnippet.CspScriptSrc, AnalyticsSnippet.CspConnectSrc, AnalyticsSnippet.CspImgSrc)
-        : ("", "", "");
+    // Analityka bez cookies (US-2.12, Umami self-hosted): w CSP dochodzi WYŁĄCZNIE origin naszej
+    // instancji (skrypt + beacon /api/send) i tylko przy skonfigurowanym Analytics — bez
+    // konfiguracji polityka zostaje bajt w bajt jak dotąd.
+    var umami = AnalyticsSnippet.CspOrigin is { Length: > 0 } origin ? " " + origin : "";
     h["Content-Security-Policy"] =
-        $"default-src 'self'; script-src 'self'{scriptExtra}; style-src 'self' 'unsafe-inline'; img-src 'self' data:{imgExtra}; " +
-        $"font-src 'self'; connect-src 'self' ws: wss:{connectExtra}; frame-ancestors 'none'; base-uri 'self'; form-action {formAction}";
+        $"default-src 'self'; script-src 'self'{umami}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
+        $"font-src 'self'; connect-src 'self' ws: wss:{umami}; frame-ancestors 'none'; base-uri 'self'; form-action {formAction}";
     await next();
 });
 app.UseRateLimiter();
@@ -508,7 +506,7 @@ const string LandingHtml = """
     <footer>
       <div class="row">
         <span class="fbrand">OmniaSI</span>
-        <span class="flinks"><a href="/regulamin">Regulamin</a><a href="/prywatnosc">Polityka prywatności</a><a href="/cookies">Cookies</a><a href="/o-systemie">O systemie</a><a href="#" id="cookie-settings">Ustawienia cookies</a></span>
+        <span class="flinks"><a href="/regulamin">Regulamin</a><a href="/prywatnosc">Polityka prywatności</a><a href="/cookies">Cookies</a><a href="/o-systemie">O systemie</a></span>
       </div>
       <div class="legal">OmniaSI generuje research prawny do weryfikacji przez prawnika — nie świadczy porad prawnych. Treści generowane przez sztuczną inteligencję są oznaczane maszynowo zgodnie z aktem o sztucznej inteligencji (AI Act).</div>
     </footer>
@@ -518,15 +516,15 @@ const string LandingHtml = """
 
 // Wezwanie do działania na landingu zależy od trybu: konta → rejestracja, alfa → kod zaproszenia.
 // CTA zależne od trybu: konta → rejestracja/logowanie, alfa → kod zaproszenia (jak dotąd).
-// Analityka (Clarity/GA) za zgodą: snippet consent.js podstawiany do wszystkich wariantów landingu;
+// Analityka bez cookies (US-2.12): snippet Umami podstawiany do wszystkich wariantów landingu;
 // pusty, gdy Analytics nieskonfigurowane.
 var landingBase = LandingHtml.Replace("<!--ANALYTICS-->", AnalyticsSnippet.Html);
 var landingHtml = authOptions.Enabled
     ? landingBase
-        .Replace("<!--NAV-CTA-->", """<a class="btn-line" href="/logowanie" style="min-height:40px">Zaloguj się</a><a class="btn" href="/rejestracja" style="min-height:40px">Wypróbuj za darmo</a>""")
-        .Replace("<!--CTA-->", """<a class="btn" href="/rejestracja" style="min-height:52px;padding:0 30px;font-size:16.5px">Zacznij za darmo — 15 pytań/mies.</a>""")
-        .Replace("<!--CTA-START-->", """<a class="btn-line" href="/rejestracja" style="color:var(--sl-text-primary);border-color:var(--sl-border);margin-top:auto;justify-content:center">Załóż konto</a>""")
-        .Replace("<!--CTA-PRO-->", """<a class="btn" href="/rejestracja" style="margin-top:auto;justify-content:center">Wybierz Pro</a>""")
+        .Replace("<!--NAV-CTA-->", """<a class="btn-line" href="/logowanie" style="min-height:40px">Zaloguj się</a><a class="btn" href="/rejestracja" style="min-height:40px" data-umami-event="cta-nav-rejestracja">Wypróbuj za darmo</a>""")
+        .Replace("<!--CTA-->", """<a class="btn" href="/rejestracja" style="min-height:52px;padding:0 30px;font-size:16.5px" data-umami-event="cta-hero-rejestracja">Zacznij za darmo — 15 pytań/mies.</a>""")
+        .Replace("<!--CTA-START-->", """<a class="btn-line" href="/rejestracja" style="color:var(--sl-text-primary);border-color:var(--sl-border);margin-top:auto;justify-content:center" data-umami-event="cta-plan-start">Załóż konto</a>""")
+        .Replace("<!--CTA-PRO-->", """<a class="btn" href="/rejestracja" style="margin-top:auto;justify-content:center" data-umami-event="cta-plan-pro">Wybierz Pro</a>""")
     : landingBase
         .Replace("<!--NAV-CTA-->", """<a class="btn" href="/wejscie" style="min-height:40px">Mam kod zaproszenia</a>""")
         .Replace("<!--CTA-->", """<a class="btn" href="/wejscie" style="min-height:52px;padding:0 30px;font-size:16.5px">Mam kod zaproszenia → Wejdź</a>""")

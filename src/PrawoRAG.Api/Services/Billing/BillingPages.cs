@@ -183,7 +183,7 @@ public static class BillingPages
           <div class="btns">
             <form method="post" action="/platnosc/start">
               {AuthPages.Token(tokenField, token)}
-              <button type="submit" class="btn-grad">{(hasSubscription ? "Zmień plan" : "Wykup plan")}</button>
+              <button type="submit" class="btn-grad" data-umami-event="konto-checkout">{(hasSubscription ? "Zmień plan" : "Wykup plan")}</button>
             </form>
             {(hasSubscription ? $"""
             <form method="post" action="/platnosc/portal">
@@ -227,7 +227,6 @@ public static class BillingPages
           <div class="links">
             <a href="/prywatnosc">Polityka prywatności</a>
             <a href="/regulamin">Regulamin</a>
-            <a href="#" id="cookie-settings">Ustawienia cookies</a>
             <a class="btnlink btn-danger end" href="/wylogowanie">Wyloguj się</a>
           </div>
         </div>

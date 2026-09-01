@@ -125,7 +125,7 @@
         {
             <div class="banner banner-warn" role="status">@_notice@if (_noticePlanLimit && Billing.Value.Enabled)
                 {
-                    <a class="notice-upgrade" href="/konto">Zwiększ limit — przejdź do konta →</a>
+                    <a class="notice-upgrade" href="/konto" data-umami-event="upgrade-z-limitu">Zwiększ limit — przejdź do konta →</a>
                 }</div>
         }
     </div>
@@ -358,7 +358,7 @@ else
             {
                 <div class="banner banner-warn" role="status">@_notice@if (_noticePlanLimit && Billing.Value.Enabled)
                 {
-                    <a class="notice-upgrade" href="/konto">Zwiększ limit — przejdź do konta →</a>
+                    <a class="notice-upgrade" href="/konto" data-umami-event="upgrade-z-limitu">Zwiększ limit — przejdź do konta →</a>
                 }</div>
             }
             <form class="chat-input" @onsubmit="SendFollowUp" @onsubmit:preventDefault>

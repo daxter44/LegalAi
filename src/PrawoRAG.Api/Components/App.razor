@@ -16,8 +16,8 @@
     <Routes @rendermode="InteractiveServer" />
     <script src="_framework/blazor.web.js"></script>
     <script src="js/cite.js"></script>
-    @* Analityka (Clarity/GA) WYŁĄCZNIE za zgodą — consent.js pokazuje baner cookie i ładuje
-       skrypty dopiero po akceptacji; pusty string, gdy Analytics nieskonfigurowane (dev). *@
+    @* Analityka bez cookies (US-2.12): self-hostowane Umami — pomiar zagregowany, bez zapisu na
+       urządzeniu, więc bez banera zgody. Pusty string, gdy Analytics nieskonfigurowane (dev). *@
     @((MarkupString)PrawoRAG.Api.Services.AnalyticsSnippet.Html)
 </body>
 </html>

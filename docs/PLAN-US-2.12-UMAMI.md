@@ -1,6 +1,9 @@
 # Plan US-2.12: analityka bez cookies — Umami self-hosted (zadania U-1…U-7)
 
-Data: 2026-09-01. Status: **SPISANE DO REALIZACJI — nic nie wdrożone.**
+Data: 2026-09-01. Status: **ZREALIZOWANE tego samego dnia (U-1…U-5, U-7; testy 947/947).**
+Decyzje: D-1 zaakceptowana (osobna baza); D-3 = eventy od razu (wdrożone); D-2 (subdomena vs
+ścieżka) odłożona do konfiguracji hostingu — kod konfigurowalny przez `Analytics:ScriptUrl`.
+Wdrożenie produkcyjne: `RUNBOOK-UMAMI.md` (U-6).
 Decyzje właściciela: rezygnacja z GA4 i Clarity na rzecz narzędzia hostowanego u nas
 (uczciwość wobec użytkownika, spójność z suwerennością); wybrane narzędzie: **Umami**
 (Node + Postgres, MIT, cookieless domyślnie); izolacja od bazy z rozmowami — patrz U-2.

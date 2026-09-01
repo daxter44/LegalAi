@@ -151,7 +151,7 @@ public static class AuthPages
             <span>Chcę otrzymywać informacje o nowościach i ofertach {E(ProductName)}
             <span style="font-weight:400">(opcjonalnie — zgodę można wycofać w każdej chwili na stronie konta)</span>.</span>
           </label>
-          <button type="submit">Załóż konto</button>
+          <button type="submit" data-umami-event="rejestracja-submit">Załóż konto</button>
         </form>
         <div class="links">
           <span>Masz już konto? <a href="/logowanie">Zaloguj się</a></span>
