@@ -11,12 +11,25 @@ zadziałał bez zarzutu**. Problem nie leży ani w rankingu, ani w chunkowaniu, 
 leży w niekompletnych metadanych, które miały rozstrzygnąć za model, która z dwóch wersji przepisu
 obowiązuje dziś.
 
-## [FAKT — zmierzone w bazie] Retrieval znalazł WŁAŚCIWY artykuł w Turze 1
+## [FAKT — zmierzone w bazie] Właściwy artykuł trafił do puli DRUGIEJ rundy — i mimo to skończyło się odmową
 
-Wbrew pozorom, pula źródeł Tury 1 (ta, która skończyła się pełną odmową) **zawierała dokładnie
-właściwy przepis**: `DU/2018/646` (Prawo przedsiębiorców), art. 5, oraz `DU/2025/1168`
-(nowelizująca ustawa z 25 lipca 2025 r.), też art. 5. To nie przypadek niedopasowania słów ani
-rozmycia chunka — model miał obie wersje przepisu w kontekście i mimo to odmówił.
+**Sprostowanie po pytaniu właściciela** (baza przechowuje wyłącznie FINALNĄ pulę źródeł tury, nie
+osobno pulę każdej rundy — pierwotne sformułowanie tej diagnozy nie odróżniało tego wystarczająco
+jasno): w Turze 1 doszło do DWÓCH rund retrievalu (widoczny w transkrypcie retry: "🔁 Źródła
+z pierwszego wyszukiwania nie domykały pytania — szukałem też: [...]"). 18-elementowa pula
+zapisana w `messages.RetrievedSources` dla finalnej (odrzuconej) odpowiedzi to najpewniej pula
+DRUGIEJ, przeformułowanej rundy — przeformułowane zapytanie ("Jaki jest **miesięczny limit
+przychodu** z działalności **nieewidencjonowanej**...") używa słownictwa ustawy ("przychód"),
+podczas gdy oryginalne pytanie użytkownika ("Do jakich **obrotów**...") używa słowa, którego ustawa
+w ogóle nie zna — czyli **runda 1 najpewniej ucierpiała na klasycznym niedopasowaniu słów**
+(ten sam mechanizm co OKI/zaświadczenie), a mechanizm drugiej rundy (naprawiony wczoraj w `7e7e64f`)
+zadziałał poprawnie: przeformułowanie znalazło właściwy przepis.
+
+Ale nawet z właściwym przepisem w ręku po rundzie 2 — `DU/2018/646` (Prawo przedsiębiorców), art. 5,
+oraz `DU/2025/1168` (nowelizująca ustawa z 25 lipca 2025 r.), też art. 5 — model i tak w pełni
+odmówił. To NIE jest więc (tym razem) problem samego retrievalu, tylko tego, co się stało PO
+znalezieniu właściwego źródła: model miał obie wersje przepisu w kontekście i nie potrafił
+rozstrzygnąć, która obowiązuje.
 
 ## Mechanizm — tekst jednolity sam w sobie pokazuje DWIE wersje przepisu z przypisami, ale system nie połączył tego z metadaną o nowelizacji
 
@@ -58,12 +71,16 @@ i musiał sam próbować odczytać przypisy oraz zestawić datę z dzisiejszą, 
 (wolał odmówić), a zrobił (poprawnie, ale bez pomocy systemu) dopiero w Turze 2, gdy użytkownik
 zawęził uwagę modelu wprost do art. 5.
 
-## Dlaczego to nie jest ten sam mechanizm co poprzednie diagnozy
+## Dlaczego to nie jest (wyłącznie) ten sam mechanizm co poprzednie diagnozy
 
-- Nie term-mismatch: pytanie i przepis nie różnią się słownictwem, oba trafiły do puli.
-- Nie rozmycie chunka: art. 5 trafił do puli w obu turach, nie ma problemu z rankingiem.
+- Runda 1 prawdopodobnie ucierpiała na znanym już problemie niedopasowania słów ("obroty" vs
+  "przychód") — ale to nie jest przedmiot tej diagnozy, bo mechanizm drugiej rundy poprawnie to
+  naprawił, zgodnie z projektem.
+- Runda 2 (ta, którą faktycznie widział model przy generowaniu finalnej, odrzuconej odpowiedzi) MIAŁA
+  właściwy przepis w obu wersjach — to nie problem rankingu ani rozmycia chunka na tym etapie.
 - Nie przestarzała treść nowelizacji: to NIE jest przypadek, w którym stary chunk wygrywa z nowym —
-  oba trafiły RAZEM, model miał komplet informacji, tylko bez rozstrzygnięcia która wersja obowiązuje.
+  oba trafiły RAZEM do rundy 2, model miał komplet informacji, tylko bez rozstrzygnięcia która wersja
+  obowiązuje.
 - To luka w **kompletności metadanych** `unabsorbedAmendments` — mechanizm istnieje, działa dla
   innych trzech nowelizacji tego samego aktu, ale nie objął tej jednej, akurat relevantnej dla
   zadanego pytania.
