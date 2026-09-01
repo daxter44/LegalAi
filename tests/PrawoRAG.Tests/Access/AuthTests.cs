@@ -191,6 +191,56 @@ public class AuthTests
         Assert.Equal("Jan Kowalski", user.UserId);
     }
 
+    // --- UserIdentity: JEDEN klucz dla HTTP, API i Blazora (audyt OWASP LLM 2026-09-01, W2) ---
+
+    [Fact]
+    public void Shared_key_prefers_account_id_over_name_and_never_uses_email()
+    {
+        // Identity wystawia Name = UserName = e-mail. Komponenty Blazora brały właśnie Name, a plany
+        // i /api/chat NameIdentifier — dwa różne klucze dla tej samej osoby, limit planu w UI martwy.
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(ClaimTypes.NameIdentifier, "9d1b0c7e-1111-2222-3333-444455556666"),
+            new Claim(ClaimTypes.Email, "jan@kancelaria.pl"),
+            new Claim(ClaimTypes.Name, "jan@kancelaria.pl"),
+        ], "test"));
+
+        Assert.Equal("9d1b0c7e-1111-2222-3333-444455556666", UserIdentity.KeyOf(principal));
+        // …i dokładnie ten sam klucz, co ścieżka HTTP:
+        Assert.Equal(UserIdentity.KeyOf(principal), UserFrom([.. principal.Claims]).UserId);
+    }
+
+    [Fact]
+    public void Shared_key_falls_back_to_name_for_invite_gate_and_null_for_anonymous()
+    {
+        Assert.Equal("Jan Kowalski", UserIdentity.KeyOf(new ClaimsPrincipal(
+            new ClaimsIdentity([new Claim(ClaimTypes.Name, "Jan Kowalski")], "test"))));
+        Assert.Null(UserIdentity.KeyOf(new ClaimsPrincipal(new ClaimsIdentity())));
+        Assert.Null(UserIdentity.KeyOf(null));
+    }
+
+    [Fact]
+    public void Blazor_pages_resolve_identity_through_the_shared_key()
+    {
+        // Strażnik regresji na poziomie źródeł: komponentów nie da się tu uruchomić bez bUnit, a to
+        // właśnie one miały własną (błędną) kolejność źródeł tożsamości. Każda strona, która trzyma
+        // _userId, ma go brać z UserIdentity.KeyOf — nie z Identity.Name.
+        var pages = Path.Combine(RepoRoot(), "src", "PrawoRAG.Api", "Components", "Pages");
+        foreach (var page in new[] { "Chat.razor", "Analiza.razor", "Szukaj.razor" })
+        {
+            var source = File.ReadAllText(Path.Combine(pages, page));
+            Assert.Contains("UserIdentity.KeyOf(auth.User)", source);
+            Assert.DoesNotContain("Name: { Length", source);
+        }
+    }
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "PrawoRAG.slnx"))) dir = dir.Parent;
+        return dir?.FullName ?? throw new InvalidOperationException("Nie znaleziono korzenia repo (PrawoRAG.slnx).");
+    }
+
     [Fact]
     public void Anonymous_falls_back_to_dev_placeholder()
     {

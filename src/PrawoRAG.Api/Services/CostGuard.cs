@@ -23,7 +23,12 @@ public readonly record struct CostDecision(bool Allowed, string? Message, bool P
 ///   zajmuje dobowy limit per użytkownik z <see cref="AccessOptions"/> — zachowanie z alfy bez zmian.
 /// • <b>Oś pojemnościowa</b> — ile zniesie NASZ SPRZĘT: globalne capy dobowe (zapytania i znaki
 ///   wyjścia). Zostaje niezależnie od tego, kto ile zapłacił; bez niej jeden klient z planem płatnym
-///   potrafi położyć serwer w kilka godzin.
+///   potrafi położyć serwer w kilka godzin. Obowiązuje ZAWSZE, gdy cokolwiek jest liczone — także
+///   w trybie kont z wyłączoną bramką invite (<c>Auth:Enabled=true</c>, <c>Access:Enabled=false</c>).
+///   Do audytu 2026-09-01 (W3) była sprzężona z <c>Access:Enabled</c>, więc w trybie kont nie
+///   działała: N darmowych kont = N×15 zapytań bez sufitu sprzętowego. Wartości capów nadal leżą
+///   w <see cref="AccessOptions"/> (zgodność konfiguracji), ale <c>Access:Enabled</c> ich nie wyłącza.
+///   Jedyny tryb bez liczenia: brak planu I brak bramki (dev/M4).
 ///
 /// Liczniki są trwałe (wcześniej w pamięci procesu — restart zerował dzień). Zliczanie jest atomowe
 /// po stronie magazynu (<see cref="IUsageCounters"/>), bo dwie karty przeglądarki tego samego
@@ -72,9 +77,9 @@ public sealed class CostGuard(
             reserved = true;
         }
 
-        if (!o.Enabled) return CostDecision.Ok();
-
         // --- oś pojemnościowa: budżet znaków (dolicza się PO odpowiedzi, w RecordAsync) ---
+        // Bez warunku na o.Enabled: skoro doszliśmy tutaj, coś jest liczone (plan albo bramka),
+        // więc pojemność też ma być pilnowana (W3).
         var chars = await counters.CurrentAsync(UsageScopes.GlobalCharsDay, GlobalKey, today, ct);
         if (chars >= o.MaxGlobalOutputCharsPerDay)
             return await RefundAndDenyAsync(entitlement, userId, today, reserved,
@@ -93,7 +98,10 @@ public sealed class CostGuard(
     /// <summary>Dolicza rozmiar odpowiedzi LLM do dobowego budżetu znaków (po zakończeniu streamu).</summary>
     public async Task RecordAsync(string userId, int outputChars, CancellationToken ct = default)
     {
-        if (!options.Value.Enabled || outputChars <= 0) return;
+        if (outputChars <= 0) return;
+        // Lustro TryAcquireAsync: liczymy zawsze, gdy obowiązuje plan LUB bramka; tylko dev/M4
+        // (ani jedno, ani drugie) nie dotyka magazynu.
+        if (!options.Value.Enabled && !(await entitlements.ForAsync(userId, ct)).PlanApplies) return;
         var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
         await counters.AddAsync(UsageScopes.GlobalCharsDay, GlobalKey, today, outputChars, ct);
     }

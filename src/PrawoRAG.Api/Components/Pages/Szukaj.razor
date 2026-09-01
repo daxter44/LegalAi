@@ -88,7 +88,9 @@
     {
         // Tożsamość jak w czacie: AuthenticationState (niezawodna w obwodzie), nie IHttpContextAccessor.
         var auth = await AuthState.GetAuthenticationStateAsync();
-        _userId = auth.User.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name } ? name : CurrentUser.UserId;
+        _userId = auth.User.Identity?.IsAuthenticated == true
+            ? UserIdentity.KeyOf(auth.User) ?? CurrentUser.UserId // ten sam klucz co plany i API (W2)
+            : CurrentUser.UserId;
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)

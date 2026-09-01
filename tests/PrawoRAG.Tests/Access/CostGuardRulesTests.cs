@@ -159,6 +159,54 @@ public class CostGuardRulesTests
         Assert.Contains("budżet odpowiedzi", denied.Message);
     }
 
+    // Audyt OWASP LLM 2026-09-01 (W3): tryb kont z WYŁĄCZONĄ bramką invite (Auth:Enabled=true,
+    // Access:Enabled=false) — dokładnie konfiguracja bety. Capy pojemności musiały działać, a nie
+    // działały: wychodziliśmy z Ok() przy !Access.Enabled, więc N darmowych kont = N×15 zapytań bez
+    // sufitu sprzętowego.
+
+    [Fact]
+    public async Task Global_daily_request_cap_applies_in_account_mode_without_invite_gate()
+    {
+        var access = new AccessOptions { Enabled = false, MaxGlobalRequestsPerDay = 1 };
+        var counters = new MemoryUsageCounters();
+        var jan = Guard(access, Plan(100), new FakeTime(), counters);
+        var anna = Guard(access, Plan(100), new FakeTime(), counters);
+
+        Assert.True((await jan.TryAcquireAsync("jan")).Allowed);
+
+        var denied = await anna.TryAcquireAsync("anna");
+        Assert.False(denied.Allowed);
+        Assert.Contains("globalny dzienny limit", denied.Message);
+        Assert.False(denied.PlanLimit);                 // to nasz cap, nie limit planu — bez linku do zakupu
+        Assert.Equal(0, (await anna.UsageAsync("anna"))!.Value.Used); // rezerwacja z planu zwrócona
+    }
+
+    [Fact]
+    public async Task Output_chars_budget_applies_in_account_mode_without_invite_gate()
+    {
+        var access = new AccessOptions { Enabled = false, MaxGlobalOutputCharsPerDay = 100 };
+        var guard = Guard(access, Plan(100), new FakeTime());
+
+        Assert.True((await guard.TryAcquireAsync("konto")).Allowed);
+        await guard.RecordAsync("konto", 150); // RecordAsync też nie może wychodzić przy !Access.Enabled
+
+        var denied = await guard.TryAcquireAsync("konto");
+        Assert.False(denied.Allowed);
+        Assert.Contains("budżet odpowiedzi", denied.Message);
+    }
+
+    [Fact]
+    public async Task Dev_mode_without_plan_and_gate_records_nothing()
+    {
+        // Jedyny tryb bez liczenia: brak planu I brak bramki (dev/M4) — RecordAsync nie dotyka magazynu.
+        var counters = new MemoryUsageCounters();
+        var guard = Guard(new AccessOptions { Enabled = false }, limits: null, new FakeTime(), counters);
+
+        await guard.RecordAsync("ktokolwiek", 5000);
+
+        Assert.Equal(0, await counters.CurrentAsync(UsageScopes.GlobalCharsDay, "*", new DateOnly(2026, 7, 8)));
+    }
+
     [Fact]
     public async Task Capacity_denial_refunds_the_reserved_plan_request()
     {

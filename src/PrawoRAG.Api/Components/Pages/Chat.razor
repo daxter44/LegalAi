@@ -524,8 +524,10 @@
         // akcesor bywa null w interaktywnym renderowaniu (rekonekty, inne wątki) i cichy fallback na
         // wspólny placeholder MIESZAŁBY rozmowy i limity testerów. Rozwiązana RAZ na obwód.
         var auth = await AuthState.GetAuthenticationStateAsync();
-        _userId = auth.User.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name }
-            ? name
+        // Klucz przez UserIdentity, NIE Identity.Name: Name to e-mail (UserName), a rozmowy, plany
+        // i /api/chat liczą po Id konta — inaczej limit planu w UI nie działa (audyt 2026-09-01, W2).
+        _userId = auth.User.Identity?.IsAuthenticated == true
+            ? UserIdentity.KeyOf(auth.User) ?? CurrentUser.UserId
             : CurrentUser.UserId; // bramka wyłączona (dev/M4) → placeholder jak dotąd
 
         // Imię z rejestracji (claim GivenName, AppClaimsFactory) — do powitania i stopki sidebara.

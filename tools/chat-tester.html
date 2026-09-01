@@ -92,24 +92,41 @@ function handleFrame(frame) {
   if (!data) return;
   const payload = JSON.parse(data);
 
+  // Kontrakt zdarzeń: src/PrawoRAG.Api/Services/ChatSse.cs. Zdarzenia korekcyjne (regenerating,
+  // retrying_retrieval, abstain PO tokenach) wymagają wyczyszczenia/zastąpienia zebranej treści —
+  // inaczej klient pokaże odpowiedź, którą bramka anty-fabrykacji odrzuciła.
   switch (event) {
+    case 'stage':
+      $('status').textContent = payload.label + (payload.count != null ? ` (${payload.count})` : '');
+      break;
+    case 'no_retrieval':
+      $('status').textContent = 'UWAGA: baza NIE była przeglądana — odpowiedź nie jest oparta na źródłach (' + payload.reason + ')';
+      break;
+    case 'retrying_retrieval':
+      $('status').textContent = 'Druga runda wyszukiwania: ' + payload.newQuery;
+      $('answer').textContent = '';
+      break;
+    case 'regenerating':
+      $('status').textContent = 'Bramka anty-fabrykacji zawróciła odpowiedź — druga próba (' + payload.reason + ')';
+      $('answer').textContent = '';
+      break;
     case 'sources':
       $('status').textContent = `Znaleziono ${payload.length} źródeł, generuję odpowiedź...`;
       $('sources').hidden = false;
       $('sources').innerHTML = '<strong>Źródła:</strong><ol>' +
-        payload.map(s => `<li>${escapeHtml(s.locator ?? s.title ?? JSON.stringify(s))}</li>`).join('') +
+        payload.map(s => `<li>${escapeHtml(s.label ?? s.locator ?? s.title ?? JSON.stringify(s))}</li>`).join('') +
         '</ol>';
       break;
     case 'token':
       $('answer').textContent += payload.text;
       break;
     case 'abstain':
-      $('status').textContent = 'Abstynencja (brak wystarczających źródeł).';
+      $('status').textContent = 'Odmowa (brak wystarczających źródeł albo odpowiedź odrzucona przez bramkę cytatów).';
       $('answer').textContent = payload.message;
       break;
     case 'done':
       if (payload.abstained) break;
-      $('status').textContent = `Model: ${payload.model}`;
+      $('status').textContent = `Model: ${payload.model}` + (payload.regenerated ? ' (po regeneracji)' : '');
       const c = payload.citationCheck;
       if (c) {
         $('check').hidden = false;

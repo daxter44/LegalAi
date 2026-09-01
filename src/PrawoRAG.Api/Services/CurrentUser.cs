@@ -38,10 +38,9 @@ public sealed class CurrentUser(IHttpContextAccessor http) : ICurrentUser
 
     private ClaimsPrincipal? User => http.HttpContext?.User;
 
-    public string UserId =>
-        User?.FindFirstValue(ClaimTypes.NameIdentifier)
-        ?? User?.Identity?.Name
-        ?? Placeholder;
+    // Jedna definicja klucza dla HTTP, API i Blazora — patrz UserIdentity (rozjazd UI/API z audytu
+    // 2026-09-01 brał się z tego, że komponenty miały własną, inną kolejność źródeł).
+    public string UserId => UserIdentity.KeyOf(User) ?? Placeholder;
 
     public string DisplayName =>
         User?.FindFirstValue(ClaimTypes.Email)

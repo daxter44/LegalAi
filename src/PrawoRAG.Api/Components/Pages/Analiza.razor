@@ -433,8 +433,8 @@ else
     {
         // Tożsamość jak w Chat.razor: AuthenticationState, nie IHttpContextAccessor.
         var auth = await AuthState.GetAuthenticationStateAsync();
-        _userId = auth.User.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name }
-            ? name
+        _userId = auth.User.Identity?.IsAuthenticated == true
+            ? UserIdentity.KeyOf(auth.User) ?? CurrentUser.UserId // ten sam klucz co plany i API (W2)
             : CurrentUser.UserId;
 
         // Imię z rejestracji (claim GivenName) do stopki sidebara — jak w Chat.razor.

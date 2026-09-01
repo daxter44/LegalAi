@@ -26,7 +26,8 @@ Ingestion__MaxItems=50 dotnet run --project src/PrawoRAG.Ingestion
 # 4. API (czat + wyszukiwanie)
 ANTHROPIC_API_KEY=sk-... dotnet run --project src/PrawoRAG.Api
 #   POST /api/search  {"query":"...", "topK":5}
-#   POST /api/chat    {"question":"..."}   (SSE: sources → token → done/abstain/error)
+#   POST /api/chat    {"question":"..."}   (SSE, ten sam tor co czat UI; kontrakt zdarzeń: Services/ChatSse.cs —
+#                     m.in. regenerating/retrying_retrieval = wyczyść zebrane tokeny, abstain PO tokenach = zastąp treść)
 ```
 
 ## Testy

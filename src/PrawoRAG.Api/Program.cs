@@ -624,7 +624,7 @@ string? ResolveApiUser(HttpContext http)
     // Zalogowany: tożsamością jest identyfikator konta (parytet z ICurrentUser — ten sam klucz
     // trafia do rozmów i do liczników). Dla bramki invite claim ten niesie nazwę testera.
     if (http.User?.Identity?.IsAuthenticated == true)
-        return http.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? http.User.Identity.Name;
+        return UserIdentity.KeyOf(http.User);
 
     if (authOptions.Enabled) return null;      // konta włączone → API tylko dla zalogowanych
     if (!access.Enabled) return "demo@local";  // dev/M4 bez żadnej bramki
@@ -651,150 +651,70 @@ app.MapPost("/api/search", async (HttpContext http, SearchRequest req, IRetrieve
 }).RequireRateLimiting("api");
 
 // --- Chat z ugruntowaniem (SSE) ---
-app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IRetriever retriever, ITemporalAugmenter augmenter, ILlmProvider llm, IOptions<RetrievalOptions> opt, IOptions<DiagnosticsOptions> diag, CostGuard costGuard, CancellationToken ct) =>
+// JEDNA implementacja z torem Blazora: endpoint tylko tłumaczy strumień ChatEvent z IChatService na
+// ramki SSE (kontrakt zdarzeń: ChatSse). Do audytu 2026-09-01 (W1) miał tu własną, uproszczoną kopię
+// pipeline'u — bez bramki anty-fabrykacji (AnswerGate), pętli domykającej i routera — więc odpowiedź
+// z wymyślonym artykułem wychodziła w całości, a wynik CitationValidator był tylko flagą w `done`.
+app.MapPost("/api/chat", async (HttpContext http, ChatRequest req, IChatService chat, IOptions<DiagnosticsOptions> diag, CostGuard costGuard, CancellationToken ct) =>
 {
     // Bramka 3.7: tożsamość (cookie lub X-Invite-Code) PRZED otwarciem streamu — 401 zamiast SSE.
     if (ResolveApiUser(http) is not { } apiUser) return Results.Unauthorized();
 
+    // Tor czatu nie zna filtrów retrievalu (ChatService buduje zapytanie bez CourtType/dat/OnlyInForce —
+    // tak samo jak UI). Jawny 400 zamiast cichego ignorowania; filtrowana lista trafień to /api/search.
+    if (req.Filters is { } f && (f.CourtType is not null || f.DateFrom is not null || f.DateTo is not null || f.OnlyInForce))
+        return Results.BadRequest(new { message = "Filtry nie są obsługiwane w /api/chat (ten sam tor co czat UI) — użyj /api/search." });
+
     http.Response.ContentType = "text/event-stream";
     http.Response.Headers.CacheControl = "no-cache";
-    var chatSw = System.Diagnostics.Stopwatch.StartNew();
 
-    async Task Send(string ev, object data)
+    async Task Send(SseFrame frame)
     {
-        await http.Response.WriteAsync($"event: {ev}\ndata: {JsonSerializer.Serialize(data, json)}\n\n", ct);
+        await http.Response.WriteAsync($"event: {frame.Event}\ndata: {JsonSerializer.Serialize(frame.Data, json)}\n\n", ct);
         await http.Response.Body.FlushAsync(ct);
     }
 
+    // Licznik znaków odpowiedzi do dobowego budżetu pojemności — zerowany przy regeneracji/drugiej
+    // rundzie, jak `ex.Answer = ""` w Chat.razor (liczymy to, co użytkownik ostatecznie dostał).
+    var answerChars = 0;
     try
     {
         // Limit planu + capy pojemności (obok rate-limitera HTTP) — parytet z UI/Chat.razor.
         if (await costGuard.TryAcquireAsync(apiUser, ct) is { Allowed: false } limit)
         {
-            await Send("error", new { message = limit.Message });
-            await Send("done", new { abstained = true });
+            await Send(new("error", new { message = limit.Message }));
+            await Send(new("done", new { abstained = true }));
             return Results.Empty;
         }
 
-        var o = opt.Value;
         var history = (req.History ?? [])
             .Where(t => !string.IsNullOrWhiteSpace(t.Question))
             .Select(t => new ChatTurn(t.Question, t.Answer))
             .ToList();
 
-        // Etapy pracy na żywo (Zadanie 2/3 planu ROU) — parytet z ChatService. Tu prościej niż tam:
-        // Send jest zwykłą metodą async, więc callback może pisać wprost do strumienia SSE (nie ma
-        // ograniczenia `yield return` z iteratora). Kolejność zdarzeń pilnuje semafor: SSE to jeden
-        // strumień, a callbacki mogą wpaść w trakcie innego zapisu.
-        // Zdarzenia informacyjne (etap pracy, delta rozumowania) powstają w CALLBACKACH, w środku
-        // `await`owanych wywołań — nie da się ich stąd awaitować. Kolejka + jedna pompa: kolejność
-        // zachowana (Task.Run per zdarzenie ją gubi), zapisy nie przeplatają się z `Send` z głównego
-        // toru, a błędy są połykane — informacyjny event nie może wywalić odpowiedzi ani zostawić
-        // niezaobserwowanego wyjątku, gdy klient już odszedł.
-        var info = Channel.CreateUnbounded<(string Ev, object Data)>(
-            new UnboundedChannelOptions { SingleReader = true });
-        var sendLock = new SemaphoreSlim(1, 1);
-        async Task SendSafe(string ev, object data)
+        // Ten sam AskAsync co Chat.razor: router, follow-upy, bramka abstynencji, augmenter,
+        // pętla domykająca, AnswerGate (regeneracja → odmowa), oznaczenie AI Act — wszystko w środku.
+        await foreach (var evt in chat.AskAsync(req.Question, history, document: null, forceRetrieval: false, ct))
         {
-            await sendLock.WaitAsync(ct);
-            try { await Send(ev, data); }
-            finally { sendLock.Release(); }
+            if (ChatSse.ResetsAnswer(evt)) answerChars = 0;
+            if (evt is TokenEvent t) answerChars += t.Text.Length;
+            await Send(ChatSse.Map(evt, diag.Value.ShowTokenUsage));
         }
-        var infoPump = Task.Run(async () =>
-        {
-            try
-            {
-                await foreach (var (ev, data) in info.Reader.ReadAllAsync(ct))
-                    try { await SendSafe(ev, data); } catch { /* informacyjne — nigdy nie psuje odpowiedzi */ }
-            }
-            catch (OperationCanceledException) { /* klient odszedł */ }
-        }, CancellationToken.None);
-        void SendInfo(string ev, object data) => info.Writer.TryWrite((ev, data));
-
-        // SyncProgress, NIE Progress<T> — ten drugi dyspozycjonuje asynchronicznie i miesza kolejność.
-        var stageSink = new SyncProgress<RetrievalStage>(s =>
-            SendInfo("stage", new { stage = s.Name, label = s.Label, count = s.Count }));
-
-        // Follow-upy: podwójny retrieval + wybór wariantu — wspólny FollowUpSelector (parytet z UI/evalem).
-        var selection = await FollowUpSelector.SelectAsync(
-            retriever, text => ToQuery(text, req.Filters, o.TopK, o) with { Progress = stageSink },
-            req.Question, history,
-            o.FollowUpSignalMargin, o.RerankSignalMargin, ct);
-        var (q, result) = (selection.Query, selection.Result);
-
-        // BRAMKA ABSTYNENCJI — rdzeń wartości: brak pokrycia → nie generujemy.
-        if (AbstentionPolicy.ShouldAbstain(result, o.AbstentionThreshold))
-        {
-            await Send("abstain", new { message = AbstentionPolicy.Message, maxSimilarity = result.MaxSimilarity });
-            await Send("done", new { abstained = true });
-            return Results.Empty;
-        }
-
-        // AKT-2/4b: oznacz źródła-nowele (niezależnie jak trafiły do wyników) + dołóż nowe fragmenty
-        // dotyczące pytanych artykułów (best-effort — parytet z UI/ChatService). Dostaje EFEKTYWNE
-        // zapytanie (może być sklejone z historią) — to ono niesie cytaty z poprzednich tur.
-        var chunks = result.Chunks;
-        try { chunks = await LatencyLog.TimeAsync("augment", () => augmenter.AugmentAsync(q, result.Chunks, ct)); }
-        catch { /* best-effort */ }
-
-        // Norma przed narracjami (parytet z ChatService) — jeden porządek dla promptu/źródeł/walidatora.
-        chunks = GroundedPrompt.OrderForGrounding(chunks);
-
-        // Do promptu idzie ORYGINALNE pytanie + historia (nie sklejony tekst retrievalu).
-        var (request, sources) = GroundedPrompt.Build(req.Question, chunks, history);
-        await Send("sources", sources);
-
-        // Tokeny in/out (parytet z UI): zbierane zawsze, w evencie done tylko przy włączonej fladze.
-        LlmUsage? usage = null;
-        request = request with
-        {
-            OnUsage = u => usage = u,
-            // Rozumowanie na żywo (parytet z ChatService) — ~41 z ~85 s odpowiedzi.
-            OnReasoningDelta = d => SendInfo("reasoning_delta", new { text = d }),
-        };
-
-        await SendSafe("stage", new { stage = "llm", label = "Piszę odpowiedź…", count = (int?)sources.Count });
-
-        // US-2.11 (AI Act art. 50 ust. 2): oznaczenie pochodzenia PRZED pierwszym tokenem — parytet
-        // z ProvenanceEvent w ChatService (tor Blazora); bez tego SSE byłby ścieżką bez oznaczenia.
-        await Send("provenance", new
-        {
-            aiGenerated = true, model = llm.ModelId, system = ChatService.SystemId,
-            generatedAt = DateTimeOffset.UtcNow, grounded = true,
-        });
-
-        var full = new StringBuilder();
-        var llmSw = System.Diagnostics.Stopwatch.StartNew();
-        var firstTokenMs = -1L;
-        await foreach (var delta in llm.StreamCompletionAsync(request, ct))
-        {
-            if (firstTokenMs < 0) firstTokenMs = llmSw.ElapsedMilliseconds;
-            full.Append(delta);
-            await SendSafe("token", new { text = delta });
-        }
-        LatencyLog.Mark("llm.first_token", firstTokenMs);
-        LatencyLog.Mark("llm.total", llmSw.ElapsedMilliseconds);
-
-        // Domknięcie pompy PRZED „done": inaczej zaległa delta rozumowania albo etap wypadłyby PO
-        // zdarzeniu końcowym, a klient (Chat.razor) traktuje „done" jako koniec tury.
-        info.Writer.TryComplete();
-        await infoPump;
-
-        // ANTY-FABRYKACJA — czy cytaty istnieją w dostarczonym kontekście.
-        var contextTexts = chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
-        var check = CitationValidator.Validate(full.ToString(), contextTexts, sources.Count);
-        await Send("done", diag.Value.ShowTokenUsage
-            ? new { abstained = false, model = llm.ModelId, citationCheck = check, usage }
-            : (object)new { abstained = false, model = llm.ModelId, citationCheck = check });
-
-        await costGuard.RecordAsync(apiUser, full.Length, ct); // dolicz wyjscie do dobowego budzetu znakow
-        LatencyLog.Mark("chat.total", chatSw.ElapsedMilliseconds);
         return Results.Empty;
+    }
+    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+    {
+        return Results.Empty; // klient odszedł — nie ma komu pisać
     }
     catch (Exception ex)
     {
-        await Send("error", new { message = ex.Message });
+        await Send(new("error", new { message = ex.Message }));
         return Results.Empty;
+    }
+    finally
+    {
+        // Jak w Chat.razor: doliczenie wyjścia jest best-effort i nie może wywalić odpowiedzi.
+        try { await costGuard.RecordAsync(apiUser, answerChars, CancellationToken.None); } catch { }
     }
 }).RequireRateLimiting("api");
 
