@@ -55,7 +55,7 @@
     <div class="side-user">
         <span class="side-avatar" aria-hidden="true">@Initials</span>
         <span class="side-user-meta">
-            <span class="side-user-name" title="@CurrentUser.DisplayName">@CurrentUser.DisplayName</span>
+            <span class="side-user-name" title="@CurrentUser.DisplayName">@(_givenName ?? CurrentUser.DisplayName)</span>
             @if (_usageLabel is not null)
             {
                 <span class="side-user-usage" title="Zużycie w bieżącym okresie rozliczeniowym">@_usageLabel</span>
@@ -399,12 +399,13 @@ else
     private CancellationTokenSource? _cts;
     private string _userId = "demo@local";
     private string? _usageLabel;
+    private string? _givenName;
 
     private string Initials
     {
         get
         {
-            var name = CurrentUser.DisplayName;
+            var name = _givenName ?? CurrentUser.DisplayName;
             if (string.IsNullOrWhiteSpace(name)) return "?";
             var parts = name.Split(new[] { ' ', '.', '@' }, StringSplitOptions.RemoveEmptyEntries);
             return parts.Length >= 2
@@ -422,6 +423,10 @@ else
         _userId = auth.User.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name }
             ? name
             : CurrentUser.UserId;
+
+        // Imię z rejestracji (claim GivenName) do stopki sidebara — jak w Chat.razor.
+        var given = auth.User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value;
+        _givenName = string.IsNullOrWhiteSpace(given) ? null : given;
         await RefreshAnalysesAsync();
         await RefreshUsageAsync();
     }

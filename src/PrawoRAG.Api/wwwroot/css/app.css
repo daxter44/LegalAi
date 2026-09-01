@@ -362,14 +362,22 @@ body {
 
 /* Konta (E1): kto jest zalogowany, w menu obok odnośnika wylogowania. Skraca się na wąskim ekranie,
    żeby długi adres e-mail nie rozpychał paska. */
-.app-user {
-    color: #9BA3B7;
-    font-size: var(--fs-14);
-    max-width: 14rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+/* Chip konta w nagłówku: avatar z inicjałem + imię (bez gołego e-maila — pełna tożsamość w title). */
+.app-who { display: inline-flex; align-items: center; gap: var(--s-2); text-decoration: none; color: #9BA3B7; }
+.app-who-name {
+    font-size: var(--fs-14); font-weight: 600; max-width: 10rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    transition: color var(--sl-transition-fast);
 }
+.app-avatar {
+    width: 30px; height: 30px; border-radius: var(--sl-radius-full); flex-shrink: 0;
+    background: rgb(199 208 236 / .15); color: var(--sl-on-dark-soft);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: var(--fs-12); font-weight: 700;
+    transition: background var(--sl-transition-fast);
+}
+a.app-who:hover .app-who-name { color: var(--sl-on-dark); }
+a.app-who:hover .app-avatar { background: rgb(199 208 236 / .28); }
 
 /* ══════════ RED-2: powłoka aplikacji czatu/analizy (sidebar + treść + panel źródeł) ══════════ */
 /* Strony z własnym sidebarem (MainLayout.IsAppShellPage) — globalny header NAD powłoką (spójna

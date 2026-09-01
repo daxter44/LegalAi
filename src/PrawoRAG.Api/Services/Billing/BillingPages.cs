@@ -17,7 +17,8 @@ public static class BillingPages
 
     /// <summary>Oprawa strony konta: topbar z nawigacją aplikacji + wyśrodkowana kolumna kart.
     /// `$$"""` bo CSS w środku (klamry); wartości wstrzykiwane wyłącznie przez E().</summary>
-    private static string Shell(string title, bool analysisEnabled, string initials, string bodyHtml) => $$"""
+    private static string Shell(string title, bool analysisEnabled, string initials, string whoName,
+        string bodyHtml) => $$"""
         <!doctype html>
         <html lang="pl">
         <head>
@@ -95,7 +96,7 @@ public static class BillingPages
             {{(analysisEnabled ? """<a href="/analiza">Analiza</a>""" : "")}}
             <a href="/o-systemie">O systemie</a>
           </nav>
-          <span class="who"><span class="active">Konto</span><span class="avatar">{{E(initials)}}</span></span>
+          <span class="who"><span class="avatar">{{E(initials)}}</span><span class="active">{{E(whoName)}}</span></span>
         </div>
         <div class="content">
         {{bodyHtml}}
@@ -106,9 +107,15 @@ public static class BillingPages
 
     public static string Konto(string tokenField, string token, string planId, string planStatus,
         DateTime? validUntilUtc, bool hasSubscription, string? email, bool emailConfirmed,
-        bool analysisEnabled, (int Used, int Limit)? usage = null, DateTime? periodEndUtc = null)
+        bool analysisEnabled, (int Used, int Limit)? usage = null, DateTime? periodEndUtc = null,
+        string? displayName = null)
     {
-        var initials = string.IsNullOrWhiteSpace(email) ? "?" : char.ToUpperInvariant(email[0]).ToString();
+        // Inicjał i podpis jak w chipie konta nagłówka aplikacji: imię z rejestracji, e-mail w odwodzie.
+        var whoSource = string.IsNullOrWhiteSpace(displayName) ? email : displayName;
+        var initials = string.IsNullOrWhiteSpace(whoSource) ? "?" : char.ToUpperInvariant(whoSource[0]).ToString();
+        var whoName = string.IsNullOrWhiteSpace(displayName)
+            ? "Konto"
+            : displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
         var planName = planId switch { "free" => "START", "pro" => "PRO", var x => x.ToUpperInvariant() };
         var statusPill = planStatus switch
         {
@@ -137,7 +144,7 @@ public static class BillingPages
           """;
         }
 
-        return Shell("konto", analysisEnabled, initials, $"""
+        return Shell("konto", analysisEnabled, initials, whoName, $"""
         <h1>Twoje konto</h1>
 
         <div class="card">
@@ -165,6 +172,9 @@ public static class BillingPages
 
         <div class="card">
           <h2>Dane konta</h2>
+          <div class="kv">
+            <span><span class="k">Imię i nazwisko</span><br><span class="v">{(string.IsNullOrWhiteSpace(displayName) ? """<span class="muted">nie podano</span>""" : E(displayName))}</span></span>
+          </div>
           <div class="kv">
             <span><span class="k">Adres e-mail</span><br><span class="v">{E(email)}</span></span>
             <span class="end">{(emailConfirmed ? """<span class="pill pill-ok">potwierdzony</span>""" : """<span class="pill pill-warn">niepotwierdzony</span>""")}</span>

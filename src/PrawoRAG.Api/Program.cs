@@ -134,6 +134,7 @@ if (authOptions.Enabled)
         .AddEntityFrameworkStores<PrawoRagDbContext>()
         .AddDefaultTokenProviders()
         .AddSignInManager()
+        .AddClaimsPrincipalFactory<AppClaimsFactory>() // imię + e-mail w ciasteczku (nagłówek, powitanie)
         .AddErrorDescriber<PolishIdentityErrorDescriber>();
 
     // Odnośniki z e-maili (potwierdzenie, reset) są ważne krótko — zgubiona skrzynka nie zostaje
@@ -302,6 +303,10 @@ const string LandingHtml = """
     .nav .links a{color:#9BA3B7;font-size:15px;font-weight:500}
     .btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 22px;border-radius:12px;font-size:15px;font-weight:700;color:#fff;background:var(--sl-gradient);box-shadow:var(--sl-shadow-accent)}
     .btn-line{display:inline-flex;align-items:center;min-height:44px;padding:0 20px;border-radius:12px;font-size:15px;font-weight:600;color:var(--sl-on-dark);border:1px solid rgb(199 208 236 / .3)}
+    /* Chip konta dla zalogowanego (spójny z .app-who w aplikacji) */
+    .navwho{display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:#9BA3B7;font-size:14px;font-weight:600}
+    a.navwho:hover{color:var(--sl-on-dark)}
+    .navavatar{width:30px;height:30px;border-radius:9999px;background:rgb(199 208 236 / .15);color:var(--sl-on-dark-soft);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
     .hero{position:relative;overflow:hidden;padding:90px 6vw 110px;text-align:center;background:linear-gradient(180deg,#0F1218 0%,#142450 70%,#16224A 100%)}
     .glow1,.glow2{position:absolute;border-radius:9999px;pointer-events:none}
     .glow1{left:-180px;top:60px;width:560px;height:560px;background:radial-gradient(circle,rgb(37 99 235 / .28) 0%,rgb(37 99 235 / 0) 70%)}
@@ -499,7 +504,7 @@ var landingHtml = authOptions.Enabled
 // zalogowanych nadal przekierowuje do /czat — inwariant zostaje). /start to jawne „pokaż stronę
 // główną" spod logo; CTA prowadzą wtedy do aplikacji/konta, nie do rejestracji.
 var landingHtmlAuthed = LandingHtml
-    .Replace("<!--NAV-CTA-->", """<a class="btn" href="/czat" style="min-height:40px">Przejdź do czatu</a>""")
+    .Replace("<!--NAV-CTA-->", """<a class="btn" href="/czat" style="min-height:40px">Przejdź do czatu</a><!--WHO-->""")
     .Replace("<!--CTA-->", """<a class="btn" href="/czat" style="min-height:52px;padding:0 30px;font-size:16.5px">Przejdź do czatu</a>""")
     .Replace("<!--CTA-START-->", """<span class="foot-note" style="margin-top:auto">Masz już konto.</span>""")
     .Replace("<!--CTA-PRO-->", billingOptions.Enabled
@@ -511,9 +516,25 @@ app.MapGet("/", (HttpContext http) =>
         ? Results.Redirect("/czat")
         : Results.Content(landingHtml, "text/html; charset=utf-8"));
 
-app.MapGet("/start", (HttpContext http) => Results.Content(
-    http.User.Identity?.IsAuthenticated == true ? landingHtmlAuthed : landingHtml,
-    "text/html; charset=utf-8"));
+app.MapGet("/start", (HttpContext http) =>
+{
+    if (http.User.Identity?.IsAuthenticated != true)
+        return Results.Content(landingHtml, "text/html; charset=utf-8");
+
+    // Chip konta jak w nagłówku aplikacji (spójność 2026-09-01) — inicjał z imienia (claim
+    // GivenName z AppClaimsFactory), a gdy go nie ma, z e-maila. Podstawiane per żądanie,
+    // bo landing poza tym jest statycznym stringiem policzonym na starcie.
+    var given = http.User.FindFirstValue(ClaimTypes.GivenName);
+    var who = string.IsNullOrWhiteSpace(given)
+        ? http.User.FindFirstValue(ClaimTypes.Email) ?? http.User.Identity.Name ?? ""
+        : given;
+    var initial = string.IsNullOrWhiteSpace(who) ? "?" : char.ToUpperInvariant(who[0]).ToString();
+    var title = System.Text.Encodings.Web.HtmlEncoder.Default.Encode(who);
+    var chip = billingOptions.Enabled
+        ? $"""<a class="navwho" href="/konto" title="Konto — {title}"><span class="navavatar">{initial}</span></a>"""
+        : $"""<span class="navwho" title="{title}"><span class="navavatar">{initial}</span></span>""";
+    return Results.Content(landingHtmlAuthed.Replace("<!--WHO-->", chip), "text/html; charset=utf-8");
+});
 
 // Placeholdery dokumentów prawnych (RED-4.7): trasy istnieją od teraz (landing, rejestracja i stopki
 // już do nich linkują), treść wchodzi w bloku treści na końcu (decyzja 2026-08-31 o kolejności).

@@ -11,6 +11,10 @@ public interface ICurrentUser
     /// <summary>Nazwa do pokazania człowiekowi (e-mail albo imię i nazwisko). Może się zmieniać.</summary>
     string DisplayName { get; }
 
+    /// <summary>Imię i nazwisko z rejestracji (claim GivenName, patrz AppClaimsFactory) —
+    /// <c>null</c>, gdy użytkownik go nie podał albo konto pochodzi z bramki kodów zaproszeń.</summary>
+    string? GivenName { get; }
+
     bool IsAuthenticated { get; }
 }
 
@@ -43,6 +47,15 @@ public sealed class CurrentUser(IHttpContextAccessor http) : ICurrentUser
         User?.FindFirstValue(ClaimTypes.Email)
         ?? User?.Identity?.Name
         ?? Placeholder;
+
+    public string? GivenName
+    {
+        get
+        {
+            var given = User?.FindFirstValue(ClaimTypes.GivenName);
+            return string.IsNullOrWhiteSpace(given) ? null : given;
+        }
+    }
 
     public bool IsAuthenticated => User?.Identity?.IsAuthenticated ?? false;
 }

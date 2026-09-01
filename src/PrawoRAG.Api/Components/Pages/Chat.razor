@@ -67,7 +67,7 @@
     <div class="side-user">
         <span class="side-avatar" aria-hidden="true">@Initials</span>
         <span class="side-user-meta">
-            <span class="side-user-name" title="@CurrentUser.DisplayName">@CurrentUser.DisplayName</span>
+            <span class="side-user-name" title="@CurrentUser.DisplayName">@(_givenName ?? CurrentUser.DisplayName)</span>
             @if (_planLabel is not null)
             {
                 <span class="side-user-plan">@_planLabel</span>
@@ -90,7 +90,7 @@
         {
             <div class="empty">
                 <span class="empty-mark" aria-hidden="true"></span>
-                <p class="empty-title">W czym mogę pomóc?</p>
+                <p class="empty-title">@(_firstName is null ? "W czym mogę pomóc?" : $"Witaj {_firstName} — w czym mogę pomóc?")</p>
                 <p class="empty-hint">Opisz sytuację po ludzku — znalezienie właściwych przepisów to moja praca. Odpowiedzi powstają wyłącznie z cytowanych źródeł; to wstępny research, zawsze weryfikuj przy źródle.</p>
                 <div class="empty-examples">
                     @foreach (var q in ExampleQuestions)
@@ -430,6 +430,8 @@
     private bool _srcPanelCollapsed;
     private string? _planLabel;
     private string? _usageLabel;
+    private string? _givenName;
+    private string? _firstName;
 
     /// <summary>Rozmowa, której odpowiedź właśnie się zakończyła — przez chwilę pokazuje ✓ w historii
     /// (przeklikanie 2026-08-31). Czyszczona timerem, best-effort.</summary>
@@ -446,7 +448,7 @@
     {
         get
         {
-            var name = CurrentUser.DisplayName;
+            var name = _givenName ?? CurrentUser.DisplayName;
             if (string.IsNullOrWhiteSpace(name)) return "?";
             var parts = name.Split(new[] { ' ', '.', '@' }, StringSplitOptions.RemoveEmptyEntries);
             return parts.Length >= 2
@@ -494,6 +496,12 @@
         _userId = auth.User.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name }
             ? name
             : CurrentUser.UserId; // bramka wyłączona (dev/M4) → placeholder jak dotąd
+
+        // Imię z rejestracji (claim GivenName, AppClaimsFactory) — do powitania i stopki sidebara.
+        // Z AuthenticationState, nie ICurrentUser — akcesor HttpContextu bywa null w obwodzie.
+        var given = auth.User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value;
+        _givenName = string.IsNullOrWhiteSpace(given) ? null : given;
+        _firstName = _givenName?.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
         await RefreshConversationsAsync();
 
         // Etykieta planu w stopce sidebara (RED-2.1, addytywne) — best-effort, nie blokuje czatu.

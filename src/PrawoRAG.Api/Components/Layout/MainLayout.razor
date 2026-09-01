@@ -28,11 +28,29 @@
             <a href="/o-systemie" class="@ActiveClass("/o-systemie")">O systemie</a>
             @if (CurrentUser.IsAuthenticated)
             {
+                @* Chip konta (spójność 2026-09-01): avatar z inicjałem + imię z rejestracji (gdy jest),
+                   zamiast linku „Konto" i gołego adresu e-mail. Klik prowadzi na /konto, gdy strona
+                   istnieje (Billing:Enabled); pełna tożsamość w podpowiedzi. *@
                 @if (Billing.Value.Enabled)
                 {
-                    <a href="/konto">Konto</a>
+                    <a class="app-who" href="/konto" title="Konto — @CurrentUser.DisplayName">
+                        <span class="app-avatar" aria-hidden="true">@Initial</span>
+                        @if (FirstName is not null)
+                        {
+                            <span class="app-who-name">@FirstName</span>
+                        }
+                    </a>
                 }
-                <span class="app-user" title="@CurrentUser.DisplayName">@CurrentUser.DisplayName</span>
+                else
+                {
+                    <span class="app-who" title="@CurrentUser.DisplayName">
+                        <span class="app-avatar" aria-hidden="true">@Initial</span>
+                        @if (FirstName is not null)
+                        {
+                            <span class="app-who-name">@FirstName</span>
+                        }
+                    </span>
+                }
                 @* Zwykły odnośnik: pod /wylogowanie jest strona z potwierdzeniem, a samo wylogowanie
                    dzieje się POST-em z tokenem (GET-owe wylogowanie da się wywołać z obcej strony). *@
                 <a href="@(Auth.Value.Enabled ? "/wylogowanie" : "/wyjscie")">Wyloguj</a>
@@ -50,4 +68,18 @@
     private bool IsAppShellPage => CurrentPath is "/czat" or "/analiza";
 
     private string? ActiveClass(string path) => CurrentPath == path ? "active" : null;
+
+    /// <summary>Imię (pierwszy człon „imię i nazwisko" z rejestracji) — null, gdy nie podano.</summary>
+    private string? FirstName =>
+        CurrentUser.GivenName?.Split(' ', StringSplitOptions.RemoveEmptyEntries) is { Length: > 0 } p
+            ? p[0] : null;
+
+    private string Initial
+    {
+        get
+        {
+            var src = CurrentUser.GivenName ?? CurrentUser.DisplayName;
+            return string.IsNullOrWhiteSpace(src) ? "?" : char.ToUpperInvariant(src[0]).ToString();
+        }
+    }
 }

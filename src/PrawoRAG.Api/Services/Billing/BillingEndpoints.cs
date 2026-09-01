@@ -60,7 +60,8 @@ public static class BillingEndpoints
                     user.PlanValidUntilUtc, hasSubscription: !string.IsNullOrEmpty(user.StripeCustomerId),
                     email: user.Email, emailConfirmed: user.EmailConfirmed,
                     analysisEnabled: analysis.Value.Enabled,
-                    usage: usage, periodEndUtc: periodEndUtc),
+                    usage: usage, periodEndUtc: periodEndUtc,
+                    displayName: user.DisplayName),
                 "text/html; charset=utf-8");
         }).RequireAuthorization();
 
