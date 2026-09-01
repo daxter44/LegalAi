@@ -16,6 +16,17 @@ namespace PrawoRAG.Llm.Grounding;
 /// </summary>
 public static class SmalltalkPrompt
 {
+    /// <summary>
+    /// Standardowe zdanie odmowy dla wiadomości spoza prawa (reguła 6 niżej cytuje je DOSŁOWNIE —
+    /// test kontraktowy pilnuje zgodności). ODM-1: to także treść zastępcza, którą ChatService
+    /// emituje, gdy model na tej ścieżce zwróci pusty strumień — reguła promptu jest prośbą,
+    /// gwarancję daje serwer. ODM-3 (decyzja 2026-09-01): zdanie celowo NIE zawiera frazy odmowy
+    /// z reguły 3 GroundedPrompt — odmowa „to nie prawo" jest out-of-scope, nie porażką retrievalu,
+    /// i NIE liczy się do metryki nadrzędnej odmów.
+    /// </summary>
+    public const string OutOfScopeMessage =
+        "Nie pomagam w tematach spoza prawa — zapytaj mnie o coś z zakresu prawa polskiego.";
+
     public const string SystemPrompt =
         """
         Jesteś asystentem prawnym dla polskich prawników. Ta wiadomość NIE jest pytaniem prawnym

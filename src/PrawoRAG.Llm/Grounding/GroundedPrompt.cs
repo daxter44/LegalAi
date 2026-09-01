@@ -20,7 +20,7 @@ public sealed record SourceRef(int Index, string Label, string Title, string? So
 /// Buduje ugruntowany prompt: twardy system prompt (odpowiadaj tylko ze źródeł, cytuj [n],
 /// abstynencja gdy brak pokrycia) + wiadomość użytkownika z ponumerowanymi źródłami [1..K].
 /// </summary>
-public static class GroundedPrompt
+public static partial class GroundedPrompt
 {
     /// <summary>Fraza, którą LLM ma napisać DOKŁADNIE (reguła 3 w <see cref="SystemPrompt"/>), gdy źródła
     /// nie odpowiadają na pytanie. UI sprawdza nią odpowiedź (Contains, bez rozróżniania wielkości liter),
@@ -34,6 +34,24 @@ public static class GroundedPrompt
     /// <summary>Poprzednia fraza odmowy (sprzed 2026-08-31) — utrwalona w zapisanych rozmowach,
     /// więc odczyt historii musi ją nadal rozpoznawać. NIE używać w nowych promptach.</summary>
     public const string LegacyRefusalMarker = "Nie mam wystarczających źródeł";
+
+    /// <summary>
+    /// KANONICZNA definicja odmowy treściowej (ODM-4, 2026-09-01): fraza odmowy (bieżąca lub legacy)
+    /// obecna ORAZ odpowiedź BEZ cytowań [n]. Odpowiedź MIESZANA (model złamał regułę 3: fraza + dalsza
+    /// treść z cytowaniami) to NIE odmowa — użytkownik dostał odpowiedź; klasyfikacja jej jako odmowy
+    /// chowała panel źródeł przy żywych linkach [n] (martwe kliknięcia) i zawyżała metrykę odmów.
+    /// Jedna definicja dla UI (render + zapis telemetrii), DoneEvent i evala — rozjazd między nimi
+    /// był źródłem tury wyglądającej inaczej na żywo i po przeładowaniu rozmowy.
+    /// </summary>
+    public static bool IsContentRefusal(string? answer) =>
+        !string.IsNullOrWhiteSpace(answer)
+        && (answer.Contains(RefusalMarker, StringComparison.OrdinalIgnoreCase)
+            || answer.Contains(LegacyRefusalMarker, StringComparison.OrdinalIgnoreCase))
+        && !CitationRegex().IsMatch(answer);
+
+    /// <summary>Cytowanie [n]/[n, m] w treści — ten sam kształt co markery walidatora cytowań.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"\[\s*\d+(?:\s*,\s*\d+)*\s*\]")]
+    private static partial System.Text.RegularExpressions.Regex CitationRegex();
 
     public const string SystemPrompt =
         """
@@ -56,7 +74,8 @@ public static class GroundedPrompt
            nie obejmują kwestii…"). Odpowiedź częściowa z uczciwie nazwaną luką jest LEPSZA niż
            odmowa. Dokładną frazę: "Nie znalazłem jednoznacznej podstawy prawnej dla tego pytania." napisz
            TYLKO wtedy, gdy źródła nie pozwalają odpowiedzieć na ŻADNĄ część pytania — wtedy nic
-           poza tym nie dodawaj i nie używaj tej frazy w żadnej innej sytuacji.
+           poza tym nie dodawaj i nie używaj tej frazy w żadnej innej sytuacji. NIGDY nie łącz
+           tej frazy z odpowiedzią merytoryczną ani z odwołaniami [n] w jednej wiadomości.
         4. NIE wymyślaj przepisów, artykułów, sygnatur ani cytatów. Nie korzystaj z wiedzy spoza źródeł.
         5. Cytuj dokładnie; jeśli źródło jest niejednoznaczne — zaznacz to.
         6. Jeśli wśród źródeł jest fragment oznaczony „[NOWELIZACJA — JUŻ OBOWIĄZUJE …]", cytowany

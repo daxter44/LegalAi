@@ -117,6 +117,31 @@ public class ChatServiceRouterTests
         Assert.False(done.Abstained);
     }
 
+    [Fact] // ODM-1: pusty strumien modelu na sciezce bez retrievalu -> serwer emituje standardowe
+           // zdanie odmowy (trafia do zapisu/historii/API), a Done.Abstained zostaje false (ODM-3:
+           // odmowa "to nie prawo" nie liczy sie do metryki odmow).
+    public async Task Smalltalk_empty_output_gets_out_of_scope_message()
+    {
+        var events = await Drain(Service(new CountingRetriever(0.9), new FakeLlm("  "),
+                new StubRouter(needsLaw: false), routerEnabled: true)
+            .AskAsync("Podaj przepis na zupę pomidorową", [], null, default));
+
+        var text = string.Concat(events.OfType<TokenEvent>().Select(t => t.Text));
+        Assert.Contains(PrawoRAG.Llm.Grounding.SmalltalkPrompt.OutOfScopeMessage, text);
+        Assert.False(Assert.IsType<DoneEvent>(events[^1]).Abstained);
+    }
+
+    [Fact] // Model odpowiedzial niepusto -> serwer NICZEGO nie dokleja (zdanie zastepcze tylko na pustke).
+    public async Task Smalltalk_nonempty_output_is_not_modified()
+    {
+        var events = await Drain(Service(new CountingRetriever(0.9), new FakeLlm("Cześć!"),
+                new StubRouter(needsLaw: false), routerEnabled: true)
+            .AskAsync("siema", [], null, default));
+
+        var text = string.Concat(events.OfType<TokenEvent>().Select(t => t.Text));
+        Assert.Equal("Cześć!", text);
+    }
+
     [Fact] // Sciezka small-talku uzywa WLASNEGO promptu, nie GroundedPrompt (zero regul cytowania [n]).
     public async Task Smalltalk_uses_its_own_prompt()
     {

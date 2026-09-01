@@ -200,7 +200,7 @@ public static class RefusalEvalRunner
             await foreach (var d in llm.StreamCompletionAsync(req, ct)) sb.Append(d);
             var answer = sb.ToString();
             if (string.IsNullOrWhiteSpace(answer)) outcome = "pusta";
-            else if (answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase)) outcome = "odmowa-treściowa";
+            else if (GroundedPrompt.IsContentRefusal(answer)) outcome = "odmowa-treściowa"; // ODM-4: fraza BEZ cytowań [n]
             else
             {
                 outcome = "OK";
@@ -270,7 +270,7 @@ public static class RefusalEvalRunner
     private static string Classify(bool abstained, string content) =>
         abstained ? "odmowa-progu"
         : string.IsNullOrWhiteSpace(content) ? "pusta"
-        : content.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase) ? "odmowa-treściowa"
+        : GroundedPrompt.IsContentRefusal(content) ? "odmowa-treściowa" // ODM-4: fraza BEZ cytowań [n]
         : "OK";
 
     /// <summary>Normalizacja do dedupu: białe znaki + spacja przed interpunkcją traktowane jak jej brak

@@ -103,4 +103,30 @@ public class GroundedPromptSectionsTests
         Assert.Contains("z wersji najnowszej", GroundedPrompt.SystemPrompt);
         Assert.Contains("kontekst historyczny", GroundedPrompt.SystemPrompt);
     }
+
+    /// <summary>ODM-4: kanoniczna definicja odmowy treściowej — fraza (bieżąca lub legacy) BEZ cytowań
+    /// [n]. Odpowiedź MIESZANA (fraza + treść z [n]) to NIE odmowa: klasyfikowanie jej jako odmowy
+    /// chowało panel źródeł przy żywych linkach [n] i zawyżało metrykę (złapane żywcem 2026-09-01).</summary>
+    [Theory]
+    [InlineData("Nie znalazłem jednoznacznej podstawy prawnej dla tego pytania.", true)]
+    [InlineData("Nie znalazłem jednoznacznej podstawy prawnej dla tego pytania. Zawęź pytanie lub wskaż konkretny akt/sygnaturę.", true)]
+    [InlineData("Nie mam wystarczających źródeł, aby odpowiedzieć.", true)] // legacy w zapisanych rozmowach
+    [InlineData("Nie znalazłem jednoznacznej podstawy prawnej, ale za nadgodziny przysługuje dodatek 50% [22].", false)] // mieszana
+    [InlineData("Za nadgodziny przysługuje dodatek 100% albo 50% [1, 2].", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void Content_refusal_requires_marker_without_citations(string? answer, bool expected) =>
+        Assert.Equal(expected, GroundedPrompt.IsContentRefusal(answer));
+
+    [Fact] // ODM-6: reguła 3 zakazuje wprost łączenia frazy odmowy z odpowiedzią/cytowaniami.
+    public void System_prompt_forbids_mixing_refusal_with_answer() =>
+        Assert.Contains("NIGDY nie łącz", GroundedPrompt.SystemPrompt);
+
+    [Fact] // ODM-1/3: reguła 6 promptu smalltalk cytuje DOSŁOWNIE zdanie zastępcze serwera, a samo
+           // zdanie nie zawiera frazy odmowy — odmowa „to nie prawo" NIE liczy się do metryki odmów.
+    public void Smalltalk_out_of_scope_message_is_consistent_and_not_a_content_refusal()
+    {
+        Assert.Contains(SmalltalkPrompt.OutOfScopeMessage, SmalltalkPrompt.SystemPrompt);
+        Assert.False(GroundedPrompt.IsContentRefusal(SmalltalkPrompt.OutOfScopeMessage));
+    }
 }

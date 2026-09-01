@@ -154,7 +154,7 @@ public static class LiveReportRunner
     /// po cichu wyzerowałaby metrykę.
     /// </summary>
     private static bool IsContentRefusal(string content) =>
-        content.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase)
+        GroundedPrompt.IsContentRefusal(content) // ODM-4: fraza BEZ cytowań [n] — odpowiedź mieszana to nie odmowa
         && !content.Contains(AbstentionPolicy.Message, StringComparison.Ordinal);
 
     /// <summary>
@@ -163,7 +163,7 @@ public static class LiveReportRunner
     /// <c>false</c> — stąd dodatkowo dopasowanie treści, żeby raport liczył obie epoki danych tak samo.
     /// </summary>
     private static bool IsAnyRefusal(bool abstainedColumn, string content) =>
-        abstainedColumn || content.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase);
+        abstainedColumn || GroundedPrompt.IsContentRefusal(content);
 
     private static string Pct(int part, int total) =>
         total == 0 ? "—" : $"{100.0 * part / total:0.0}%";

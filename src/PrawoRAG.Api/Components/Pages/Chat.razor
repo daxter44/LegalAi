@@ -122,11 +122,15 @@
                         }
                         else if (ex.Done)
                         {
-                            @* Siatka bezpieczeństwa: model (ścieżka bez retrievalu) czasem zwraca pusty
-                               tekst zamiast zdania odmowy — bez tego dymek byłby całkiem pusty, widoczna
-                               zostawałaby tylko belka „nie przeglądałem bazy" pod spodem, co czyta się
-                               jak błąd, nie jak świadoma odmowa. *@
-                            <span class="empty-hint">Nie pomagam w tematach spoza prawa — zapytaj mnie o coś z zakresu prawa polskiego.</span>
+                            @* Siatka bezpieczeństwa na pusty tekst po zakończonym strumieniu. Po ODM-1
+                               (ChatService podstawia zdanie odmowy na ścieżce bez retrievalu) to martwy
+                               kod bezpieczeństwa — ale gdyby odpalił, ma nie kłamać: „nie pomagam w
+                               tematach spoza prawa" TYLKO dla tury bez retrievalu; pusta odpowiedź na
+                               ścieżce ZE źródłami (czkawka providera przy pytaniu prawnym) dostaje
+                               neutralny komunikat zamiast fałszywego „to nie prawo" (ODM-2). *@
+                            <span class="empty-hint">@(ex.NoRetrievalReason is not null
+                                ? SmalltalkPrompt.OutOfScopeMessage
+                                : "Odpowiedź nie zawiera treści — zadaj pytanie ponownie.")</span>
                         }
                     </div>
 
@@ -571,7 +575,12 @@
             }
             else if (current is not null)
             {
-                if (m.Abstained) { current.Abstained = true; current.AbstainMessage = m.Content; }
+                // ODM-5: kolumna Abstained od wariantu A telemetrii znaczy też odmowę TREŚCIOWĄ
+                // (content = pełna odpowiedź, źródła zapisane) — banner tylko dla odmowy BRAMKI,
+                // którą po danych poznaje brak źródeł. Bez tego rozróżnienia ta sama tura wyglądała
+                // inaczej na żywo (dymek odpowiedzi) i po przeładowaniu (żółty banner z całą
+                // odpowiedzią w środku) — zgłoszone żywcem 2026-09-01.
+                if (m.Abstained && m.Sources.Count == 0) { current.Abstained = true; current.AbstainMessage = m.Content; }
                 else current.Answer = m.Content;
                 current.Sources = m.Sources;
                 current.MessageId = m.Id;
@@ -596,12 +605,11 @@
     /// panel „Źródła" pokazywał nietrafione fragmenty obok odpowiedzi z frazą odmowy —
     /// mylące (zgłoszone przy pytaniu spoza domeny, gdzie retrieval znalazł tylko przypadkowo podobne
     /// fragmenty prawnicze). Sprawdzane dopiero gdy tura się skończy (Done) — nie przy każdym tokenie.
-    /// Marker legacy: rozmowy zapisane przed 2026-08-31 mają starą frazę — historia musi ją nadal
-    /// rozpoznawać (odczyt wraca przez tę samą ścieżkę co świeże odpowiedzi).</summary>
+    /// ODM-4: definicja kanoniczna w <see cref="GroundedPrompt.IsContentRefusal"/> — odpowiedź
+    /// MIESZANA (fraza + treść z cytowaniami [n]) NIE jest odmową; klasyfikowanie jej jako odmowy
+    /// chowało panel przy żywych linkach [n] (zgłoszone żywcem 2026-09-01: martwe [22]).</summary>
     private static bool IsRefusal(Exchange ex) =>
-        ex.Done && !ex.Abstained
-        && (ex.Answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase)
-            || ex.Answer.Contains(GroundedPrompt.LegacyRefusalMarker, StringComparison.OrdinalIgnoreCase));
+        ex.Done && !ex.Abstained && GroundedPrompt.IsContentRefusal(ex.Answer);
 
 
     /// <summary>Licznik zużycia X/Y w stopce sidebara (leftover RED, addytywne) — best-effort,

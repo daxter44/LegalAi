@@ -1,6 +1,9 @@
 # Plan: spójność odmów — ścieżka bez retrievalu i odmowa treściowa (zadania ODM)
 
-Data: 2026-09-01. Status: **SPISANE DO REALIZACJI — nic z tego nie jest wdrożone.**
+Data: 2026-09-01. Status: **ZREALIZOWANE tego samego dnia (oba klastry, ODM-1..6), testy 915/915.**
+ODM-3 rozstrzygnięte wg rekomendacji: odmowa „to nie prawo" NIE liczy się do metryki odmów
+(zdanie zastępcze celowo bez frazy odmowy; przypieczętowane testem kontraktowym).
+Do przeklikania na żywo scenariusze z sekcji „Kolejność i zależności".
 Źródła: przegląd fixa `7e6f9a4` (pusta odpowiedź spoza prawa) + przypadek złapany żywcem przez
 właściciela (follow-up: odpowiedź z martwym [22] bez panelu źródeł, po przeładowaniu rozmowy ta
 sama tura jako żółty banner odmowy z pełną treścią odpowiedzi w środku).

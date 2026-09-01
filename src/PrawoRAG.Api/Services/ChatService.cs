@@ -338,8 +338,10 @@ public sealed class ChatService(
         // NORMA, bo AbstentionThreshold=0.0 usypia bramkę progową od czasu znaleziska o sygnale
         // rerankera) kończyła się dotąd Abstained=false, więc metryka nadrzędna (odsetek odmów)
         // liczona z kolumny messages.Abstained pokazywała ~0% mimo realnych odmów.
+        // ODM-4: kanoniczna definicja odmowy treściowej (fraza BEZ cytowań [n]) — odpowiedź mieszana
+        // (model złamał regułę 3: fraza + treść z [n]) to nie odmowa, użytkownik dostał odpowiedź.
         yield return new DoneEvent(
-            Abstained: answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase),
+            Abstained: GroundedPrompt.IsContentRefusal(answer),
             Model: llm.ModelId, Check: check, Usage: usage, Regenerated: regenerated);
     }
 
@@ -385,8 +387,19 @@ public sealed class ChatService(
         LlmUsage? usage = null;
         request = request with { OnUsage = u => usage = u };
 
+        var emptyOutput = true;
         await foreach (var delta in llm.StreamCompletionAsync(request, ct))
+        {
+            if (emptyOutput && !string.IsNullOrWhiteSpace(delta)) emptyOutput = false;
             yield return new TokenEvent(delta);
+        }
+
+        // ODM-1: model na tej ścieżce potrafił zwrócić PUSTY strumień (złapane żywcem 2026-09-01 na
+        // „przepis na zupę pomidorową"). Reguła 6 SmalltalkPrompt to pierwsza linia, ale to prośba —
+        // gwarancję daje serwer: pusta odpowiedź dostaje standardowe zdanie odmowy TUTAJ, więc trafia
+        // do bazy, historii follow-upów, czatu, /api/chat i dopytań analizy tak samo.
+        if (emptyOutput)
+            yield return new TokenEvent(SmalltalkPrompt.OutOfScopeMessage);
 
         // Check = null: nie ma źródeł, więc nie ma czego walidować. UI po tym (i po NoRetrievalEvent)
         // wie, że nie może pokazać badge'a „cytaty zgodne" — bo nie było cytatów.
