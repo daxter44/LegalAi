@@ -26,6 +26,13 @@ public sealed class AppUserEntity : IdentityUser
     /// </summary>
     public DateTime? TermsAcceptedAtUtc { get; set; }
 
+    /// <summary>Zgoda na treści marketingowe (opcjonalny checkbox przy rejestracji / przełącznik na
+    /// /konto). Null = brak zgody; data + wersja treści zgody jak przy regulaminie — dowód RODO.</summary>
+    public DateTime? MarketingConsentAtUtc { get; set; }
+
+    /// <summary>Wersja treści zgody marketingowej obowiązująca w chwili jej wyrażenia.</summary>
+    public string? MarketingConsentVersion { get; set; }
+
     public string? TermsVersion { get; set; }
 
     // --- plan i uprawnienie (E1/T-8, T-9) -------------------------------------------------------

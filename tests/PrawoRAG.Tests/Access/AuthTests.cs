@@ -86,6 +86,37 @@ public class AuthTests
         Assert.Contains("&lt;script&gt;", html);
     }
 
+    [Fact] // Zgoda marketingowa: checkbox OPCJONALNY, domyślnie odznaczony; stan przeżywa re-render błędu.
+    public void Register_page_has_optional_unchecked_marketing_checkbox()
+    {
+        var html = AuthPages.Register("__token", "tok", null, null);
+        Assert.Contains("name=\"marketing\"", html);
+        Assert.DoesNotContain("name=\"marketing\" type=\"checkbox\" value=\"tak\" checked", html);
+        Assert.DoesNotContain("name=\"marketing\" type=\"checkbox\" value=\"tak\" required", html); // opcjonalna
+
+        var rerender = AuthPages.Register("__token", "tok", "a@b.pl", null, ["błąd"], marketing: true);
+        Assert.Contains("name=\"marketing\" type=\"checkbox\" value=\"tak\" checked", rerender);
+    }
+
+    [Fact] // Analityka: snippet pusty bez konfiguracji; z konfiguracją = consent.js + identyfikatory.
+    public void Analytics_snippet_follows_configuration()
+    {
+        try
+        {
+            AnalyticsSnippet.Configure(new AnalyticsOptions());
+            Assert.Equal("", AnalyticsSnippet.Html);
+
+            AnalyticsSnippet.Configure(new AnalyticsOptions { ClarityProjectId = "cl1", GaMeasurementId = "G-XYZ" });
+            Assert.Contains("/js/consent.js", AnalyticsSnippet.Html);
+            Assert.Contains("data-clarity=\"cl1\"", AnalyticsSnippet.Html);
+            Assert.Contains("data-ga=\"G-XYZ\"", AnalyticsSnippet.Html);
+        }
+        finally
+        {
+            AnalyticsSnippet.Configure(new AnalyticsOptions()); // stan globalny — sprzątamy po teście
+        }
+    }
+
     [Fact]
     public void Register_page_encodes_validation_messages_and_carries_token()
     {

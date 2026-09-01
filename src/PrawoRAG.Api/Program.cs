@@ -84,6 +84,10 @@ var authOptions = builder.Configuration.GetSection(AuthOptions.SectionName).Get<
 // Billing:Enabled=false (domyślnie) = trasy /platnosc/* nie istnieją. Wymaga kont: bez konta nie ma
 // czego subskrybować ani komu przypisać planu.
 builder.Services.Configure<BillingOptions>(builder.Configuration.GetSection(BillingOptions.SectionName));
+// Analityka (Clarity/GA) za zgodą cookies — snippet consent.js konfigurowany RAZ, statycznie,
+// bo część powłok HTML (auth, konto, placeholdery) to statyczne buildery bez DI.
+var analyticsOptions = builder.Configuration.GetSection(AnalyticsOptions.SectionName).Get<AnalyticsOptions>() ?? new AnalyticsOptions();
+AnalyticsSnippet.Configure(analyticsOptions);
 var billingOptions = builder.Configuration.GetSection(BillingOptions.SectionName).Get<BillingOptions>() ?? new BillingOptions();
 if (billingOptions.Enabled)
 {
@@ -244,9 +248,15 @@ app.Use(async (ctx, next) =>
     var formAction = billingOptions.Enabled
         ? "'self' https://checkout.stripe.com https://billing.stripe.com"
         : "'self'";
+    // Analityka za zgodą (US: cookie banner): hosty Clarity/GA w CSP TYLKO gdy skonfigurowana —
+    // bez konfiguracji polityka zostaje bajt w bajt jak dotąd. Same skrypty i tak ładuje dopiero
+    // consent.js po zgodzie uzytkownika; CSP jest tu druga linia obrony, nie mechanizmem zgody.
+    var (scriptExtra, connectExtra, imgExtra) = analyticsOptions.Enabled
+        ? (AnalyticsSnippet.CspScriptSrc, AnalyticsSnippet.CspConnectSrc, AnalyticsSnippet.CspImgSrc)
+        : ("", "", "");
     h["Content-Security-Policy"] =
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
-        $"font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action {formAction}";
+        $"default-src 'self'; script-src 'self'{scriptExtra}; style-src 'self' 'unsafe-inline'; img-src 'self' data:{imgExtra}; " +
+        $"font-src 'self'; connect-src 'self' ws: wss:{connectExtra}; frame-ancestors 'none'; base-uri 'self'; form-action {formAction}";
     await next();
 });
 app.UseRateLimiter();
@@ -497,22 +507,26 @@ const string LandingHtml = """
     <footer>
       <div class="row">
         <span class="fbrand">OmniaSI</span>
-        <span class="flinks"><a href="/regulamin">Regulamin</a><a href="/prywatnosc">Polityka prywatności</a><a href="/o-systemie">O systemie</a></span>
+        <span class="flinks"><a href="/regulamin">Regulamin</a><a href="/prywatnosc">Polityka prywatności</a><a href="/o-systemie">O systemie</a><a href="#" id="cookie-settings">Ustawienia cookies</a></span>
       </div>
       <div class="legal">OmniaSI generuje research prawny do weryfikacji przez prawnika — nie świadczy porad prawnych. Treści generowane przez sztuczną inteligencję są oznaczane maszynowo zgodnie z aktem o sztucznej inteligencji (AI Act).</div>
     </footer>
+    <!--ANALYTICS-->
     </body></html>
     """;
 
 // Wezwanie do działania na landingu zależy od trybu: konta → rejestracja, alfa → kod zaproszenia.
 // CTA zależne od trybu: konta → rejestracja/logowanie, alfa → kod zaproszenia (jak dotąd).
+// Analityka (Clarity/GA) za zgodą: snippet consent.js podstawiany do wszystkich wariantów landingu;
+// pusty, gdy Analytics nieskonfigurowane.
+var landingBase = LandingHtml.Replace("<!--ANALYTICS-->", AnalyticsSnippet.Html);
 var landingHtml = authOptions.Enabled
-    ? LandingHtml
+    ? landingBase
         .Replace("<!--NAV-CTA-->", """<a class="btn-line" href="/logowanie" style="min-height:40px">Zaloguj się</a><a class="btn" href="/rejestracja" style="min-height:40px">Wypróbuj za darmo</a>""")
         .Replace("<!--CTA-->", """<a class="btn" href="/rejestracja" style="min-height:52px;padding:0 30px;font-size:16.5px">Zacznij za darmo — 15 pytań/mies.</a>""")
         .Replace("<!--CTA-START-->", """<a class="btn-line" href="/rejestracja" style="color:var(--sl-text-primary);border-color:var(--sl-border);margin-top:auto;justify-content:center">Załóż konto</a>""")
         .Replace("<!--CTA-PRO-->", """<a class="btn" href="/rejestracja" style="margin-top:auto;justify-content:center">Wybierz Pro</a>""")
-    : LandingHtml
+    : landingBase
         .Replace("<!--NAV-CTA-->", """<a class="btn" href="/wejscie" style="min-height:40px">Mam kod zaproszenia</a>""")
         .Replace("<!--CTA-->", """<a class="btn" href="/wejscie" style="min-height:52px;padding:0 30px;font-size:16.5px">Mam kod zaproszenia → Wejdź</a>""")
         .Replace("<!--CTA-START-->", """<a class="btn-line" href="/wejscie" style="color:var(--sl-text-primary);border-color:var(--sl-border);margin-top:auto;justify-content:center">Zamknięty test — mam kod</a>""")
@@ -521,7 +535,7 @@ var landingHtml = authOptions.Enabled
 // Landing dla ZALOGOWANEGO (leftover 2026-08-31: logo ma wracać na stronę główną, a `/` dla
 // zalogowanych nadal przekierowuje do /czat — inwariant zostaje). /start to jawne „pokaż stronę
 // główną" spod logo; CTA prowadzą wtedy do aplikacji/konta, nie do rejestracji.
-var landingHtmlAuthed = LandingHtml
+var landingHtmlAuthed = landingBase
     .Replace("<!--NAV-CTA-->", """<a class="btn" href="/czat" style="min-height:40px">Przejdź do czatu</a><!--WHO-->""")
     .Replace("<!--CTA-->", """<a class="btn" href="/czat" style="min-height:52px;padding:0 30px;font-size:16.5px">Przejdź do czatu</a>""")
     .Replace("<!--CTA-START-->", """<span class="foot-note" style="margin-top:auto">Masz już konto.</span>""")
@@ -567,7 +581,7 @@ static string LegalPlaceholder(string title) => $$"""
     p{color:var(--sl-text-secondary);font-size:.95rem}a{color:var(--sl-accent)}</style></head><body>
     <div class="card"><h1>{{title}}</h1>
     <p>Dokument w przygotowaniu — zostanie opublikowany przed udostępnieniem usługi. W razie pytań napisz do zespołu.</p>
-    <p><a href="/">← Wróć na stronę główną</a></p></div></body></html>
+    <p><a href="/">← Wróć na stronę główną</a></p></div>{{AnalyticsSnippet.Html}}</body></html>
     """;
 app.MapGet("/regulamin", () => Results.Content(LegalPlaceholder("Regulamin"), "text/html; charset=utf-8"));
 app.MapGet("/prywatnosc", () => Results.Content(LegalPlaceholder("Polityka prywatności"), "text/html; charset=utf-8"));

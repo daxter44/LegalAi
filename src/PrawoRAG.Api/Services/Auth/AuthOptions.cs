@@ -20,4 +20,7 @@ public sealed class AuthOptions
 
     /// <summary>Wersja regulaminu akceptowana przy rejestracji (zapisywana na koncie).</summary>
     public string TermsVersion { get; set; } = "2026-08";
+
+    /// <summary>Wersja treści zgody marketingowej — zapisywana przy jej wyrażeniu (dowód RODO).</summary>
+    public string MarketingConsentVersion { get; set; } = "2026-09";
 }

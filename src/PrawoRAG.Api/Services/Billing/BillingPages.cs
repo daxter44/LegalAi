@@ -125,6 +125,7 @@ public static class BillingPages
         <div class="content">
         {{bodyHtml}}
         </div>
+        {{AnalyticsSnippet.Html}}
         </body>
         </html>
         """;
@@ -132,7 +133,7 @@ public static class BillingPages
     public static string Konto(string tokenField, string token, string planId, string planStatus,
         DateTime? validUntilUtc, bool hasSubscription, string? email, bool emailConfirmed,
         bool analysisEnabled, (int Used, int Limit)? usage = null, DateTime? periodEndUtc = null,
-        string? displayName = null)
+        string? displayName = null, DateTime? marketingConsentAtUtc = null)
     {
         // Inicjał i podpis jak w chipie konta nagłówka aplikacji: imię z rejestracji, e-mail w odwodzie.
         var whoSource = string.IsNullOrWhiteSpace(displayName) ? email : displayName;
@@ -212,9 +213,21 @@ public static class BillingPages
         <div class="card">
           <h2>Prywatność i dane</h2>
           <div class="info">Twoje pytania i dokumenty nie trenują żadnego modelu. Konto możesz usunąć na żądanie — tryb opisuje polityka prywatności.</div>
+          <div class="kv">
+            <span><span class="k">Zgoda na treści marketingowe</span><br>
+              <span class="v">{(marketingConsentAtUtc is { } mc
+                  ? $"""wyrażona {mc:yyyy-MM-dd}"""
+                  : """<span class="muted">brak</span>""")}</span></span>
+            <form method="post" action="/konto/zgoda-marketingowa" class="end">
+              {AuthPages.Token(tokenField, token)}
+              <input type="hidden" name="zgoda" value="{(marketingConsentAtUtc is null ? "tak" : "nie")}">
+              <button type="submit" class="btn-line">{(marketingConsentAtUtc is null ? "Wyraź zgodę" : "Wycofaj zgodę")}</button>
+            </form>
+          </div>
           <div class="links">
             <a href="/prywatnosc">Polityka prywatności</a>
             <a href="/regulamin">Regulamin</a>
+            <a href="#" id="cookie-settings">Ustawienia cookies</a>
             <a class="btnlink btn-danger end" href="/wylogowanie">Wyloguj się</a>
           </div>
         </div>

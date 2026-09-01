@@ -58,16 +58,17 @@ public static class AuthEndpoints
             var displayName = Trim(form["displayName"].ToString(), 200);
             var password = form["password"].ToString();
             var terms = form["terms"].ToString();
+            var marketing = form["marketing"].ToString() == "tak"; // opcjonalna zgoda marketingowa
 
             if (string.IsNullOrWhiteSpace(email) || string.IsNullOrEmpty(password))
                 return Html(AuthPages.Register(TokenField, Token(http, af), email, displayName,
-                    ["Podaj adres e-mail i hasło."]));
+                    ["Podaj adres e-mail i hasło."], marketing));
             if (password.Length > MaxPasswordLength)
                 return Html(AuthPages.Register(TokenField, Token(http, af), email, displayName,
-                    [$"Hasło może mieć najwyżej {MaxPasswordLength} znaków."]));
+                    [$"Hasło może mieć najwyżej {MaxPasswordLength} znaków."], marketing));
             if (terms is not "tak")
                 return Html(AuthPages.Register(TokenField, Token(http, af), email, displayName,
-                    ["Akceptacja regulaminu i polityki prywatności jest wymagana."]));
+                    ["Akceptacja regulaminu i polityki prywatności jest wymagana."], marketing));
 
             var log = logs.CreateLogger("PrawoRAG.Auth");
             var existing = await users.FindByEmailAsync(email);
@@ -89,6 +90,8 @@ public static class AuthEndpoints
                 CreatedAtUtc = DateTime.UtcNow,
                 TermsAcceptedAtUtc = DateTime.UtcNow,
                 TermsVersion = auth.Value.TermsVersion,
+                MarketingConsentAtUtc = marketing ? DateTime.UtcNow : null,
+                MarketingConsentVersion = marketing ? auth.Value.MarketingConsentVersion : null,
             };
 
             var created = await users.CreateAsync(user, password);
@@ -102,7 +105,7 @@ public static class AuthEndpoints
                     return Html(MailboxPage());
 
                 return Html(AuthPages.Register(TokenField, Token(http, af), email, displayName,
-                    created.Errors.Select(e => e.Description)));
+                    created.Errors.Select(e => e.Description), marketing));
             }
 
             await SendConfirmationAsync(users, mail, log, user, http, auth.Value, ct);

@@ -61,8 +61,28 @@ public static class BillingEndpoints
                     email: user.Email, emailConfirmed: user.EmailConfirmed,
                     analysisEnabled: analysis.Value.Enabled,
                     usage: usage, periodEndUtc: periodEndUtc,
-                    displayName: user.DisplayName),
+                    displayName: user.DisplayName,
+                    marketingConsentAtUtc: user.MarketingConsentAtUtc),
                 "text/html; charset=utf-8");
+        }).RequireAuthorization();
+
+        // --- zgoda marketingowa: wyrażenie/wycofanie z /konto (RODO: wycofanie tak łatwe jak
+        //     wyrażenie). Data + wersja treści zgody jak przy rejestracji; wycofanie zeruje oba pola. ---
+        app.MapPost("/konto/zgoda-marketingowa", async (HttpContext http, IAntiforgery af,
+            UserManager<Storage.Entities.AppUserEntity> users,
+            IOptions<PrawoRAG.Api.Services.Auth.AuthOptions> auth) =>
+        {
+            if (!await Valid(http, af)) return Results.BadRequest("Formularz wygasł — odśwież stronę.");
+            if (http.User.FindFirstValue(ClaimTypes.NameIdentifier) is not { } userId)
+                return Results.Unauthorized();
+            var user = await users.FindByIdAsync(userId);
+            if (user is null) return Results.Unauthorized();
+
+            var grant = http.Request.Form["zgoda"].ToString() == "tak";
+            user.MarketingConsentAtUtc = grant ? DateTime.UtcNow : null;
+            user.MarketingConsentVersion = grant ? auth.Value.MarketingConsentVersion : null;
+            await users.UpdateAsync(user);
+            return Results.Redirect("/konto");
         }).RequireAuthorization();
 
         // --- start zakupu: Checkout (przekierowanie na stronę Stripe) ---

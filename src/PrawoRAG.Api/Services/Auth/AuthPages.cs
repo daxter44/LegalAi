@@ -103,6 +103,7 @@ public static class AuthPages
           {{bodyHtml}}
         </main>
         </div>
+        {{AnalyticsSnippet.Html}}
         </body>
         </html>
         """;
@@ -127,7 +128,7 @@ public static class AuthPages
     // --- konkretne strony -------------------------------------------------------------------
 
     public static string Register(string tokenField, string token, string? email, string? displayName,
-        IEnumerable<string>? errors = null) => Page("rejestracja", $"""
+        IEnumerable<string>? errors = null, bool marketing = false) => Page("rejestracja", $"""
         <h1>Załóż konto</h1>
         <p>Dostęp do asystenta prawnego z klikalnymi cytatami.</p>
         {Errors(errors ?? [])}
@@ -144,6 +145,11 @@ public static class AuthPages
             <input id="terms" name="terms" type="checkbox" value="tak" required>
             <span>Akceptuję <a href="/regulamin" target="_blank" rel="noopener">regulamin</a> i
             <a href="/prywatnosc" target="_blank" rel="noopener">politykę prywatności</a>.</span>
+          </label>
+          <label class="check" for="marketing">
+            <input id="marketing" name="marketing" type="checkbox" value="tak"{(marketing ? " checked" : "")}>
+            <span>Chcę otrzymywać informacje o nowościach i ofertach {E(ProductName)}
+            <span style="font-weight:400">(opcjonalnie — zgodę można wycofać w każdej chwili na stronie konta)</span>.</span>
           </label>
           <button type="submit">Załóż konto</button>
         </form>
