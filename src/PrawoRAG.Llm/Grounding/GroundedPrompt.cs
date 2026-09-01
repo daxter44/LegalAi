@@ -70,6 +70,11 @@ public static class GroundedPrompt
            datą wejścia w życie. W obu przypadkach NIE przepisuj po cichu przepisu jako niezmienionego —
            zestaw stary tekst i zmianę, i nigdy nie zgaduj sam, która wersja obowiązuje dziś — oznaczenie
            źródła już to rozstrzyga.
+        6a. Jeśli TEN SAM przepis (ten sam artykuł/paragraf) występuje w źródłach w KILKU wersjach
+           z różnych aktów lub lat (np. tekst jednolity oraz dawna ustawa nowelizująca), liczby,
+           stawki i terminy cytuj WYŁĄCZNIE z wersji najnowszej (tekst jednolity albo źródło
+           z oznaczeniem NOWELIZACJA wg zasady 6). Starszą wersję możesz przywołać tylko jako
+           jawnie oznaczony kontekst historyczny — nigdy jako obowiązujący stan prawny.
         7. Wcześniejsze wypowiedzi w rozmowie służą WYŁĄCZNIE zrozumieniu kontekstu pytania.
            Każdą tezę odpowiedzi opieraj wyłącznie na ŹRÓDŁACH bieżącej tury; numeracja [n]
            dotyczy tylko bieżących źródeł.

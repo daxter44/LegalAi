@@ -73,6 +73,17 @@ public sealed class AmendmentRelinkRunner(
 
         var summary = new RelinkSummary(scanned, refreshed, unchanged, failed);
         log.LogInformation("Relink ELI koniec: {Summary}", summary);
+
+        // Flaga „wchłonięta nowela" żywi się listami unabsorbedAmendments, które właśnie odświeżyliśmy —
+        // przeliczenie MUSI iść w tym samym przebiegu, inaczej retrieval filtrowałby po nieaktualnym
+        // stanie (nowela wchłonięta po nowym t.j. konkurowałaby dalej, a świeża — mogłaby zostać wycięta).
+        var flags = await RecomputeAbsorbedFlagsAsync(db, ct);
+        log.LogInformation("Flagi wchłoniętych nowel: zmienionych {Count} dokumentów.", flags);
         return summary;
     }
+
+    /// <summary>Zbiorcze przeliczenie <c>documents.AbsorbedAmendment</c> (obie strony, idempotentne).
+    /// Współdzielone przez relink (stan ustalony) i tryb <c>absorbed-flags</c> (backfill z runbooka).</summary>
+    public static Task<int> RecomputeAbsorbedFlagsAsync(PrawoRagDbContext db, CancellationToken ct) =>
+        db.Database.ExecuteSqlRawAsync(AbsorbedAmendments.RecomputeSql, ct);
 }

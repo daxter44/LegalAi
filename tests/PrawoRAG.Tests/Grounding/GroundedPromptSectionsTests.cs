@@ -94,4 +94,13 @@ public class GroundedPromptSectionsTests
         Assert.Contains($"\"{GroundedPrompt.RefusalMarker} dla tego pytania.\"", GroundedPrompt.SystemPrompt);
         Assert.Contains("ŻADNĄ część pytania", GroundedPrompt.SystemPrompt);
     }
+
+    [Fact] // Reguła 6a (2026-09-01): przy wielu wersjach tego samego przepisu w źródłach liczby/stawki
+           // cytowane z wersji NAJNOWSZEJ — siatka bezpieczeństwa syntezy obok filtra wchłoniętych nowel.
+    public void System_prompt_prefers_newest_version_of_same_provision()
+    {
+        Assert.Contains("KILKU wersjach", GroundedPrompt.SystemPrompt);
+        Assert.Contains("z wersji najnowszej", GroundedPrompt.SystemPrompt);
+        Assert.Contains("kontekst historyczny", GroundedPrompt.SystemPrompt);
+    }
 }

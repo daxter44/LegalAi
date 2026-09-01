@@ -5,6 +5,7 @@ using PrawoRAG.Domain;
 using PrawoRAG.Domain.Sources;
 using PrawoRAG.Ingestion;
 using PrawoRAG.Ingestion.EurLex;
+using PrawoRAG.Storage;
 
 // Jednorazowy przebieg ingestii (idealny pod smoke i pod harmonogram zewnętrzny: cron/systemd-timer
 // na tanim VPS — bez procesu rezydentnego). Periodyczność = zewnętrzny scheduler wołający ten worker.
@@ -152,6 +153,18 @@ switch (mode)
         var ustep = host.Services.GetRequiredService<UstepReprocessRunner>();
         var summary = await ustep.RunAsync(checkpoint, maxItems, delayMs, default);
         Console.WriteLine($"REPROCESS-USTEPY DONE: {summary}");
+        break;
+    }
+    case "absorbed-flags":
+    {
+        // Backfill/przeliczenie flagi documents.AbsorbedAmendment (wchłonięte nowelizacje poza torami
+        // semantycznymi retrievalu — ANALIZA-NADGODZINY-WCHLONIETE-NOWELE-POMIAR-2026-09-01). Jeden
+        // zbiorczy UPDATE, idempotentny, bez sieci i bez re-embeddingu; w stanie ustalonym to samo
+        // przeliczenie biegnie automatycznie na końcu relinku (sync-eli).
+        using var scope = host.Services.CreateScope();
+        var flagDb = scope.ServiceProvider.GetRequiredService<PrawoRagDbContext>();
+        var changed = await AmendmentRelinkRunner.RecomputeAbsorbedFlagsAsync(flagDb, default);
+        Console.WriteLine($"ABSORBED-FLAGS DONE: changed={changed}");
         break;
     }
     case "backfill-noise":

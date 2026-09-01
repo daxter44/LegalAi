@@ -437,6 +437,12 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         if (query.DateFrom is { } from) conditions.Add($"d.\"JudgmentDate\" >= {P(from)}");
         if (query.DateTo is { } to) conditions.Add($"d.\"JudgmentDate\" <= {P(to)}");
         if (query.OnlyInForce) conditions.Add("(d.\"DocType\" <> 'act' OR d.\"InForce\" = true)");
+        // Wchłonięte nowelizacje poza torami SEMANTYCZNYMI (analiza 2026-09-01): ich krótkie chunki
+        // wygrywają przestarzałą treścią z aktualnym tekstem jednolitym (np. stawka za nadgodziny
+        // z 1996 r. zamiast art. 151(1) KP). Tory dokładne (sygnatura/ELI/cytat) i augmenter celowo
+        // BEZ filtra — jawne wskazanie noweli (też jej przepisów przejściowych) nadal działa.
+        // Bezpieczny rollout: kolumna startuje z false (filtr nic nie zmienia do czasu backfillu).
+        conditions.Add("(d.\"DocType\" <> 'act' OR d.\"AbsorbedAmendment\" = false)");
         if (query.MinChunkTokens > 0) conditions.Add($"c.\"TokenCount\" >= {P(query.MinChunkTokens)}");
         // SAOS judgmentType=REGULATION — patrz komentarz w ApplyFilters. IS DISTINCT FROM (nie <>), żeby
         // NULL (brak klucza — akty, orzeczenia sprzed dodania metadanych) przechodził filtr, nie znikał.
@@ -760,6 +766,8 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         if (query.DateFrom is { } from) q = q.Where(c => c.Document!.JudgmentDate >= from);
         if (query.DateTo is { } to) q = q.Where(c => c.Document!.JudgmentDate <= to);
         if (query.OnlyInForce) q = q.Where(c => c.Document!.DocType != "act" || c.Document!.InForce == true);
+        // Wchłonięte nowelizacje poza torami semantycznymi — lustro warunku z DenseAsync (analiza 2026-09-01).
+        q = q.Where(c => c.Document!.DocType != "act" || !c.Document!.AbsorbedAmendment);
         if (query.MinChunkTokens > 0) q = q.Where(c => c.TokenCount >= query.MinChunkTokens);
         // SAOS judgmentType=REGULATION (zarządzenie porządkowe, np. "doręczyć odpis pełnomocnikowi") —
         // czysto kancelaryjne, zero treści merytorycznej, a krótkie niemal-identyczne teksty tworzą
