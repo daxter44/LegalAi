@@ -292,7 +292,10 @@ const string LandingHtml = """
     <style>
     *{box-sizing:border-box}body{font-family:var(--sl-font-base);margin:0;color:var(--sl-on-dark);background:#0F1218;line-height:1.6}
     a{color:var(--sl-accent);text-decoration:none}
-    .nav{display:flex;align-items:center;gap:28px;padding:18px 6vw;background:rgb(23 27 36 / .7);border-bottom:1px solid rgb(199 208 236 / .12)}
+    html{scroll-behavior:smooth}
+    /* Nawigacja przyklejona (2026-09-01): po skoku do #roznice/#cennik header ma zostac widoczny. */
+    .nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:28px;padding:18px 6vw;background:rgb(23 27 36 / .85);backdrop-filter:blur(10px);border-bottom:1px solid rgb(199 208 236 / .12)}
+    [id]{scroll-margin-top:76px} /* kotwice nie chowaja sie pod przyklejonym paskiem */
     .brand{display:flex;align-items:center;gap:10px;color:var(--sl-on-dark);font-family:var(--sl-font-display);font-size:24px;font-weight:700;letter-spacing:-.01em}
     .mark{width:26px;height:26px;border-radius:8px;background:var(--sl-gradient);box-shadow:0 0 24px rgb(37 99 235 / .6)}
     .nav .links{margin-left:auto;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
