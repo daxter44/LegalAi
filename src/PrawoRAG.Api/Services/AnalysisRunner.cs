@@ -97,7 +97,7 @@ public sealed class AnalysisRunner(
             UnitAnalysis? result = null;
             try
             {
-                result = await AnalyzeUnitAsync(session.Prompt, unit, userId, ct);
+                result = await AnalyzeUnitAsync(session, unit, userId, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -115,8 +115,9 @@ public sealed class AnalysisRunner(
 
     /// <summary>Faza map jednej jednostki: dzienne limity kosztów (CostGuard — dokument to KILKANAŚCIE
     /// wywołań LLM, każde liczone), świeży scope DI, drenaż strumienia zdarzeń czatu do wyniku.</summary>
-    private async Task<UnitAnalysis> AnalyzeUnitAsync(string userPrompt, DocUnit unit, string userId, CancellationToken ct)
+    private async Task<UnitAnalysis> AnalyzeUnitAsync(AnalysisSession session, DocUnit unit, string userId, CancellationToken ct)
     {
+        var userPrompt = session.Prompt;
         if (await costGuard.TryAcquireAsync(userId, ct) is { Allowed: false } limit)
             return new UnitAnalysis(unit.Index, unit.Heading, UnitVerdict.Error, null, [],
                 Error: limit.Message);
@@ -141,6 +142,9 @@ public sealed class AnalysisRunner(
             {
                 case SourcesEvent s: sources = s.Sources; break;
                 case TokenEvent t: answer.Append(t.Text); break;
+                // Sygnał życia dla UI: „🧠 myśli… (N zn.)" przy jednostce w toku zamiast martwego
+                // „…" przez cały czas rozumowania (naprawa 2026-09-02, lustro czatu).
+                case ReasoningDeltaEvent rd: session.ReportUnitThinking(unit.Index, rd.Text.Length); break;
                 case AbstainEvent a: abstainMessage = a.Message; break;
                 case DoneEvent d: check = d.Check; break;
                 case ChatErrorEvent err: error = err.Message; break;

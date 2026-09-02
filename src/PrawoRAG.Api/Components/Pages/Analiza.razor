@@ -222,7 +222,10 @@ else
                 <span class="source-n">@unit.Heading</span>
                 @if (r is null)
                 {
-                    <span class="badge">@(_degraded ? "nieprzeanalizowany" : "⏳ w kolejce…")</span>
+                    @* Postęp myślenia na żywo (naprawa 2026-09-02): bez tego jednostka w toku przez
+                       cały czas rozumowania LLM (dziesiątki sekund) wygląda identycznie jak czekająca. *@
+                    var thinking = snap.ThinkingChars is { } tc && unit.Index - 1 < tc.Count ? tc[unit.Index - 1] : 0;
+                    <span class="badge">@(_degraded ? "nieprzeanalizowany" : thinking > 0 ? $"🧠 myśli… ({thinking} zn.)" : "⏳ w kolejce…")</span>
                 }
                 else
                 {

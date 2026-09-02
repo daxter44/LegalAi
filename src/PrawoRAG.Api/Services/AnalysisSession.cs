@@ -50,6 +50,7 @@ public sealed class AnalysisSession
 {
     private readonly object _lock = new();
     private readonly UnitAnalysis?[] _results;
+    private readonly int[] _thinkingChars;
     private readonly CancellationTokenSource _cts = new();
     private AnalysisStatus _status = AnalysisStatus.Preparing;
     private int _completed;
@@ -74,6 +75,7 @@ public sealed class AnalysisSession
         CreatedAt = time.GetUtcNow();
         LastTouched = CreatedAt;
         _results = new UnitAnalysis?[units.Count];
+        _thinkingChars = new int[units.Count];
     }
 
     public Guid Id { get; } = Guid.CreateVersion7();
@@ -141,9 +143,27 @@ public sealed class AnalysisSession
         {
             if (_results[result.Index - 1] is null) _completed++;
             _results[result.Index - 1] = result;
+            _thinkingChars[result.Index - 1] = 0; // wynik jest — licznik myślenia zaczyna od zera przy ew. retry
             LastTouched = _time.GetUtcNow();
         }
         Changed?.Invoke();
+    }
+
+    /// <summary>Postęp myślenia jednostki W TOKU (delty rozumowania z LLM, w znakach) — wyłącznie
+    /// sygnał życia dla UI („🧠 myśli… (N zn.)" zamiast martwego „⏳ w kolejce…" przez kilkadziesiąt
+    /// sekund). <see cref="Changed"/> odpalane co ~500 znaków, nie per delta: rozumowanie to setki
+    /// delt, a Changed = re-render całej strony analizy.</summary>
+    public void ReportUnitThinking(int index, int chars)
+    {
+        if (chars <= 0) return;
+        bool notify;
+        lock (_lock)
+        {
+            var before = _thinkingChars[index - 1];
+            _thinkingChars[index - 1] = before + chars;
+            notify = (before + chars) / 500 != before / 500;
+        }
+        if (notify) Changed?.Invoke();
     }
 
     /// <summary>Indeksy jednostek z werdyktem BŁĄD — kandydaci do ponowienia (AN-4).</summary>
@@ -164,6 +184,7 @@ public sealed class AnalysisSession
         {
             if (_results[index - 1] is null) return;
             _results[index - 1] = null;
+            _thinkingChars[index - 1] = 0;
             _completed--;
             _status = AnalysisStatus.Analyzing;
         }
@@ -189,7 +210,7 @@ public sealed class AnalysisSession
         lock (_lock)
             return new AnalysisSnapshot(
                 Id, FileName, PageCount, Prompt, _status, Units, UnitsTruncated,
-                [.. _results], _completed, _summary, _error);
+                [.. _results], _completed, _summary, _error, [.. _thinkingChars]);
     }
 }
 
@@ -204,7 +225,10 @@ public sealed record AnalysisSnapshot(
     IReadOnlyList<UnitAnalysis?> Results,
     int Completed,
     string? Summary,
-    string? Error)
+    string? Error,
+    // Znaki rozumowania jednostek W TOKU (sygnał życia dla UI); null = snapshot z DB (tryb
+    // zdegradowany), gdzie postęp na żywo z definicji nie istnieje.
+    IReadOnlyList<int>? ThinkingChars = null)
 {
     public int Total => Units.Count;
 }

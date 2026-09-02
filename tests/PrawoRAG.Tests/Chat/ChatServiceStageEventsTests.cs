@@ -154,6 +154,60 @@ public class ChatServiceStageEventsTests
         Assert.IsType<DoneEvent>(events[^1]);
     }
 
+    /// <summary>LLM, który NIE wyemituje widocznego tokenu, dopóki test nie potwierdzi (przez
+    /// <paramref name="deltaReceived"/>), że delta rozumowania DOTARŁA do konsumenta strumienia.
+    /// Symuluje realny stan: podczas myślenia provider nie emituje żadnej widocznej delty.</summary>
+    private sealed class GatedThinkingLlm(Task deltaReceived) : ILlmProvider
+    {
+        public string ModelId => "fake-gated-thinking";
+
+        public async IAsyncEnumerable<string> StreamCompletionAsync(
+            LlmRequest request, [EnumeratorCancellation] CancellationToken ct)
+        {
+            request.OnReasoningDelta?.Invoke("Sprawdzam art. 415 KC.");
+            // Widoczny token dopiero PO tym, jak UI zobaczyło myślenie — stary kod (drenaż kanału
+            // tylko między widocznymi deltami) nigdy się stąd nie ruszał: deadlock zamiast „na żywo".
+            await deltaReceived.WaitAsync(TimeSpan.FromSeconds(10), ct);
+            request.OnReasoning?.Invoke("Sprawdzam art. 415 KC.");
+            yield return "Ponosisz odpowiedzialność [1].";
+        }
+    }
+
+    [Fact] // NAPRAWA 2026-09-02: delty rozumowania docieraja W TRAKCIE myslenia (pompa strumienia
+           // do wspolnego kanalu), a nie hurtem przy pierwszym widocznym tokenie po 30-90 s ciszy.
+    public async Task Reasoning_deltas_arrive_while_model_is_still_thinking()
+    {
+        var deltaReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = Service(new StageReportingRetriever(0.9, "embed"), new GatedThinkingLlm(deltaReceived.Task));
+
+        async Task<List<ChatEvent>> DrainConfirming()
+        {
+            var list = new List<ChatEvent>();
+            await foreach (var e in service.AskAsync("czy ponoszę odpowiedzialność?", [], null, default))
+            {
+                list.Add(e);
+                if (e is ReasoningDeltaEvent) deltaReceived.TrySetResult();
+            }
+            return list;
+        }
+
+        // Timeout = regresja do starego zachowania (konsument wisi na MoveNextAsync, delta w kanale).
+        var events = await DrainConfirming().WaitAsync(TimeSpan.FromSeconds(15));
+
+        var firstDelta = events.FindIndex(e => e is ReasoningDeltaEvent);
+        var firstToken = events.FindIndex(e => e is TokenEvent);
+        Assert.True(firstDelta >= 0 && firstDelta < firstToken);
+
+        // Pasek etapu opowiada te sama historie: „Piszę…" → „Myślę…" (pierwsza delta rozumowania)
+        // → „Piszę…" (pierwszy widoczny token) — kazde przelaczenie PRZED tokenami.
+        var llmStages = events.OfType<StageEvent>().Where(s => s.Stage == "llm").Select(s => s.Label).ToList();
+        Assert.Equal(["Piszę odpowiedź…", "Myślę…", "Piszę odpowiedź…"], llmStages);
+        var lastLlmStage = events.FindLastIndex(e => e is StageEvent { Stage: "llm" });
+        Assert.True(lastLlmStage < firstToken);
+
+        Assert.IsType<DoneEvent>(events[^1]);
+    }
+
     [Fact] // Retriever bez raportowania (dzisiejszy stan) => zero StageEventow z retrievalu, ale reszta bez zmian.
     public async Task Retriever_without_stages_still_answers()
     {

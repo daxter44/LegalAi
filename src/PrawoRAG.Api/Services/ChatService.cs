@@ -204,13 +204,30 @@ public sealed class ChatService(
         // je wystawił (Gemini/Gemma) — provider oddaje je osobno, poza widocznym strumieniem.
         LlmUsage? usage = null;
         string? reasoning = null;
+        // Rozumowanie NA ŻYWO (Zadanie 1; naprawa 2026-09-02): callback pisze do kanału (nie może
+        // `yield return`), a pętla generacji niżej czyta kanał RÓWNOLEGLE ze strumieniem LLM (pompa) —
+        // bez tego podczas myślenia provider nie emituje ŻADNEJ widocznej delty, konsument wisi na
+        // MoveNextAsync i delty rozumowania czekają w kanale aż do pierwszego tokenu (obserwacja
+        // produkcyjna: „🧠 myśli…" pojawiało się dopiero razem z tekstem, po 30-90 s ciszy).
+        // Pierwsza delta rozumowania przełącza też pasek etapu na „Myślę…" i stempluje czas
+        // (llm.first_reasoning) — bez tego llm.first_token zlepia czytanie promptu z myśleniem.
+        var thinking = false;      // model myśli w bieżącej próbie (reset na starcie każdej generacji)
+        var firstReasoningTs = 0L; // Stopwatch.GetTimestamp() pierwszej delty rozumowania
+        Action<string> onReasoningDelta = d =>
+        {
+            if (!thinking)
+            {
+                thinking = true;
+                firstReasoningTs = System.Diagnostics.Stopwatch.GetTimestamp();
+                side.Writer.TryWrite(new StageEvent("llm", "Myślę…"));
+            }
+            side.Writer.TryWrite(new ReasoningDeltaEvent(d));
+        };
         request = request with
         {
             OnUsage = u => usage = u,
             OnReasoning = r => reasoning = r,
-            // Rozumowanie NA ŻYWO (Zadanie 1): ~41 z ~85 s odpowiedzi. Leci tym samym kanałem co etapy,
-            // bo callback providera też nie może `yield return`.
-            OnReasoningDelta = d => side.Writer.TryWrite(new ReasoningDeltaEvent(d)),
+            OnReasoningDelta = onReasoningDelta,
         };
 
         // ANTY-FABRYKACJA — czy cytaty [n]/[Dk]/artykuły/sygnatury istnieją w dostarczonym kontekście.
@@ -242,19 +259,48 @@ public sealed class ChatService(
 
             var full = new StringBuilder();
             var llmSw = System.Diagnostics.Stopwatch.StartNew();
+            var llmStartTs = System.Diagnostics.Stopwatch.GetTimestamp();
             var firstTokenMs = -1L;
-            await foreach (var delta in llm.StreamCompletionAsync(request, ct))
+            thinking = false;
+            firstReasoningTs = 0;
+            // POMPA (naprawa 2026-09-02): strumień LLM pisze do TEGO SAMEGO kanału co delty
+            // rozumowania — jeden sekwencyjny producent (callback odpala wewnątrz iteracji strumienia)
+            // zachowuje prawdziwą kolejność zdarzeń (myślenie przed tekstem), a konsument niżej budzi
+            // się na KAŻDE zdarzenie, nie tylko na widoczne tokeny. Wzorzec jak przy etapach
+            // retrievalu wyżej (Task.WhenAny + jeden oczekujący waiter naraz).
+            var pumpRequest = request;
+            var pump = Task.Run(async () =>
             {
-                // Delty rozumowania wyprzedzają widoczny tekst (model najpierw myśli) — drenaż PRZED
-                // tokenem zachowuje realną kolejność zdarzeń w UI.
-                while (side.Reader.TryRead(out var thought)) yield return thought;
-                if (firstTokenMs < 0) firstTokenMs = llmSw.ElapsedMilliseconds;
-                full.Append(delta);
-                yield return new TokenEvent(delta);
+                await foreach (var delta in llm.StreamCompletionAsync(pumpRequest, ct))
+                {
+                    if (firstTokenMs < 0)
+                    {
+                        firstTokenMs = llmSw.ElapsedMilliseconds;
+                        // Koniec myślenia — pasek etapu wraca z „Myślę…" do pisania odpowiedzi.
+                        if (thinking) side.Writer.TryWrite(new StageEvent("llm",
+                            regenerated ? "Poprawiam odpowiedź…" : "Piszę odpowiedź…", sources.Count));
+                    }
+                    full.Append(delta);
+                    side.Writer.TryWrite(new TokenEvent(delta));
+                }
+            }, ct);
+
+            var waitLlm = side.Reader.WaitToReadAsync(ct).AsTask();
+            while (true)
+            {
+                var finishedLlm = await Task.WhenAny(pump, waitLlm);
+                while (side.Reader.TryRead(out var ev)) yield return ev;
+                if (finishedLlm == pump) break;
+                await waitLlm; // propagacja anulowania; normalnie: dane już zdrenowane wyżej
+                waitLlm = side.Reader.WaitToReadAsync(ct).AsTask();
             }
+            await pump; // propagacja błędu strumienia (transport, 500 z API) — jak przy await foreach
             // Model, który TYLKO myślał (albo domknął myślenie po ostatnim widocznym tokenie) — bez tego
             // ogona ostatnie delty rozumowania zginęłyby.
             while (side.Reader.TryRead(out var lastThought)) yield return lastThought;
+            if (thinking)
+                LatencyLog.Mark(regenerated ? "llm.first_reasoning.retry" : "llm.first_reasoning",
+                    (long)System.Diagnostics.Stopwatch.GetElapsedTime(llmStartTs, firstReasoningTs).TotalMilliseconds);
             LatencyLog.Mark(regenerated ? "llm.first_token.retry" : "llm.first_token", firstTokenMs);
             LatencyLog.Mark(regenerated ? "llm.total.retry" : "llm.total", llmSw.ElapsedMilliseconds);
 
@@ -315,7 +361,7 @@ public sealed class ChatService(
                         {
                             OnUsage = u => usage = u,
                             OnReasoning = r => reasoning = r,
-                            OnReasoningDelta = d => side.Writer.TryWrite(new ReasoningDeltaEvent(d)),
+                            OnReasoningDelta = onReasoningDelta,
                         };
                         yield return new SourcesEvent(sources
                             .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet,
