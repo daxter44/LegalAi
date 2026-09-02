@@ -27,9 +27,11 @@ body {
     min-height: var(--header-h); padding: 0 var(--s-8);
     background: #171B24; border-bottom: 1px solid rgb(199 208 236 / .12);
 }
-.app-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--sl-on-dark); }
-.app-title { font-family: var(--sl-font-display); letter-spacing: -0.01em; font-size: var(--fs-20); font-weight: 700; }
-.app-logo-mark { width: 26px; height: 26px; flex: none; display: block; }
+.app-brand { display: flex; align-items: center; gap: 6px; text-decoration: none; color: var(--sl-on-dark); }
+.app-title { font-family: var(--sl-font-base); letter-spacing: -0.01em; font-size: var(--fs-20); line-height: 1; }
+.app-title .omnia { font-weight: 700; }
+.app-title .si { font-weight: 400; color: var(--sl-on-dark-accent); }
+.app-logo-mark { width: 30px; height: 30px; flex: none; display: block; }
 .app-header a:focus-visible { outline: 2px solid var(--sl-on-dark-accent); outline-offset: 2px; box-shadow: none; }
 .app-tag {
     font-size: var(--fs-12); color: var(--c-text-muted);

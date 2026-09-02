@@ -99,9 +99,11 @@ public static class LegalPages
               body{font-family:var(--sl-font-base);background:var(--sl-bg);color:var(--sl-text-primary);margin:0;line-height:1.65}
               .top{background:var(--sl-hero-gradient);color:var(--sl-on-dark);padding:var(--s-5) var(--s-6)}
               .top .row{max-width:46rem;margin:0 auto;display:flex;flex-wrap:wrap;gap:var(--s-3) var(--s-6);align-items:center;justify-content:space-between}
-              .brand{display:flex;align-items:center;gap:var(--s-2);color:var(--sl-on-dark);text-decoration:none;font-weight:700;
-                     font-family:var(--sl-font-display);font-size:var(--fs-20);letter-spacing:-0.01em}
-              .brand .mark{width:24px;height:24px;display:block;flex:none}
+              .brand{display:flex;align-items:center;gap:6px;color:var(--sl-on-dark);text-decoration:none;line-height:1;
+                     font-family:var(--sl-font-base);font-size:var(--fs-20);letter-spacing:-0.01em}
+              .brand .omnia{font-weight:700}
+              .brand .si{font-weight:400;color:var(--sl-on-dark-accent)}
+              .brand .mark{width:30px;height:30px;display:block;flex:none}
               .docs{display:flex;flex-wrap:wrap;gap:var(--s-4);font-size:var(--fs-14)}
               .docs a{color:var(--sl-on-dark-soft);text-decoration:none}
               .docs a:hover{color:var(--sl-on-dark);text-decoration:underline}
@@ -127,7 +129,7 @@ public static class LegalPages
             </head>
             <body>
             <header class="top"><div class="row">
-              <a class="brand" href="/start">{{Mark}}{{E(ProductName)}}</a>
+              <a class="brand" href="/start">{{Mark}}<span class="omnia">Omnia</span><span class="si">SI</span></a>
               <nav class="docs" aria-label="Dokumenty">{{nav}}</nav>
             </div></header>
             <main><article>{{bodyHtml}}</article></main>

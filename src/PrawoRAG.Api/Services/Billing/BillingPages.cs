@@ -40,9 +40,11 @@ public static class BillingPages
           /* Topbar 1:1 z globalnym headerem aplikacji (app.css .app-header) — spójność 2026-09-01. */
           .topbar{display:flex;align-items:center;gap:var(--s-6);min-height:60px;padding:0 var(--s-8);
                   background:#171B24;border-bottom:1px solid rgb(199 208 236 / .12)}
-          .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--sl-on-dark);
-                 font-family:var(--sl-font-display);font-size:var(--fs-20);font-weight:700;letter-spacing:-0.01em}
-          .brand .mark{width:26px;height:26px;display:block}
+          .brand{display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--sl-on-dark);
+                 font-family:var(--sl-font-base);font-size:var(--fs-20);line-height:1;letter-spacing:-0.01em}
+          .brand .omnia{font-weight:700}
+          .brand .si{font-weight:400;color:var(--sl-on-dark-accent)}
+          .brand .mark{width:30px;height:30px;display:block}
           .nav{margin-left:auto;display:flex;align-items:center;gap:var(--s-5);font-size:var(--fs-15)}
           .nav a{color:#9BA3B7;font-weight:500;text-decoration:none;white-space:nowrap}
           .nav a:hover{color:var(--sl-on-dark)}
@@ -113,7 +115,7 @@ public static class BillingPages
         </head>
         <body>
         <div class="topbar">
-          <a class="brand" href="/start">{{Mark}} {{E(AuthPages.ProductName)}}</a>
+          <a class="brand" href="/start">{{Mark}}<span class="omnia">Omnia</span><span class="si">SI</span></a>
           <nav class="nav">
             <a href="/czat">Czat</a>
             {{(analysisEnabled ? """<a href="/analiza">Analiza</a>""" : "")}}

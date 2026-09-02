@@ -56,7 +56,8 @@ public static class AuthPages
                line-height:var(--lh-body);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);min-height:100vh}
           .auth-side{background:var(--sl-hero-gradient);color:var(--sl-on-dark);
                      display:flex;flex-direction:column;justify-content:space-between;padding:var(--s-12) var(--s-10)}
-          .auth-side .auth-brand{color:var(--sl-on-dark)}
+          .auth-side .auth-brand{color:#EDEFF8}
+          .auth-side .auth-brand .si{color:#93B4FF}
           .auth-promise{max-width:30rem;display:flex;flex-direction:column;gap:var(--s-5)}
           .auth-claim{font-family:var(--sl-font-display);font-size:var(--fs-32);line-height:1.2;font-weight:700;letter-spacing:-0.01em}
           .auth-points{display:flex;flex-direction:column;gap:var(--s-3);font-size:var(--fs-15);color:var(--sl-on-dark-soft)}
@@ -65,10 +66,12 @@ public static class AuthPages
           .auth-wrap{display:flex;justify-content:center;align-items:center;padding:var(--s-6)}
           .auth{background:var(--sl-surface);border-radius:var(--sl-radius-xl);
                 box-shadow:var(--sl-shadow-card);width:100%;max-width:27rem;padding:var(--s-10) var(--s-10) var(--s-8)}
-          .auth-brand{display:flex;align-items:center;gap:var(--s-2);margin-bottom:var(--s-6);
-                      font-weight:700;text-decoration:none;color:inherit;
-                      font-family:var(--sl-font-display);font-size:var(--fs-20);letter-spacing:-0.01em}
-          .auth-brand .mark{width:24px;height:24px;display:block;flex:none}
+          .auth-brand{display:flex;align-items:center;gap:6px;margin-bottom:var(--s-6);
+                      text-decoration:none;color:#0A0A0A;line-height:1;
+                      font-family:var(--sl-font-base);font-size:var(--fs-20);letter-spacing:-0.01em}
+          .auth-brand .omnia{font-weight:700}
+          .auth-brand .si{font-weight:400;color:#2563EB}
+          .auth-brand .mark{width:30px;height:30px;display:block;flex:none}
           .auth .auth-brand{display:none}
           h1{font-family:var(--sl-font-display);font-size:var(--fs-24);letter-spacing:-0.01em;margin:0 0 var(--s-2)}
           p{margin:0 0 var(--s-4);color:var(--sl-text-secondary);font-size:var(--fs-14)}
@@ -103,7 +106,7 @@ public static class AuthPages
         </head>
         <body>
         <aside class="auth-side">
-          <a class="auth-brand" href="/">{{MarkOnDark}} {{E(ProductName)}}</a>
+          <a class="auth-brand" href="/">{{MarkOnDark}}<span class="omnia">Omnia</span><span class="si">SI</span></a>
           <div class="auth-promise">
             <div class="auth-claim">Research prawny na źródłach, nie na domysłach.</div>
             <div class="auth-points">
@@ -116,7 +119,7 @@ public static class AuthPages
         </aside>
         <div class="auth-wrap">
         <main class="auth">
-          <a class="auth-brand" href="/">{{MarkOnLight}} {{E(ProductName)}}</a>
+          <a class="auth-brand" href="/">{{MarkOnLight}}<span class="omnia">Omnia</span><span class="si">SI</span></a>
           {{bodyHtml}}
         </main>
         </div>
