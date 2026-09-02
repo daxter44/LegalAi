@@ -140,12 +140,30 @@ public static class LegalUnitSplitter
         return h.StartsWith('§') && !h.StartsWith("§ ") ? "§ " + h[1..].TrimStart() : h;
     }
 
-    /// <summary>Jak <c>DocChunker.SplitOversize</c>: kawałki ≤ limit cięte na ostatniej spacji.</summary>
+    /// <summary>Granica ustępu/punktu wewnątrz § — preferowane miejsce cięcia za długiej jednostki
+    /// (AJ-13): „ust. 3", „3." na początku linii, „pkt 2" / „2)" na początku linii. Cięcie w środku
+    /// ustępu dawało części „(cz. n)", z których żadna nie zawierała całego twierdzenia prawnego.</summary>
+    private static readonly Regex SubunitBoundaryRe = new(
+        @"(?<=\n|\s)(?=(?:ust\.\s*\d+|\d{1,2}\.\s+\p{Lu}|pkt\s*\d+|\d{1,2}\)\s))",
+        RegexOptions.Compiled);
+
+    /// <summary>Minimalny udział limitu, jaki musi wypełnić część cięta na granicy ustępu — inaczej
+    /// „ust. 2" tuż za nagłówkiem dawałoby część z samym nagłówkiem.</summary>
+    private const double MinBoundaryFill = 0.35;
+
+    /// <summary>Kawałki ≤ limit: najpierw ostatnia granica ustępu/punktu w oknie (jeśli nie za
+    /// wcześnie), w ostateczności ostatnia spacja (jak <c>DocChunker.SplitOversize</c>).</summary>
     private static IEnumerable<string> SplitOversize(string text, int maxChars)
     {
         while (text.Length > maxChars)
         {
-            var cut = text.LastIndexOf(' ', maxChars - 1);
+            var window = text[..maxChars];
+            var cut = SubunitBoundaryRe.Matches(window)
+                .Select(m => m.Index)
+                .Where(i => i >= maxChars * MinBoundaryFill)
+                .DefaultIfEmpty(-1)
+                .Max();
+            if (cut <= 0) cut = window.LastIndexOf(' ');
             if (cut <= 0) cut = maxChars;
             yield return text[..cut].TrimEnd();
             text = text[cut..].TrimStart();

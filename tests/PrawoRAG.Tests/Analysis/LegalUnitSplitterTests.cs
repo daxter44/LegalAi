@@ -140,6 +140,48 @@ public class LegalUnitSplitterTests
         Assert.Equal(Enumerable.Range(1, units.Count), units.Select(u => u.Index)); // indeksy ciągłe po cięciu
     }
 
+    [Fact] // AJ-13: za długi § cięty na granicy ustępu, nie w środku zdania
+    public void Oversize_unit_prefers_cut_at_subunit_boundary()
+    {
+        // 4 ustępy po ~1500 zn → limit 3500 wymusza cięcie; granice „ust. n" leżą przy 1500 i 3000.
+        var ust = string.Join("\n", Enumerable.Range(1, 4).Select(n => $"ust. {n} {Filler(1500)}"));
+        var text = $"""
+            § 1
+            {Filler(100)}
+            § 2
+            {ust}
+            § 3
+            {Filler(100)}
+            """;
+
+        var parts = LegalUnitSplitter.Split([text]).Where(u => u.Heading.StartsWith("§ 2")).ToList();
+
+        Assert.True(parts.Count >= 2);
+        Assert.All(parts, p => Assert.True(p.Text.Length <= LegalUnitSplitter.MaxUnitChars));
+        // Każda część poza pierwszą zaczyna się od nagłówka ustępu — żadne cięcie nie przecięło zdania.
+        Assert.All(parts.Skip(1), p => Assert.Matches(@"^ust\. \d", p.Text));
+        // Ustępy nie zostały rozerwane: każdy nagłówek „ust. n" otwiera część albo siedzi w jej środku
+        // po pełnym poprzedniku — łącznie 4 nagłówki w częściach, żaden nie zginął.
+        Assert.Equal(4, parts.Sum(p => System.Text.RegularExpressions.Regex.Matches(p.Text, @"(?<![^\n])ust\. \d").Count));
+    }
+
+    [Fact] // AJ-13: bez granic ustępów → cięcie po spacji jak dotąd (zero regresji)
+    public void Oversize_unit_without_subunits_falls_back_to_space_cut()
+    {
+        var text = $"""
+            § 1
+            {Filler(100)}
+            § 2
+            {Filler(8000)}
+            § 3
+            {Filler(100)}
+            """;
+        var parts = LegalUnitSplitter.Split([text]).Where(u => u.Heading.StartsWith("§ 2")).ToList();
+        Assert.True(parts.Count >= 3);
+        Assert.All(parts, p => Assert.True(p.Text.Length <= LegalUnitSplitter.MaxUnitChars));
+        Assert.All(parts, p => Assert.False(p.Text.StartsWith(' ') || p.Text.EndsWith(' ')));
+    }
+
     [Fact] // ustawa/rozporządzenie: struktura po „Art."
     public void Statute_like_text_splits_per_article()
     {
