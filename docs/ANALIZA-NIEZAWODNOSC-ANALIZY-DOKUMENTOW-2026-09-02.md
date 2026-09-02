@@ -92,7 +92,17 @@ Dodatkowy, mniej oczywisty efekt: przycisk **„↻ Ponów nieudane"** (`Analiza
 `AnalysisRunner.RetryUnitsAsync`, który przechodzi przez TĘ SAMĄ bramkę kosztów per jednostka
 (`AnalysisRunner.cs:51-59` → `MapUnitsAsync`) — po wyczerpaniu limitu, kliknięcie „ponów" na
 błędach 13/14/16-18 natychmiast odbije się o ten sam mur, bez żadnej wskazówki w UI, że to
-oczekiwane (przycisk wygląda identycznie jak wtedy, gdy retry ma sens). Retry przelicza też
+oczekiwane (przycisk wygląda identycznie jak wtedy, gdy retry ma sens).
+
+**[FAKT — dopisek 2026-09-02]** Użytkownik zgłosił, że przycisku „↻ Ponów nieudane" w ogóle NIE
+widzi — i to jest zgodne z kodem, z dwóch niezależnych powodów (`Analiza.razor:200`):
+(a) przycisk istnieje **tylko przy żywej sesji w pamięci** (`!_degraded`) — po TTL 60 min,
+restarcie procesu lub deployu raport ładuje się z DB w trybie zdegradowanym i CAŁY retry znika
+bez śladu (analiza `regulamin.pdf` skończyła się 21:37; oglądana następnego dnia = tryb
+zdegradowany = brak przycisku); (b) licznik „nieudanych" zlicza **wyłącznie werdykt `Error`**
+(`Analiza.razor:641-642`) — jednostki z „?" (Unknown) i BRAK ŹRÓDEŁ nie są uznawane za nieudane
+i nie da się ich ponowić TYM przyciskiem nawet w żywej sesji (per-jednostkowe „↻ ponów" przy
+wierszu obejmuje każdą jednostkę, ale też tylko w żywej sesji). Retry przelicza też
 **streszczenie od nowa** (`AnalysisRunner.cs:48-50`, celowo — stare mogło opisywać błędy, których
 już nie ma) — czyli konsumuje jeszcze jedno zapytanie, nawet jeśli ponawiana jest jedna jednostka.
 
@@ -183,6 +193,20 @@ hipotezy dlaczego:
   WERDYKT:" i zwraca `Unknown` z pustym `Answer` — to dokładnie to, co widać w danych i dokładnie
   to zobaczył użytkownik (badge „?" bez treści pod spodem).
 
+**[HIPOTEZA — dopisek 2026-09-02, mechanizm do taniego potwierdzenia]** Najbardziej spójny
+z kodem kandydat na przyczynę: **model-reasoner zużył cały budżet tokenów na „myślenie" i nigdy
+nie doszedł do widocznej odpowiedzi.** Układanka: (a) `MaxTokens=1024` (appsettings, wspólny limit
+na CAŁĄ odpowiedź, myślenie wliczone), (b) `ReasoningSplitter` kieruje tokeny rozumowania
+(flaga google.thought / tagi `<think>`) POZA widoczny strumień — jeśli model przekroczy 1024
+tokeny wewnątrz myślenia, widoczna treść ma dokładnie 0 znaków, czyli dokładnie obraz z danych,
+(c) `OpenAiCompatibleLlmProvider` **w ogóle nie czyta `finish_reason`** (zero wystąpień w kodzie)
+— ucięcie po limicie (`finish_reason=length`) jest nieodróżnialne od normalnego końca, (d)
+`AnalysisRunner` drenuje tylko `TokenEvent` — `ReasoningDeltaEvent` jest porzucany i rozumowanie
+jednostki NIE trafia do DB, więc nie da się tej hipotezy potwierdzić wstecznie z danych.
+Najtańsza weryfikacja: zacząć czytać i logować `finish_reason` w providerze (kilka linii) —
+jeśli jednostki „?" mają `length`, mechanizm jest potwierdzony i naprawą jest budżet/parametry
+rozumowania, nie retry w ciemno.
+
 **[DOMYSŁ — wymaga repro]** Dlaczego lokalny model czasem zwraca zero tokenów dla konkretnego
 fragmentu, nie mam jak stąd zdiagnozować (log serwera LLM poza zasięgiem tego repo) — może to być
 natychmiastowy EOS na specyficznym wejściu, kwestia stosu serwującego, albo interakcja z
@@ -272,6 +296,57 @@ statusie bez żadnego pola przyczyny.
 mierzalną zamiast domyślaną. Bez tego każda przyszła dyskusja o „ile % analiz faktycznie się
 wywala" będzie musiała powtórzyć tę samą ręczną archeologię SQL.
 
+## Problem 6 (dopisek 2026-09-02): czas trwania — ~4 minuty na fragment, 30+ minut na typową umowę
+
+**[FAKT]** Sesja `regulamin.pdf`: 19 fragmentów w 36 minut przy `MaxParallelism=2` → ~3,8 min
+czasu obliczeń na fragment. Zgłoszony drugi przypadek (umowa, 14 artykułów, 30 minut) daje
+~4,3 min/fragment — spójnie. To nie jest pojedynczy wolny przypadek, tylko charakterystyka.
+
+Skąd się bierze tyle czasu na JEDEN fragment — każda jednostka to pełny pipeline czatu
+(`AskAsync`, `forceRetrieval:true`), czyli w najgorszym razie:
+
+- retrieval dwutorowy (embedding zapytania + pgvector + most cytowań + augmenter nowel),
+- **potencjalnie DRUGA runda retrievalu** przy braku pokrycia (`ChatService.cs:136`) — drugi
+  pełny przebieg,
+- generacja LLM do `MaxTokens=1024`, w tym niewidoczne tokeny rozumowania (patrz Problem 3 —
+  myślenie kosztuje czas nawet, gdy nie kosztuje widocznej treści),
+- **potencjalna regeneracja po bramce cytowań** (`AnswerGate`, `ChatService.cs:330`) — DRUGA
+  pełna generacja LLM.
+
+Czyli jeden fragment może realnie kosztować 2× retrieval + 2× generacja. `MaxParallelism=2` jest
+świadome (`AnalysisOptions`: lokalny model na jednej karcie generuje sekwencyjnie — więcej
+równoległości nie skraca, tylko wysyca VRAM), więc na obecnym backendzie zrównoleglenie NIE jest
+dostępną dźwignią.
+
+**Dźwignie przyspieszenia BEZ utraty jakości, w kolejności od najtańszej:**
+
+1. **Najpierw pomiar, nie zgadywanie.** Instrumentacja JUŻ ISTNIEJE:
+   `PRAWORAG_LOG_TIMING` (`LatencyLog`, wdrożone po analogicznym zgłoszeniu latencji czatu
+   2026-08-23) loguje per etap: tory retrievalu, reranker, most cytowań, `llm.first_token`,
+   `llm.total`, `llm.total.retry`, `chat.total`. Analiza dziedziczy to automatycznie, bo woła
+   ten sam `AskAsync`. Jeden przebieg analizy z włączoną flagą da rozkład: ile z ~4 min/fragment
+   to retrieval, ile czekanie na pierwszy token (prompt processing), ile generacja, i **jak
+   często strzela druga runda / regeneracja** (każde trafienie = podwojenie kosztu fragmentu).
+   Zero zmian w kodzie. Dopiero ten rozkład wybiera dźwignię — naprawianie przed pomiarem to
+   zgadywanie.
+2. **Cache wspólnego prefiksu promptu** (jeśli pomiar pokaże, że dominuje prompt processing):
+   wszystkie map-prompty jednego dokumentu dzielą długi wspólny początek (instrukcja +
+   polecenie użytkownika), różnią się końcówką (fragment + źródła). llama.cpp (`cache_prompt`) /
+   vLLM (prefix caching) potrafią nie przeliczać wspólnego prefiksu — zysk bez żadnej zmiany
+   treści promptów, czyli z definicji bez zmiany jakości. Wymaga sprawdzenia, co potrafi
+   aktualny stos serwujący i czy prompty faktycznie współdzielą prefiks bajt-w-bajt.
+3. **Równoległość na backendzie, który ją wspiera**: przy przejściu na endpoint z continuous
+   batching (vLLM / API chmurowe) podniesienie `MaxParallelism` z 2 do 4-8 skraca czas ściany
+   niemal liniowo przy identycznej jakości — konfiguracja już jest per-opcja, zmiana jest
+   jednoliniowa. Na dzisiejszym lokalnym backendzie: bez efektu (patrz wyżej).
+4. **Budżet rozumowania** (`ReasoningEffort` — gałka już istnieje w konfiguracji): jeśli pomiar
+   pokaże, że większość czasu generacji to niewidoczne myślenie, ograniczenie go skróci czas —
+   ale to JEDYNA dźwignia z tej listy, która MOŻE dotknąć jakości, więc wymaga ewalu na golden
+   secie (model/parametry per rola wybieramy evalem, nie preferencją), nie decyzji na oko.
+
+Świadomie NIE proponuję: skracania kontekstu retrievalu, pomijania drugiej rundy ani bramki
+cytowań dla analizy — to są wprost wymiany jakości na czas, sprzeczne z warunkiem zadania.
+
 ## Co NIE jest zepsute (żeby nie przeceniać obrazu)
 
 - **Grounding/jakość retrievalu jest DZIEDZICZONA z czatu i dojrzała.** `AnalyzeUnitAsync` woła
@@ -312,12 +387,18 @@ wywala" będzie musiała powtórzyć tę samą ręczną archeologię SQL.
    [DOMYSŁ — wymaga repro].
 5. Pole `InterruptReason` na rekordzie analizy, żeby „Interrupted" przestało być czarną skrzynką
    (Problem 5).
+6. **Wydajność — najpierw jeden przebieg pomiarowy** z `PRAWORAG_LOG_TIMING` (instrumentacja już
+   istnieje) na dokumencie ~15 fragmentów: rozkład retrieval / pierwszy token / generacja /
+   częstość drugiej rundy i regeneracji. Wybór dźwigni (cache prefiksu, równoległość na
+   backendzie z batchingiem, budżet rozumowania) DOPIERO po tym rozkładzie (Problem 6). Przy
+   okazji: logować `finish_reason` w providerze — zamyka też hipotezę z Problemu 3.
 
 **P2 (do rozważenia, nie pilne):**
-6. UX przycisku „↻ Ponów nieudane" po wyczerpanym limicie — dziś klika się w mur bez ostrzeżenia;
+7. UX przycisku „↻ Ponów nieudane" po wyczerpanym limicie — dziś klika się w mur bez ostrzeżenia;
    albo wyłączyć przycisk przy `PlanLimit`, albo pokazać ten sam komunikat od razu bez kolejnego
-   roundtripu.
-7. Retry pojedynczej jednostki po limicie/błędzie transportowym mógłby NIE liczyć się do puli
+   roundtripu. Osobno: przycisk w ogóle znika po TTL/restarcie i nie obejmuje werdyktu „?" —
+   patrz dopisek w Problemie 1.
+8. Retry pojedynczej jednostki po limicie/błędzie transportowym mógłby NIE liczyć się do puli
    ponownie (to naprawa błędu systemu, nie nowe zapytanie użytkownika) — do decyzji razem z P0.1.
 
 ## Otwarte pytania / czego nie sprawdzono stąd
