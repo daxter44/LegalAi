@@ -1,3 +1,4 @@
+using PrawoRAG.Llm.Analysis;
 using System.Text;
 using Microsoft.Extensions.Options;
 using PrawoRAG.Domain.Embeddings;
@@ -234,7 +235,8 @@ public sealed class AnalysisRunner(
             Messages =
             [
                 new(ChatRole.System, AnalysisPrompts.SummarySystemPrompt),
-                new(ChatRole.User, AnalysisPrompts.SummaryInput(session.Prompt, results)),
+                new(ChatRole.User, AnalysisPrompts.SummaryInput(session.Prompt,
+                    results.Select(r => new UnitDigest(r.Heading, r.Verdict, r.Answer ?? r.Error ?? "")))),
             ],
             Temperature = 0,
         };

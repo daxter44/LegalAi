@@ -1,6 +1,6 @@
 using PrawoRAG.Llm.Grounding;
 
-namespace PrawoRAG.Api.Services;
+namespace PrawoRAG.Llm.Analysis;
 
 /// <summary>
 /// Prompty i parsowanie trybu „Analiza dokumentów" (SPK-3) — czyste funkcje, testowalne bez LLM.
@@ -10,6 +10,10 @@ namespace PrawoRAG.Api.Services;
 /// strukturalnie, nie przez LLM — anty-fabrykacja); LLM pisze tylko streszczenie z zakazem nowych
 /// twierdzeń prawnych.
 /// </summary>
+/// <summary>Projekcja wyniku jednostki na potrzeby digestu streszczenia (AJ-1a): nagłówek, werdykt
+/// i tekst (uzasadnienie albo komunikat błędu). Pełny <c>UnitAnalysis</c> żyje w Api.</summary>
+public sealed record UnitDigest(string Heading, UnitVerdict Verdict, string Text);
+
 public static class AnalysisPrompts
 {
     public const string VerdictPrefix = "WERDYKT:";
@@ -80,10 +84,10 @@ public static class AnalysisPrompts
 
     /// <summary>Wejście streszczenia: kompaktowa tabela nagłówek → werdykt → początek uzasadnienia
     /// (bez markerów [n] — numeracja per jednostka nie ma sensu między jednostkami).</summary>
-    public static string SummaryInput(string userPrompt, IEnumerable<UnitAnalysis> results)
+    public static string SummaryInput(string userPrompt, IEnumerable<UnitDigest> results)
     {
         var lines = results.Select(r =>
-            $"{r.Heading}: {Label(r.Verdict)} — {Digest(r.Answer ?? r.Error ?? "")}");
+            $"{r.Heading}: {Label(r.Verdict)} — {Digest(r.Text)}");
         return $"Pytanie użytkownika: {userPrompt}\n\nWyniki analizy fragmentów:\n{string.Join("\n", lines)}";
     }
 

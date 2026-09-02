@@ -1,3 +1,4 @@
+using PrawoRAG.Llm.Analysis;
 using PrawoRAG.Api.Services;
 
 namespace PrawoRAG.Tests.Analysis;

@@ -1,3 +1,4 @@
+using PrawoRAG.Llm.Analysis;
 using PrawoRAG.Llm.Grounding;
 
 namespace PrawoRAG.Api.Services;
@@ -27,10 +28,6 @@ public sealed class AnalysisOptions
 /// <summary><see cref="Interrupted"/> = anulowana przez użytkownika ALBO ucięta restartem procesu —
 /// częściowy raport pozostaje czytelny (w odróżnieniu od <see cref="Failed"/> = awaria całości).</summary>
 public enum AnalysisStatus { Preparing, Analyzing, Summarizing, Done, Failed, Interrupted }
-
-/// <summary>Werdykt analizy jednej jednostki — parsowany z pierwszej linii odpowiedzi map-prompta
-/// (albo nadany wprost: abstynencja → <see cref="NoSources"/>, wyjątek → <see cref="Error"/>).</summary>
-public enum UnitVerdict { Unknown, Ok, Risk, NoSources, Error }
 
 /// <summary>Stan „na żywo" jednostki BEZ wyniku (tylko sygnał dla UI, nie persystowany):
 /// w kolejce / w analizie / ponawiana po błędzie przejściowym. Bez tego jednostka w obróbce

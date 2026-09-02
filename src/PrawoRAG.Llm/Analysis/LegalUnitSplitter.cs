@@ -1,10 +1,7 @@
 using System.Text.RegularExpressions;
 
-namespace PrawoRAG.Api.Services;
+namespace PrawoRAG.Llm.Analysis;
 
-/// <summary>Jednostka analizy dokumentu (SPK-1): logiczny fragment (§/art./pkt/akapit) z nagłówkiem
-/// do wyświetlenia. <see cref="Text"/> zawiera nagłówek (czytelność w prompcie i w UI).</summary>
-public sealed record DocUnit(int Index, string Heading, string Text);
 
 /// <summary>
 /// Dzieli tekst załącznika na JEDNOSTKI ANALIZY dla trybu „Analiza dokumentów" (spike) — inna oś niż

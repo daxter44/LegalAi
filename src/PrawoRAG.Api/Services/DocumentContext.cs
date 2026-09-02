@@ -1,3 +1,4 @@
+using PrawoRAG.Llm.Analysis;
 using PrawoRAG.Domain.Embeddings;
 
 namespace PrawoRAG.Api.Services;

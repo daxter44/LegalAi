@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace PrawoRAG.Api.Services;
+namespace PrawoRAG.Llm.Analysis;
 
 /// <summary>
 /// Chunker załączników (DOC-1) — celowo NIE reużywa TokenAwareChunker z ingestii: Ingestion to
