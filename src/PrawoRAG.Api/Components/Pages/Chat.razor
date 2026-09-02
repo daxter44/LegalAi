@@ -144,7 +144,10 @@
                     @if (ex.Streaming && ex.Stage is { } stage)
                     {
                         <div class="work-stage" role="status" aria-live="polite">
-                            <span class="work-spinner" aria-hidden="true"></span>
+                            <svg class="work-spinner" viewBox="0 0 100 100" aria-hidden="true">
+                                <path class="work-spinner-ring" d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#142450" stroke-width="9" stroke-linecap="butt"/>
+                                <circle class="work-spinner-node" cx="50" cy="18" r="5" fill="#D97706"/>
+                            </svg>
                             <span class="work-stage-label">@stage.Label</span>
                             @if (stage.Count is { } n)
                             {
@@ -168,7 +171,10 @@
                         <div class="retry-note" role="status">
                             @if (ex.Streaming)
                             {
-                                <span class="work-spinner" aria-hidden="true"></span>
+                                <svg class="work-spinner" viewBox="0 0 100 100" aria-hidden="true">
+                                    <path class="work-spinner-ring" d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#142450" stroke-width="9" stroke-linecap="butt"/>
+                                    <circle class="work-spinner-node" cx="50" cy="18" r="5" fill="#D97706"/>
+                                </svg>
                                 <span>Dla tak zadanego pytania nie znalazłem jednoznacznej podstawy prawnej —
                                     przeformułowałem je i <strong>szukam dalej</strong>: <em>@retried</em></span>
                             }

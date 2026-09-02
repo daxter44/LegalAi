@@ -307,7 +307,7 @@ const string LandingHtml = """
     .nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:28px;padding:18px 6vw;background:rgb(23 27 36 / .85);backdrop-filter:blur(10px);border-bottom:1px solid rgb(199 208 236 / .12)}
     [id]{scroll-margin-top:76px} /* kotwice nie chowaja sie pod przyklejonym paskiem */
     .brand{display:flex;align-items:center;gap:10px;color:var(--sl-on-dark);font-family:var(--sl-font-display);font-size:24px;font-weight:700;letter-spacing:-.01em}
-    .mark{width:26px;height:26px;border-radius:8px;background:var(--sl-gradient);box-shadow:0 0 24px rgb(37 99 235 / .6)}
+    .mark{width:26px;height:26px;display:block}
     .nav .links{margin-left:auto;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
     .nav .links a{color:#9BA3B7;font-size:15px;font-weight:500}
     .btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 22px;border-radius:12px;font-size:15px;font-weight:700;color:#fff;background:var(--sl-gradient);box-shadow:var(--sl-shadow-accent)}
@@ -398,7 +398,7 @@ const string LandingHtml = """
     </style></head><body>
 
     <div class="nav">
-      <a class="brand" href="/start" style="text-decoration:none"><span class="mark"></span> OmniaSI</a>
+      <a class="brand" href="/start" style="text-decoration:none"><svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><path d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#EDEFF8" stroke-width="9" stroke-linecap="butt"/><circle cx="50" cy="18" r="5" fill="#D97706"/></svg> OmniaSI</a>
       <span class="links"><a href="#roznice">Czym się różnimy</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></span>
       <details class="nav-burger">
         <summary aria-label="Menu">☰</summary>

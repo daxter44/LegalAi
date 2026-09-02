@@ -18,6 +18,23 @@ public static class AuthPages
 
     private static string E(string? v) => HtmlEncoder.Default.Encode(v ?? "");
 
+    /// <summary>Sygnet OmniaSI — jeden gest (pierścień + węzeł), kolory dobrane do tła, bo strona
+    /// renderuje się poza Blazorem/tokenami motywu. Wersja jasna na ciemnym hero po lewej.</summary>
+    private const string MarkOnDark = """
+        <svg class="mark" viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#EDEFF8" stroke-width="9" stroke-linecap="butt"/>
+          <circle cx="50" cy="18" r="5" fill="#D97706"/>
+        </svg>
+        """;
+
+    /// <summary>Wersja granatowa na białej karcie (widoczna tylko poniżej 900px, gdy hero znika).</summary>
+    private const string MarkOnLight = """
+        <svg class="mark" viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#142450" stroke-width="9" stroke-linecap="butt"/>
+          <circle cx="50" cy="18" r="5" fill="#D97706"/>
+        </svg>
+        """;
+
     /// <summary>
     /// Wspólna oprawa (RED-4.1): split-layout z makiety — lewa połowa to ciemny gradient z marką
     /// i obietnicą, prawa to karta formularza. Poniżej 900px lewa połowa znika (marka przechodzi
@@ -51,7 +68,7 @@ public static class AuthPages
           .auth-brand{display:flex;align-items:center;gap:var(--s-2);margin-bottom:var(--s-6);
                       font-weight:700;text-decoration:none;color:inherit;
                       font-family:var(--sl-font-display);font-size:var(--fs-20);letter-spacing:-0.01em}
-          .auth-brand .mark{width:24px;height:24px;border-radius:var(--sl-radius-md);background:var(--sl-gradient);display:inline-block}
+          .auth-brand .mark{width:24px;height:24px;display:block;flex:none}
           .auth .auth-brand{display:none}
           h1{font-family:var(--sl-font-display);font-size:var(--fs-24);letter-spacing:-0.01em;margin:0 0 var(--s-2)}
           p{margin:0 0 var(--s-4);color:var(--sl-text-secondary);font-size:var(--fs-14)}
@@ -86,7 +103,7 @@ public static class AuthPages
         </head>
         <body>
         <aside class="auth-side">
-          <a class="auth-brand" href="/"><span class="mark"></span> {{E(ProductName)}}</a>
+          <a class="auth-brand" href="/">{{MarkOnDark}} {{E(ProductName)}}</a>
           <div class="auth-promise">
             <div class="auth-claim">Research prawny na źródłach, nie na domysłach.</div>
             <div class="auth-points">
@@ -99,7 +116,7 @@ public static class AuthPages
         </aside>
         <div class="auth-wrap">
         <main class="auth">
-          <a class="auth-brand" href="/"><span class="mark"></span> {{E(ProductName)}}</a>
+          <a class="auth-brand" href="/">{{MarkOnLight}} {{E(ProductName)}}</a>
           {{bodyHtml}}
         </main>
         </div>

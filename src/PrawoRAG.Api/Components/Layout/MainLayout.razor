@@ -58,7 +58,13 @@
         @* /start, nie "/" — "/" dla zalogowanego przekierowuje do /czat, a logo ma jawnie
            wracać na stronę główną (leftover 2026-08-31). *@
         <a class="app-brand" href="/start" title="Strona główna">
-            <span class="app-logo-mark" aria-hidden="true"></span>
+            @* Sygnet OmniaSI — pierścień z jednym nacięciem i węzłem w miejscu odpowiedzi
+               (diagnoza wizualna 2026-09-01: jeden gest, bez ozdobników). Kolory na sztywno,
+               bo nagłówek zawsze ma ciemne tło niezależnie od motywu strony. *@
+            <svg class="app-logo-mark" viewBox="0 0 100 100" aria-hidden="true">
+                <path d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#EDEFF8" stroke-width="9" stroke-linecap="butt"/>
+                <circle cx="50" cy="18" r="5" fill="#D97706"/>
+            </svg>
             <span class="app-title">OmniaSI</span>
         </a>
         <nav class="app-nav">@navLinks</nav>

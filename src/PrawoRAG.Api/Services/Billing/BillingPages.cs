@@ -15,6 +15,14 @@ public static class BillingPages
 {
     private static string E(string? v) => HtmlEncoder.Default.Encode(v ?? "");
 
+    /// <summary>Sygnet OmniaSI — topbar tej strony ma ciemne tło, jak wszędzie indziej w aplikacji.</summary>
+    private const string Mark = """
+        <svg class="mark" viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#EDEFF8" stroke-width="9" stroke-linecap="butt"/>
+          <circle cx="50" cy="18" r="5" fill="#D97706"/>
+        </svg>
+        """;
+
     /// <summary>Oprawa strony konta: topbar z nawigacją aplikacji + wyśrodkowana kolumna kart.
     /// `$$"""` bo CSS w środku (klamry); wartości wstrzykiwane wyłącznie przez E().</summary>
     private static string Shell(string title, bool analysisEnabled, string initials, string whoName,
@@ -34,8 +42,7 @@ public static class BillingPages
                   background:#171B24;border-bottom:1px solid rgb(199 208 236 / .12)}
           .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--sl-on-dark);
                  font-family:var(--sl-font-display);font-size:var(--fs-20);font-weight:700;letter-spacing:-0.01em}
-          .brand .mark{width:26px;height:26px;border-radius:var(--sl-radius-md);background:var(--sl-gradient);
-                 box-shadow:0 0 24px rgb(37 99 235 / .6);display:inline-block}
+          .brand .mark{width:26px;height:26px;display:block}
           .nav{margin-left:auto;display:flex;align-items:center;gap:var(--s-5);font-size:var(--fs-15)}
           .nav a{color:#9BA3B7;font-weight:500;text-decoration:none;white-space:nowrap}
           .nav a:hover{color:var(--sl-on-dark)}
@@ -106,7 +113,7 @@ public static class BillingPages
         </head>
         <body>
         <div class="topbar">
-          <a class="brand" href="/start"><span class="mark"></span> {{E(AuthPages.ProductName)}}</a>
+          <a class="brand" href="/start">{{Mark}} {{E(AuthPages.ProductName)}}</a>
           <nav class="nav">
             <a href="/czat">Czat</a>
             {{(analysisEnabled ? """<a href="/analiza">Analiza</a>""" : "")}}

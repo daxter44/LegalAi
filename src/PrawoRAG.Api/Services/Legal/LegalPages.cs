@@ -21,6 +21,15 @@ namespace PrawoRAG.Api.Services.Legal;
 /// </summary>
 public static class LegalPages
 {
+    /// <summary>Sygnet OmniaSI, wersja jasna — nagłówek tej strony ma ciemne tło hero.</summary>
+    private const string Mark = """
+        <svg class="mark" viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#EDEFF8" stroke-width="9" stroke-linecap="butt"/>
+          <circle cx="50" cy="18" r="5" fill="#D97706"/>
+        </svg>
+        """;
+
+
     public const string ProductName = "OmniaSI";
 
     private static readonly MarkdownPipeline Pipeline =
@@ -92,7 +101,7 @@ public static class LegalPages
               .top .row{max-width:46rem;margin:0 auto;display:flex;flex-wrap:wrap;gap:var(--s-3) var(--s-6);align-items:center;justify-content:space-between}
               .brand{display:flex;align-items:center;gap:var(--s-2);color:var(--sl-on-dark);text-decoration:none;font-weight:700;
                      font-family:var(--sl-font-display);font-size:var(--fs-20);letter-spacing:-0.01em}
-              .brand .mark{width:24px;height:24px;border-radius:var(--sl-radius-md);background:var(--sl-gradient);display:inline-block}
+              .brand .mark{width:24px;height:24px;display:block;flex:none}
               .docs{display:flex;flex-wrap:wrap;gap:var(--s-4);font-size:var(--fs-14)}
               .docs a{color:var(--sl-on-dark-soft);text-decoration:none}
               .docs a:hover{color:var(--sl-on-dark);text-decoration:underline}
@@ -118,7 +127,7 @@ public static class LegalPages
             </head>
             <body>
             <header class="top"><div class="row">
-              <a class="brand" href="/start"><span class="mark" aria-hidden="true"></span>{{E(ProductName)}}</a>
+              <a class="brand" href="/start">{{Mark}}{{E(ProductName)}}</a>
               <nav class="docs" aria-label="Dokumenty">{{nav}}</nav>
             </div></header>
             <main><article>{{bodyHtml}}</article></main>
