@@ -122,7 +122,7 @@ public class DocumentContextTests
     {
         var text = string.Join(" ", Enumerable.Repeat("postanowienie umowy najmu lokalu", 30));
         var ctx = await DocumentContext.CreateAsync(
-            "umowa.pdf", new PdfText([text], Truncated: false), new FakeEmbeddingProvider(), default);
+            "umowa.pdf", new AttachmentText([text], Truncated: false), new FakeEmbeddingProvider(), default);
 
         Assert.Equal("umowa.pdf", ctx.FileName);
         Assert.True(ctx.Chunks.Count > 0);

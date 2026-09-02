@@ -26,7 +26,7 @@ public sealed class DocumentContext
     public required IReadOnlyList<float[]> Embeddings { get; init; }
 
     public static async Task<DocumentContext> CreateAsync(
-        string fileName, PdfText pdf, IEmbeddingProvider embedder, CancellationToken ct)
+        string fileName, AttachmentText pdf, IEmbeddingProvider embedder, CancellationToken ct)
     {
         var chunks = DocChunker.Split(pdf.Pages);
         var embeddings = await embedder.EmbedPassagesAsync(chunks, ct);

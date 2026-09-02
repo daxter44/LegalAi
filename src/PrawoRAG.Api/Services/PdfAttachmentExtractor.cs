@@ -3,7 +3,7 @@ using UglyToad.PdfPig;
 namespace PrawoRAG.Api.Services;
 
 /// <summary>Wynik ekstrakcji załącznika PDF: tekst per strona + flagi jakości (DOC-0).</summary>
-public sealed record PdfText(IReadOnlyList<string> Pages, bool Truncated)
+public sealed record AttachmentText(IReadOnlyList<string> Pages, bool Truncated)
 {
     public int PageCount => Pages.Count;
 
@@ -29,7 +29,7 @@ public static class PdfAttachmentExtractor
     /// <summary>Próg bramki skanów: średnio mniej znaków/stronę → PDF bez użytecznej warstwy tekstowej.</summary>
     public const int MinCharsPerPage = 200;
 
-    public static PdfText Extract(byte[] pdf, int maxPages = MaxPages)
+    public static AttachmentText Extract(byte[] pdf, int maxPages = MaxPages)
     {
         if (pdf is null || pdf.Length == 0)
             throw new ArgumentException("Pusty plik — brak bajtów do ekstrakcji.", nameof(pdf));
@@ -44,6 +44,6 @@ public static class PdfAttachmentExtractor
                 pages.Add(page.Text);
             }
         }
-        return new PdfText(pages, truncated);
+        return new AttachmentText(pages, truncated);
     }
 }

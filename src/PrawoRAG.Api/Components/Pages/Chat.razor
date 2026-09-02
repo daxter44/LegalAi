@@ -287,7 +287,7 @@
     {
         <div class="chat-attach">
             <label class="attach-btn" title="Dołącz PDF (umowa, pismo, wyrok) — treść nie jest zapisywana">
-                📎 <InputFile OnChange="OnFileSelected" accept=".pdf" disabled="@(_busy || _docLoading)" />
+                📎 <InputFile OnChange="OnFileSelected" accept="@AttachmentExtractor.Accept" disabled="@(_busy || _docLoading)" />
             </label>
             @if (_docLoading)
             {
@@ -681,14 +681,14 @@
         _docNotice = null;
         _document = null;
         var file = e.File;
-        if (!file.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        if (!AttachmentExtractor.IsSupported(file.Name))
         {
-            _docNotice = "Obsługujemy wyłącznie pliki PDF.";
+            _docNotice = "Obsługujemy pliki PDF i DOCX.";
             return;
         }
-        if (file.Size > PdfAttachmentExtractor.MaxBytes)
+        if (file.Size > AttachmentExtractor.MaxBytes)
         {
-            _docNotice = $"Plik jest za duży (limit {PdfAttachmentExtractor.MaxBytes / (1024 * 1024)} MB).";
+            _docNotice = $"Plik jest za duży (limit {AttachmentExtractor.MaxBytes / (1024 * 1024)} MB).";
             return;
         }
 
@@ -696,18 +696,20 @@
         try
         {
             using var ms = new MemoryStream();
-            await file.OpenReadStream(PdfAttachmentExtractor.MaxBytes).CopyToAsync(ms);
-            var pdf = PdfAttachmentExtractor.Extract(ms.ToArray());
+            await file.OpenReadStream(AttachmentExtractor.MaxBytes).CopyToAsync(ms);
+            var pdf = AttachmentExtractor.Extract(file.Name, ms.ToArray());
             if (pdf.IsScanLike)
             {
-                _docNotice = "Ten PDF wygląda na skan — obsługujemy dokumenty z warstwą tekstową (bez OCR).";
+                _docNotice = AttachmentExtractor.Kind(file.Name) == "PDF"
+                    ? "Ten PDF wygląda na skan — obsługujemy dokumenty z warstwą tekstową (bez OCR)."
+                    : "Ten plik nie zawiera tekstu (same obrazy lub pusty dokument).";
                 return;
             }
             _document = await DocumentContext.CreateAsync(file.Name, pdf, Embedder, CancellationToken.None);
         }
         catch (Exception)
         {
-            _docNotice = "Nie udało się odczytać tego PDF (plik uszkodzony lub zabezpieczony).";
+            _docNotice = "Nie udało się odczytać tego pliku (uszkodzony, zabezpieczony hasłem lub w nieznanym wariancie formatu).";
         }
         finally
         {
