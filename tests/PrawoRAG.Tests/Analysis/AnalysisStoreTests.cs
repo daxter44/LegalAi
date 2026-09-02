@@ -100,11 +100,11 @@ public class AnalysisStoreTests : IAsyncLifetime
     {
         var done = await CreateAsync();
         await _store.CompleteAsync(done, null, default);
-        await _store.MarkInterruptedAsync(done, default);
+        await _store.MarkInterruptedAsync(done, InterruptReason.ProcessRestart, default);
         Assert.Equal(AnalysisStatus.Done, (await _store.GetAsync(done, User, default))!.Status);
 
         var running = await CreateAsync();
-        await _store.MarkInterruptedAsync(running, default);
+        await _store.MarkInterruptedAsync(running, InterruptReason.ProcessRestart, default);
         Assert.Equal(AnalysisStatus.Interrupted, (await _store.GetAsync(running, User, default))!.Status);
     }
 

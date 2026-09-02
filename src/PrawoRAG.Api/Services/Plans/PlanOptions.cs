@@ -20,8 +20,10 @@ public sealed class PlanOptions
     /// <summary>Plan → limity. Klucze zgodne z <see cref="PlanIds"/>.</summary>
     public Dictionary<string, PlanLimits> Items { get; set; } = new(StringComparer.OrdinalIgnoreCase)
     {
-        [PlanIds.Free] = new() { DisplayName = "Darmowy", RequestsPerMonth = 15 },
-        [PlanIds.Pro] = new() { DisplayName = "Pro", RequestsPerMonth = 300 },
+        // AnalysesPerMonth/MaxUnitsPerAnalysis: wartości ROBOCZE do decyzji cenowej (2026-09-02) —
+        // zmiana to zmiana konfiguracji (Plans:Items:{plan}:AnalysesPerMonth), nie kodu.
+        [PlanIds.Free] = new() { DisplayName = "Darmowy", RequestsPerMonth = 15, AnalysesPerMonth = 3, MaxUnitsPerAnalysis = 20 },
+        [PlanIds.Pro] = new() { DisplayName = "Pro", RequestsPerMonth = 300, AnalysesPerMonth = 50, MaxUnitsPerAnalysis = 40 },
     };
 
     /// <summary>
@@ -41,12 +43,23 @@ public static class PlanIds
     public const string Pro = "pro";
 }
 
-/// <summary>Co wolno w danym planie. Dziś jedna liczba; kolejne limity dokładają się tutaj.</summary>
+/// <summary>Co wolno w danym planie. Kolejne limity dokładają się tutaj.</summary>
 public sealed class PlanLimits
 {
     /// <summary>Nazwa pokazywana człowiekowi.</summary>
     public string DisplayName { get; set; } = "";
 
-    /// <summary>Zapytania do LLM na okres rozliczeniowy (czat + analiza liczą się wspólnie).</summary>
+    /// <summary>Zapytania do LLM na okres rozliczeniowy — CZAT. Analiza dokumentów ma od 2026-09-02
+    /// OSOBNĄ pulę (<see cref="AnalysesPerMonth"/>): wcześniej liczyła się per fragment do tej puli,
+    /// więc jeden 19-fragmentowy dokument zjadał cały miesięczny limit darmowy.</summary>
     public int RequestsPerMonth { get; set; }
+
+    /// <summary>Analizy dokumentów na okres rozliczeniowy — naliczane PER DOKUMENT (start analizy),
+    /// nie per fragment; ponowienie nieudanych fragmentów jest wliczone w already-opłaconą analizę.</summary>
+    public int AnalysesPerMonth { get; set; }
+
+    /// <summary>Cap fragmentów jednego dokumentu w tym planie (nadmiar ucinany z jawną flagą, jak
+    /// globalny <c>Analysis:MaxUnits</c>) — bez niego pula analiz nie ogranicza kosztu infrastruktury,
+    /// bo „1 analiza" mogłaby znaczyć od 3 do 40 wywołań LLM.</summary>
+    public int MaxUnitsPerAnalysis { get; set; } = 40;
 }

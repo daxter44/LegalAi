@@ -15,8 +15,13 @@ public sealed class AnalysisOptions
     public int SessionTtlMinutes { get; set; } = 60;
 
     /// <summary>Twardy limit jednostek analizy na dokument (koszt: każda jednostka = wywołanie LLM).
-    /// Nadmiar jest ucinany z jawną flagą <see cref="AnalysisSession.UnitsTruncated"/> — nigdy po cichu.</summary>
+    /// Nadmiar jest ucinany z jawną flagą <see cref="AnalysisSession.UnitsTruncated"/> — nigdy po cichu.
+    /// Plany mogą ten limit dodatkowo ZANIŻAĆ (PlanLimits.MaxUnitsPerAnalysis), nigdy podnosić.</summary>
     public int MaxUnits { get; set; } = 40;
+
+    /// <summary>Bramka intencji na wejściu (model Aux): dokument prawny vs proza/artykuł — chroni
+    /// pulę analiz przed spaleniem na treści, na której analiza nie ma sensu. Fail-open.</summary>
+    public bool IntentGateEnabled { get; set; } = true;
 }
 
 /// <summary><see cref="Interrupted"/> = anulowana przez użytkownika ALBO ucięta restartem procesu —
@@ -26,6 +31,24 @@ public enum AnalysisStatus { Preparing, Analyzing, Summarizing, Done, Failed, In
 /// <summary>Werdykt analizy jednej jednostki — parsowany z pierwszej linii odpowiedzi map-prompta
 /// (albo nadany wprost: abstynencja → <see cref="NoSources"/>, wyjątek → <see cref="Error"/>).</summary>
 public enum UnitVerdict { Unknown, Ok, Risk, NoSources, Error }
+
+/// <summary>Stan „na żywo" jednostki BEZ wyniku (tylko sygnał dla UI, nie persystowany):
+/// w kolejce / w analizie / ponawiana po błędzie przejściowym. Bez tego jednostka w obróbce
+/// przez kilkadziesiąt sekund wygląda identycznie jak czekająca w kolejce.</summary>
+public enum UnitLiveState { Queued, Running, Retrying }
+
+/// <summary>DLACZEGO analiza wylądowała w statusie Interrupted (naprawa 2026-09-02: jeden status
+/// zlepiał trzy nieporównywalne przyczyny — 45% „przerwanych" w historii było niemierzalne).
+/// Persystowany jako string w rekordzie analizy.</summary>
+public enum InterruptReason
+{
+    /// <summary>Restart/deploy procesu — sesja in-memory zginęła (zero-persistence, decyzja DOC #1).</summary>
+    ProcessRestart,
+    /// <summary>Jawne anulowanie przez użytkownika (przycisk „⏹ Anuluj" / usunięcie sesji).</summary>
+    UserCancelled,
+    /// <summary>Wygaśnięcie TTL sesji (bezczynność) — sweep magazynu anulował runnera w locie.</summary>
+    TtlExpired,
+}
 
 /// <summary>Wynik analizy JEDNEJ jednostki dokumentu (faza map). <see cref="Sources"/> przeniesione
 /// strukturalnie z retrievalu tej jednostki — cytaty [n] w <see cref="Answer"/> odnoszą się do NICH
@@ -51,6 +74,7 @@ public sealed class AnalysisSession
     private readonly object _lock = new();
     private readonly UnitAnalysis?[] _results;
     private readonly int[] _thinkingChars;
+    private readonly UnitLiveState[] _live;
     private readonly CancellationTokenSource _cts = new();
     private AnalysisStatus _status = AnalysisStatus.Preparing;
     private int _completed;
@@ -76,6 +100,7 @@ public sealed class AnalysisSession
         LastTouched = CreatedAt;
         _results = new UnitAnalysis?[units.Count];
         _thinkingChars = new int[units.Count];
+        _live = new UnitLiveState[units.Count];
     }
 
     public Guid Id { get; } = Guid.CreateVersion7();
@@ -89,8 +114,14 @@ public sealed class AnalysisSession
     /// (albo sweep TTL store'a) przerywa jednostki w locie. Ukończone wyniki zostają.</summary>
     public CancellationToken Token => _cts.Token;
 
-    public void Cancel()
+    /// <summary>Powód anulowania — czytany przez runnera przy łapaniu OperationCanceledException,
+    /// żeby status Interrupted niósł przyczynę. Null = nikt nie anulował (nie powinno się zdarzyć
+    /// przy złapanym OCE, ale fallback w runnerze to UserCancelled).</summary>
+    public InterruptReason? CancelReason { get; private set; }
+
+    public void Cancel(InterruptReason reason = InterruptReason.UserCancelled)
     {
+        CancelReason ??= reason; // pierwszy powód wygrywa (wyścig anuluj-vs-sweep)
         try { _cts.Cancel(); } catch (ObjectDisposedException) { /* wyścig ze sweepem — nieistotny */ }
     }
 
@@ -144,7 +175,20 @@ public sealed class AnalysisSession
             if (_results[result.Index - 1] is null) _completed++;
             _results[result.Index - 1] = result;
             _thinkingChars[result.Index - 1] = 0; // wynik jest — licznik myślenia zaczyna od zera przy ew. retry
+            _live[result.Index - 1] = UnitLiveState.Queued;
             LastTouched = _time.GetUtcNow();
+        }
+        Changed?.Invoke();
+    }
+
+    /// <summary>Stan „na żywo" jednostki bez wyniku (w kolejce / analizuję / ponawiam) — sygnał
+    /// dla UI. Zmiana stanu odpala <see cref="Changed"/> (to pojedyncze przejścia, nie strumień).</summary>
+    public void MarkUnitLive(int index, UnitLiveState state)
+    {
+        lock (_lock)
+        {
+            if (_live[index - 1] == state) return;
+            _live[index - 1] = state;
         }
         Changed?.Invoke();
     }
@@ -185,6 +229,7 @@ public sealed class AnalysisSession
             if (_results[index - 1] is null) return;
             _results[index - 1] = null;
             _thinkingChars[index - 1] = 0;
+            _live[index - 1] = UnitLiveState.Queued;
             _completed--;
             _status = AnalysisStatus.Analyzing;
         }
@@ -210,7 +255,7 @@ public sealed class AnalysisSession
         lock (_lock)
             return new AnalysisSnapshot(
                 Id, FileName, PageCount, Prompt, _status, Units, UnitsTruncated,
-                [.. _results], _completed, _summary, _error, [.. _thinkingChars]);
+                [.. _results], _completed, _summary, _error, [.. _thinkingChars], [.. _live], CancelReason);
     }
 }
 
@@ -228,7 +273,11 @@ public sealed record AnalysisSnapshot(
     string? Error,
     // Znaki rozumowania jednostek W TOKU (sygnał życia dla UI); null = snapshot z DB (tryb
     // zdegradowany), gdzie postęp na żywo z definicji nie istnieje.
-    IReadOnlyList<int>? ThinkingChars = null)
+    IReadOnlyList<int>? ThinkingChars = null,
+    // Stan „na żywo" jednostek bez wyniku (w kolejce / analizuję / ponawiam); null = snapshot z DB.
+    IReadOnlyList<UnitLiveState>? LiveStates = null,
+    // Przyczyna statusu Interrupted (żywa sesja: powód anulowania; snapshot z DB: zapisana kolumna).
+    InterruptReason? InterruptReason = null)
 {
     public int Total => Units.Count;
 }

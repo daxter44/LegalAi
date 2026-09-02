@@ -6,8 +6,11 @@ namespace PrawoRAG.Api.Services.Plans;
 /// <summary>Nazwy liczników. Osobne przestrzenie = osobne osie, nie da się ich pomylić w SQL-u.</summary>
 public static class UsageScopes
 {
-    /// <summary>Zapytania w okresie rozliczeniowym konta (oś planu).</summary>
+    /// <summary>Zapytania w okresie rozliczeniowym konta (oś planu) — czat.</summary>
     public const string UserRequestsPeriod = "user_requests";
+
+    /// <summary>Analizy dokumentów w okresie rozliczeniowym konta (oś planu) — per DOKUMENT.</summary>
+    public const string UserAnalysesPeriod = "user_analyses";
 
     /// <summary>Zapytania na dobę per użytkownik — tryb bez kont (bramka invite), zachowanie z alfy.</summary>
     public const string UserRequestsDay = "user_requests_day";

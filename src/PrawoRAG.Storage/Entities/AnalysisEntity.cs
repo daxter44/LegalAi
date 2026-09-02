@@ -27,6 +27,10 @@ public class AnalysisEntity
     public bool UnitsTruncated { get; set; }
     public string? Summary { get; set; }
     public string? Error { get; set; }
+
+    /// <summary>Przyczyna statusu Interrupted (nazwa enuma InterruptReason po stronie Api);
+    /// null dla pozostałych statusów i dla rekordów sprzed wprowadzenia pola.</summary>
+    public string? InterruptReason { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 

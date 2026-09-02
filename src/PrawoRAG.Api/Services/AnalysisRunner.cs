@@ -17,12 +17,13 @@ namespace PrawoRAG.Api.Services;
 /// użytkownika ma priorytet nad zapisem.
 /// </summary>
 public sealed class AnalysisRunner(
-    IServiceScopeFactory scopes, IOptions<AnalysisOptions> options, CostGuard costGuard, IAnalysisStore store)
+    IServiceScopeFactory scopes, IOptions<AnalysisOptions> options, CostGuard costGuard, IAnalysisStore store,
+    ILogger<AnalysisRunner>? logger = null)
 {
     public async Task RunAsync(AnalysisSession session, string userId, CancellationToken ct)
     {
         // Rekord powstaje NA STARCIE (status Analyzing) — analiza w toku jest widoczna na liście po F5.
-        await Persist(() => store.CreateAsync(
+        await Persist($"create {session.Id}", () => store.CreateAsync(
             session.Id, userId, session.FileName, session.PageCount, session.Prompt,
             session.Units.Count, session.UnitsTruncated, CancellationToken.None));
 
@@ -72,17 +73,22 @@ public sealed class AnalysisRunner(
             catch (OperationCanceledException) { throw; }
             catch { /* raport per-jednostka stoi bez streszczenia */ }
             session.Complete(summary);
-            await Persist(() => store.CompleteAsync(session.Id, summary, CancellationToken.None));
+            await Persist($"complete {session.Id}", () => store.CompleteAsync(session.Id, summary, CancellationToken.None));
         }
         catch (OperationCanceledException)
         {
+            // Powód z sesji (anulowanie usera / sweep TTL); fallback UserCancelled — jedyna droga do
+            // OCE bez Cancel() to token, którego nikt inny nie trzyma. Restart procesu tu nie dociera
+            // (proces ginie) — tamten przypadek zamiata MarkAllInterruptedAsync na starcie.
+            var reason = session.CancelReason ?? InterruptReason.UserCancelled;
             session.SetStatus(AnalysisStatus.Interrupted);
-            await Persist(() => store.MarkInterruptedAsync(session.Id, CancellationToken.None));
+            await Persist($"interrupt {session.Id}",
+                () => store.MarkInterruptedAsync(session.Id, reason, CancellationToken.None));
         }
         catch (Exception ex)
         {
             session.Fail(ex.Message);
-            await Persist(() => store.FailAsync(session.Id, ex.Message, CancellationToken.None));
+            await Persist($"fail {session.Id}", () => store.FailAsync(session.Id, ex.Message, CancellationToken.None));
         }
     }
 
@@ -108,20 +114,72 @@ public sealed class AnalysisRunner(
             if (result is not null)
             {
                 session.SetUnitResult(result);
-                await Persist(() => store.UpsertUnitAsync(session.Id, result, CancellationToken.None));
+                await Persist($"unit {session.Id}/{result.Index}", () => store.UpsertUnitAsync(session.Id, result, CancellationToken.None));
             }
         }));
     }
 
-    /// <summary>Faza map jednej jednostki: dzienne limity kosztów (CostGuard — dokument to KILKANAŚCIE
-    /// wywołań LLM, każde liczone), świeży scope DI, drenaż strumienia zdarzeń czatu do wyniku.</summary>
+    /// <summary>Faza map jednej jednostki: capy pojemności (CostGuard z chargePlan:false — pula planu
+    /// naliczona per DOKUMENT na starcie, nie per fragment), potem JEDNO ponowienie na klasę błędów, które retry faktycznie
+    /// leczy (diagnoza 2026-09-02: 3 z 5 BŁĘDÓW sesji regulamin.pdf to transport — 500 z LLM, zerwane
+    /// HTTP, transient DB; do tego werdykt „?" = pusta odpowiedź modelu). Limit planu NIE jest przy
+    /// ponowieniu pobierany drugi raz — retry naprawia błąd systemu, nie jest nowym zapytaniem
+    /// użytkownika. UI widzi stan przez <see cref="AnalysisSession.MarkUnitLive"/>.</summary>
     private async Task<UnitAnalysis> AnalyzeUnitAsync(AnalysisSession session, DocUnit unit, string userId, CancellationToken ct)
     {
-        var userPrompt = session.Prompt;
-        if (await costGuard.TryAcquireAsync(userId, ct) is { Allowed: false } limit)
+        if (await costGuard.TryAcquireAsync(userId, ct, chargePlan: false) is { Allowed: false } limit)
             return new UnitAnalysis(unit.Index, unit.Heading, UnitVerdict.Error, null, [],
                 Error: limit.Message);
 
+        session.MarkUnitLive(unit.Index, UnitLiveState.Running);
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                var result = await AnalyzeUnitOnceAsync(session, unit, userId, ct);
+                // Pusta/niesparsowalna odpowiedź modelu (badge „?") — jednorazowe ponowienie zanim
+                // werdykt trwale wyląduje jako Unknown (rekomendacja P1.4 raportu niezawodności).
+                if (attempt == 1 && result is { Verdict: UnitVerdict.Unknown } &&
+                    string.IsNullOrWhiteSpace(result.Answer))
+                {
+                    await RetryPauseAsync(session, unit.Index, ct);
+                    continue;
+                }
+                return result;
+            }
+            catch (Exception ex) when (attempt == 1 && IsTransient(ex))
+            {
+                await RetryPauseAsync(session, unit.Index, ct);
+            }
+        }
+    }
+
+    /// <summary>Krótka pauza między próbami (transient zwykle mija w sekundy) z widocznym dla UI
+    /// stanem „ponawiam" — użytkownik widzi, że system reaguje, a nie że coś się zawiesiło.</summary>
+    private static async Task RetryPauseAsync(AnalysisSession session, int index, CancellationToken ct)
+    {
+        session.MarkUnitLive(index, UnitLiveState.Retrying);
+        await Task.Delay(TimeSpan.FromSeconds(3), ct);
+        session.MarkUnitLive(index, UnitLiveState.Running);
+    }
+
+    /// <summary>Błąd przejściowy = transport (HTTP do LLM, timeout, socket) albo transient bazy
+    /// (Npgsql). Sprawdzane po łańcuchu Inner/Aggregate, bo EF i HttpClient opakowują źródło.</summary>
+    private static bool IsTransient(Exception ex)
+    {
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+        {
+            if (e is AggregateException agg) return agg.InnerExceptions.Any(IsTransient);
+            if (e is HttpRequestException or TimeoutException or System.Net.Sockets.SocketException) return true;
+            if (e is Npgsql.NpgsqlException { IsTransient: true }) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Jedna próba analizy jednostki: świeży scope DI, drenaż strumienia zdarzeń czatu do wyniku.</summary>
+    private async Task<UnitAnalysis> AnalyzeUnitOnceAsync(AnalysisSession session, DocUnit unit, string userId, CancellationToken ct)
+    {
+        var userPrompt = session.Prompt;
         using var scope = scopes.CreateScope();
         var chat = scope.ServiceProvider.GetRequiredService<IChatService>();
 
@@ -167,7 +225,7 @@ public sealed class AnalysisRunner(
     {
         var results = session.Snapshot().Results.Where(r => r is not null).Cast<UnitAnalysis>().ToList();
         if (results.Count == 0) return null;
-        if (await costGuard.TryAcquireAsync(userId, ct) is { Allowed: false }) return null;
+        if (await costGuard.TryAcquireAsync(userId, ct, chargePlan: false) is { Allowed: false }) return null;
 
         using var scope = scopes.CreateScope();
         var llm = scope.ServiceProvider.GetRequiredService<ILlmProvider>();
@@ -188,9 +246,26 @@ public sealed class AnalysisRunner(
         return sb.Length > 0 ? sb.ToString().Trim() : null;
     }
 
-    /// <summary>Zapis best-effort: awaria bazy nie może zablokować ani zwalić analizy.</summary>
-    private static async Task Persist(Func<Task> op)
+    /// <summary>Zapis best-effort: awaria bazy nie może zablokować ani zwalić analizy — ale NIE po
+    /// cichu (naprawa 2026-09-02): pojedynczy transient DB potrafił bezpowrotnie skasować gotowy
+    /// wynik jednostki (§ 12 sesji 01a05ec7) bez żadnego śladu. Przed poddaniem się JEDNO ponowienie
+    /// samego zapisu (wynik już jest w pamięci — koszt zerowy vs utrata wywołania LLM), a każde
+    /// połknięcie jest logowane z kontekstem.</summary>
+    private async Task Persist(string context, Func<Task> op)
     {
-        try { await op(); } catch { /* best-effort */ }
+        for (var attempt = 1; ; attempt++)
+        {
+            try { await op(); return; }
+            catch (Exception ex) when (attempt == 1 && IsTransient(ex))
+            {
+                logger?.LogWarning(ex, "Zapis analizy nieudany ({Context}) — ponawiam", context);
+                await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Zapis analizy UTRACONY ({Context})", context);
+                return;
+            }
+        }
     }
 }

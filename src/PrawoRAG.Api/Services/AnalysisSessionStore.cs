@@ -45,6 +45,6 @@ public sealed class AnalysisSessionStore(TimeProvider time, IOptions<AnalysisOpt
         var now = time.GetUtcNow();
         foreach (var (id, session) in _sessions)
             if (session.IsExpired(now, Ttl) && _sessions.TryRemove(id, out var removed))
-                removed.Cancel(); // wygasła sesja = anuluj ewentualny runner w locie
+                removed.Cancel(InterruptReason.TtlExpired); // wygasła sesja = anuluj ewentualny runner w locie
     }
 }

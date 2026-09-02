@@ -12,7 +12,7 @@ public sealed record AnalysisSummaryRow(Guid Id, string FileName, string Prompt,
 public sealed record StoredAnalysis(
     Guid Id, string FileName, int PageCount, string Prompt, AnalysisStatus Status,
     int UnitsTotal, bool UnitsTruncated, string? Summary, string? Error,
-    IReadOnlyList<StoredUnit> Units);
+    IReadOnlyList<StoredUnit> Units, InterruptReason? InterruptReason = null);
 
 public sealed record StoredUnit(
     Guid Id, int UnitIndex, string Heading, UnitVerdict Verdict, string? Answer,
@@ -35,11 +35,12 @@ public interface IAnalysisStore
     Task CompleteAsync(Guid analysisId, string? summary, CancellationToken ct);
     Task FailAsync(Guid analysisId, string error, CancellationToken ct);
 
-    /// <summary>Analyzing → Interrupted; rekordów w stanach terminalnych NIE dotyka (warunkowy update).</summary>
-    Task MarkInterruptedAsync(Guid analysisId, CancellationToken ct);
+    /// <summary>Analyzing → Interrupted z przyczyną; rekordów w stanach terminalnych NIE dotyka
+    /// (warunkowy update).</summary>
+    Task MarkInterruptedAsync(Guid analysisId, InterruptReason reason, CancellationToken ct);
 
     /// <summary>Sweep na starcie procesu: po restarcie żaden rekord Analyzing nie może być prawdziwy
-    /// (sesje in-memory zginęły). Zwraca liczbę oznaczonych.</summary>
+    /// (sesje in-memory zginęły) — przyczyna zawsze ProcessRestart. Zwraca liczbę oznaczonych.</summary>
     Task<int> MarkAllInterruptedAsync(CancellationToken ct);
 
     /// <summary>Analizy użytkownika, najnowsze pierwsze.</summary>
@@ -77,7 +78,8 @@ public static class StoredAnalysisExtensions
 
         return new AnalysisSnapshot(
             a.Id, a.FileName, a.PageCount, a.Prompt, a.Status, units, a.UnitsTruncated,
-            results, results.Count(r => r is not null), a.Summary, a.Error);
+            results, results.Count(r => r is not null), a.Summary, a.Error,
+            InterruptReason: a.InterruptReason);
     }
 }
 
@@ -132,13 +134,14 @@ public sealed class AnalysisStore(IServiceScopeFactory scopeFactory) : IAnalysis
     public Task FailAsync(Guid analysisId, string error, CancellationToken ct) =>
         SetTerminalAsync(analysisId, nameof(AnalysisStatus.Failed), summary: null, Trunc(error, 2000), ct);
 
-    public async Task MarkInterruptedAsync(Guid analysisId, CancellationToken ct)
+    public async Task MarkInterruptedAsync(Guid analysisId, InterruptReason reason, CancellationToken ct)
     {
         await using var db = Db();
         await db.Analyses
             .Where(a => a.Id == analysisId && a.Status == nameof(AnalysisStatus.Analyzing))
             .ExecuteUpdateAsync(s => s
                 .SetProperty(a => a.Status, nameof(AnalysisStatus.Interrupted))
+                .SetProperty(a => a.InterruptReason, reason.ToString())
                 .SetProperty(a => a.UpdatedAt, DateTimeOffset.UtcNow), ct);
     }
 
@@ -149,6 +152,7 @@ public sealed class AnalysisStore(IServiceScopeFactory scopeFactory) : IAnalysis
             .Where(a => a.Status == nameof(AnalysisStatus.Analyzing))
             .ExecuteUpdateAsync(s => s
                 .SetProperty(a => a.Status, nameof(AnalysisStatus.Interrupted))
+                .SetProperty(a => a.InterruptReason, nameof(InterruptReason.ProcessRestart))
                 .SetProperty(a => a.UpdatedAt, DateTimeOffset.UtcNow), ct);
     }
 
@@ -185,7 +189,8 @@ public sealed class AnalysisStore(IServiceScopeFactory scopeFactory) : IAnalysis
             .ToList();
         return new StoredAnalysis(
             a.Id, a.FileName, a.PageCount, a.Prompt, ParseStatus(a.Status),
-            a.UnitsTotal, a.UnitsTruncated, a.Summary, a.Error, units);
+            a.UnitsTotal, a.UnitsTruncated, a.Summary, a.Error, units,
+            Enum.TryParse<InterruptReason>(a.InterruptReason, out var reason) ? reason : null);
     }
 
     public async Task AddUnitFeedbackAsync(Guid analysisUnitId, string userId, string verdict, string? note, CancellationToken ct)

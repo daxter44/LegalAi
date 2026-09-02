@@ -23,8 +23,8 @@ public class CostGuardRulesTests
         new(new DateTime(y, m, d, 0, 0, 0, DateTimeKind.Utc),
             new DateTime(y, m, d, 0, 0, 0, DateTimeKind.Utc).AddMonths(1));
 
-    private static PlanLimits Plan(int perMonth, string name = "Darmowy") =>
-        new() { DisplayName = name, RequestsPerMonth = perMonth };
+    private static PlanLimits Plan(int perMonth, string name = "Darmowy", int analyses = 3) =>
+        new() { DisplayName = name, RequestsPerMonth = perMonth, AnalysesPerMonth = analyses };
 
     private static CostGuard Guard(AccessOptions access, PlanLimits? limits, FakeTime time,
         IUsageCounters? counters = null) =>
@@ -252,5 +252,47 @@ public class CostGuardRulesTests
         var usage = await withPlan.UsageAsync("konto");
 
         Assert.Equal((1, 15), (usage!.Value.Used, usage.Value.Limit));
+    }
+
+    // --- osobna pula analiz (naprawa 2026-09-02: wcześniej per fragment do puli czatu) ---
+
+    [Fact]
+    public async Task Analysis_pool_is_separate_and_charged_per_document()
+    {
+        var guard = Guard(new AccessOptions { Enabled = false }, Plan(15, analyses: 2), new FakeTime());
+
+        Assert.True((await guard.TryAcquireAnalysisAsync("jan")).Allowed);
+        Assert.True((await guard.TryAcquireAnalysisAsync("jan")).Allowed);
+        var denied = await guard.TryAcquireAnalysisAsync("jan");
+        Assert.False(denied.Allowed);
+        Assert.True(denied.PlanLimit); // miejsce konwersji, jak limit czatu
+        Assert.Contains("analiz", denied.Message);
+
+        // Pula CZATU nietknięta — o to chodziło w rozdzieleniu.
+        Assert.Equal(0, (await guard.UsageAsync("jan"))!.Value.Used);
+        Assert.Equal((2, 2), (await guard.AnalysisUsageAsync("jan"))!.Value);
+    }
+
+    [Fact]
+    public async Task ChargePlan_false_skips_plan_axis_but_capacity_caps_hold()
+    {
+        var guard = Guard(new AccessOptions { Enabled = false, MaxGlobalRequestsPerDay = 2 },
+            Plan(perMonth: 1), new FakeTime());
+
+        // Dwa wywołania w ramach opłaconej analizy: plan 1/mies. NIE jest zużywany…
+        Assert.True((await guard.TryAcquireAsync("jan", default, chargePlan: false)).Allowed);
+        Assert.True((await guard.TryAcquireAsync("jan", default, chargePlan: false)).Allowed);
+        Assert.Equal(0, (await guard.UsageAsync("jan"))!.Value.Used);
+
+        // …ale globalny cap dobowy (oś sprzętowa) trzyma dalej.
+        Assert.False((await guard.TryAcquireAsync("jan", default, chargePlan: false)).Allowed);
+    }
+
+    [Fact]
+    public async Task Analysis_pool_does_not_apply_without_a_plan()
+    {
+        var guard = Guard(new AccessOptions { Enabled = true }, limits: null, new FakeTime());
+        Assert.True((await guard.TryAcquireAnalysisAsync("jan")).Allowed); // tryb invite: bez puli analiz
+        Assert.Null(await guard.AnalysisUsageAsync("jan"));
     }
 }

@@ -86,7 +86,7 @@ public class AnalysisRunnerTests
         public Task FailAsync(Guid analysisId, string error, CancellationToken ct)
         { MaybeThrow(); lock (Failed) Failed.Add((analysisId, error)); return Task.CompletedTask; }
 
-        public Task MarkInterruptedAsync(Guid analysisId, CancellationToken ct)
+        public Task MarkInterruptedAsync(Guid analysisId, InterruptReason reason, CancellationToken ct)
         { MaybeThrow(); lock (Interrupted) Interrupted.Add(analysisId); return Task.CompletedTask; }
 
         public Task<int> MarkAllInterruptedAsync(CancellationToken ct) => Task.FromResult(0);
@@ -373,5 +373,79 @@ public class AnalysisRunnerTests
         var (v, _) = AnalysisPrompts.ParseVerdict(
             "WERDYKT: OK\nNie znalazłem jednoznacznej podstawy prawnej dla tego pytania.");
         Assert.Equal(UnitVerdict.NoSources, v);
+    }
+
+    /// <summary>LLM ze skryptem per wywołanie (globalny licznik): odpowiedź ALBO wyjątek. Zapisuje
+    /// żądania map (bez streszczenia) — asercje na liczbę prób.</summary>
+    private sealed class SequenceLlm(Func<int, LlmRequest, (string? Answer, Exception? Error)> script) : ILlmProvider
+    {
+        private int _calls;
+        public List<LlmRequest> MapRequests { get; } = [];
+        public string ModelId => "fake-seq";
+
+        public async IAsyncEnumerable<string> StreamCompletionAsync(
+            LlmRequest request, [EnumeratorCancellation] CancellationToken ct)
+        {
+            var n = Interlocked.Increment(ref _calls);
+            if (request.Messages[0].Content != AnalysisPrompts.SummarySystemPrompt)
+                lock (MapRequests) MapRequests.Add(request);
+            await Task.Yield();
+            var (answer, error) = script(n, request);
+            if (error is not null) throw error;
+            yield return answer!;
+        }
+    }
+
+    // --- retry błędów przejściowych i pustych odpowiedzi (naprawa 2026-09-02) ---
+
+    [Fact] // 500/zerwane HTTP na pierwszej próbie → jedno ponowienie ratuje jednostkę; UI widzi stan „ponawiam"
+    public async Task Transient_llm_error_is_retried_once_and_unit_succeeds()
+    {
+        var llm = new SequenceLlm((n, r) =>
+            r.Messages[0].Content == AnalysisPrompts.SummarySystemPrompt ? ("Streszczenie.", null)
+            : n == 1 ? (null, new HttpRequestException("LLM lokalny 500"))
+            : ("WERDYKT: OK\nOdpowiedź [1].", null));
+        var (runner, store) = Harness(llm);
+        var session = store.Create("tester", "umowa.pdf", 2, "oceń ryzyka", Units(1), unitsTruncated: false);
+        var sawRetrying = false;
+        session.Changed += () =>
+            sawRetrying |= session.Snapshot().LiveStates is { } ls && ls.Contains(UnitLiveState.Retrying);
+
+        await runner.RunAsync(session, "tester", default);
+
+        var snap = session.Snapshot();
+        Assert.Equal(AnalysisStatus.Done, snap.Status);
+        Assert.Equal(UnitVerdict.Ok, snap.Results[0]!.Verdict);
+        Assert.Equal(2, llm.MapRequests.Count); // próba + JEDNO ponowienie
+        Assert.True(sawRetrying);               // stan „ponawiam" dotarł do UI
+    }
+
+    [Fact] // pusta odpowiedź modelu (badge „?") → jedno ponowienie zanim werdykt utrwali się jako Unknown
+    public async Task Empty_llm_answer_is_retried_before_unknown_verdict()
+    {
+        var llm = new SequenceLlm((n, r) =>
+            r.Messages[0].Content == AnalysisPrompts.SummarySystemPrompt ? ("Streszczenie.", null)
+            : n == 1 ? ("", null)
+            : ("WERDYKT: OK\nOdpowiedź [1].", null));
+        var (runner, store) = Harness(llm);
+
+        var snap = await RunAsync(runner, store, 1);
+
+        Assert.Equal(UnitVerdict.Ok, snap.Results[0]!.Verdict);
+        Assert.Equal(2, llm.MapRequests.Count);
+    }
+
+    [Fact] // błąd NIE-przejściowy: bez ponowienia (retry by go nie naprawił), werdykt BŁĄD jak dotąd
+    public async Task Non_transient_error_fails_unit_without_retry()
+    {
+        var llm = new SequenceLlm((n, r) =>
+            r.Messages[0].Content == AnalysisPrompts.SummarySystemPrompt ? ("Streszczenie.", null)
+            : (null, new InvalidOperationException("prompt przekracza kontekst")));
+        var (runner, store) = Harness(llm);
+
+        var snap = await RunAsync(runner, store, 1);
+
+        Assert.Equal(UnitVerdict.Error, snap.Results[0]!.Verdict);
+        Assert.Single(llm.MapRequests); // ZERO ponowień
     }
 }

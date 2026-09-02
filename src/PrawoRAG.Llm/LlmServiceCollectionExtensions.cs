@@ -20,6 +20,7 @@ public static class LlmServiceCollectionExtensions
         services.AddAuxLlm(config);
         services.AddSingleton<IIntentRouter, AuxIntentRouter>();
         services.AddSingleton<IQueryReformulator, AuxQueryReformulator>();
+        services.AddSingleton<IDocumentGate, AuxDocumentGate>();
 
         var provider = (config["Llm:Provider"] ?? "claude").ToLowerInvariant();
         return provider switch

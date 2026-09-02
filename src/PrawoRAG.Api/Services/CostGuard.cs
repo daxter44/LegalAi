@@ -46,8 +46,12 @@ public sealed class CostGuard(
     /// <summary>
     /// Rezerwuje jedno zapytanie LLM. Kolejność jest celowa: najpierw to, co należy się klientowi
     /// (jego komunikat jest inny), potem pojemność systemu.
+    /// <paramref name="chargePlan"/>=false — wywołanie w ramach JUŻ OPŁACONEJ analizy dokumentu
+    /// (pula <see cref="PlanLimits.AnalysesPerMonth"/> naliczona per dokument w
+    /// <see cref="TryAcquireAnalysisAsync"/>): oś planu jest pomijana, ale oś pojemnościowa
+    /// (globalne capy dzienne) i dobowy limit trybu bez kont obowiązują bez zmian.
     /// </summary>
-    public async Task<CostDecision> TryAcquireAsync(string userId, CancellationToken ct = default)
+    public async Task<CostDecision> TryAcquireAsync(string userId, CancellationToken ct = default, bool chargePlan = true)
     {
         var o = options.Value;
         var now = time.GetUtcNow().UtcDateTime;
@@ -61,11 +65,15 @@ public sealed class CostGuard(
         var reserved = false;
         if (entitlement is { PlanApplies: true, Limits: { } limits })
         {
-            var used = await counters.TryIncrementAsync(UsageScopes.UserRequestsPeriod, userId,
-                entitlement.Period.Key, limits.RequestsPerMonth, ct);
-            if (used is null)
-                return CostDecision.Denied(PlanLimitMessage(limits, entitlement.Period), planLimit: true);
-            reserved = true;
+            if (chargePlan)
+            {
+                var used = await counters.TryIncrementAsync(UsageScopes.UserRequestsPeriod, userId,
+                    entitlement.Period.Key, limits.RequestsPerMonth, ct);
+                if (used is null)
+                    return CostDecision.Denied(PlanLimitMessage(limits, entitlement.Period), planLimit: true);
+                reserved = true;
+            }
+            // chargePlan=false: dokument już opłacony z puli analiz — oś planu pomijana, capy niżej nie.
         }
         else if (o.Enabled)
         {
@@ -106,6 +114,45 @@ public sealed class CostGuard(
         await counters.AddAsync(UsageScopes.GlobalCharsDay, GlobalKey, today, outputChars, ct);
     }
 
+    /// <summary>
+    /// Rezerwuje jedną ANALIZĘ DOKUMENTU z osobnej puli planu (<see cref="PlanLimits.AnalysesPerMonth"/>)
+    /// — naliczane per dokument na starcie, nie per fragment (naprawa 2026-09-02: 19-fragmentowy
+    /// dokument zjadał cały miesięczny limit czatu). Wywołania LLM w ramach opłaconej analizy idą
+    /// potem przez <see cref="TryAcquireAsync"/> z <c>chargePlan:false</c> (capy pojemności zostają).
+    /// Tryb bez kont (brak planu): nic nie nalicza — jednostki liczą się per dobę jak dotąd.
+    /// </summary>
+    public async Task<CostDecision> TryAcquireAnalysisAsync(string userId, CancellationToken ct = default)
+    {
+        var entitlement = await entitlements.ForAsync(userId, ct);
+        if (entitlement is not { PlanApplies: true, Limits: { } limits }) return CostDecision.Ok();
+
+        var used = await counters.TryIncrementAsync(UsageScopes.UserAnalysesPeriod, userId,
+            entitlement.Period.Key, limits.AnalysesPerMonth, ct);
+        return used is null
+            ? CostDecision.Denied(AnalysisLimitMessage(limits, entitlement.Period), planLimit: true)
+            : CostDecision.Ok();
+    }
+
+    /// <summary>Zużycie puli analiz w bieżącym okresie (UI /analiza). <c>null</c> = plan nie obowiązuje.</summary>
+    public async Task<(int Used, int Limit)?> AnalysisUsageAsync(string userId, CancellationToken ct = default)
+    {
+        var entitlement = await entitlements.ForAsync(userId, ct);
+        if (entitlement.Limits is not { } limits) return null;
+        var used = await counters.CurrentAsync(UsageScopes.UserAnalysesPeriod, userId,
+            entitlement.Period.Key, ct);
+        return ((int)Math.Min(used, int.MaxValue), limits.AnalysesPerMonth);
+    }
+
+    /// <summary>Cap fragmentów jednego dokumentu wg planu użytkownika; <c>int.MaxValue</c> gdy plan
+    /// nie obowiązuje (wtedy ogranicza tylko globalny <c>Analysis:MaxUnits</c>).</summary>
+    public async Task<int> MaxUnitsForAsync(string userId, CancellationToken ct = default)
+    {
+        var entitlement = await entitlements.ForAsync(userId, ct);
+        return entitlement.Limits is { } limits && limits.MaxUnitsPerAnalysis > 0
+            ? limits.MaxUnitsPerAnalysis
+            : int.MaxValue;
+    }
+
     /// <summary>Zużycie w bieżącym okresie (ekran planu, komunikaty). <c>null</c> = plan nie obowiązuje.</summary>
     public async Task<(int Used, int Limit)?> UsageAsync(string userId, CancellationToken ct = default)
     {
@@ -131,8 +178,22 @@ public sealed class CostGuard(
             : text;
     }
 
+    /// <summary>Komunikat wyczerpanej puli ANALIZ — jak <see cref="PlanLimitMessage"/>, miejsce
+    /// konwersji, nie komunikat błędu. Nie zżera limitu czatu i mówi to wprost.</summary>
+    private static string AnalysisLimitMessage(PlanLimits limits, BillingPeriod period)
+    {
+        var text = $"Wykorzystano limit analiz dokumentów planu {limits.DisplayName} " +
+                   $"({limits.AnalysesPerMonth} analiz na okres rozliczeniowy). " +
+                   $"Odnowi się {period.EndUtc.ToString("d MMMM yyyy", Polish)}. " +
+                   "Zapytania na czacie liczą się osobno i nadal działają.";
+        return limits.AnalysesPerMonth < ProPlanAnalyses
+            ? text + $" Plan Pro daje {ProPlanAnalyses} analiz miesięcznie."
+            : text;
+    }
+
     /// <summary>E3 podmieni to na odczyt z katalogu planów wraz z cennikiem i odnośnikiem do zakupu.</summary>
     private const int ProPlanRequests = 300;
+    private const int ProPlanAnalyses = 50;
 
     private static string Limit(string reason) =>
         $"Wyczerpany {reason} — spróbuj ponownie jutro.";

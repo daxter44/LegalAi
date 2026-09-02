@@ -11,6 +11,7 @@
 @inject ICurrentUser CurrentUser
 @inject RateGuard RateGuard
 @inject CostGuard CostGuard
+@inject PrawoRAG.Llm.IDocumentGate DocumentGate
 @inject AuthenticationStateProvider AuthState
 @inject Microsoft.Extensions.Options.IOptions<AnalysisOptions> Options
 @inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.Billing.BillingOptions> Billing
@@ -187,7 +188,14 @@ else
     @if (snap.Status == AnalysisStatus.Interrupted)
     {
         <div class="banner banner-warn" role="status">
-            Analiza przerwana (@snap.Completed/@snap.Total fragmentów ukończonych) — częściowy raport poniżej.
+            @(snap.InterruptReason switch
+            {
+                InterruptReason.ProcessRestart => "Analiza przerwana przez restart serwera (np. wdrożenie nowej wersji)",
+                InterruptReason.TtlExpired => "Analiza przerwana — sesja wygasła po dłuższej bezczynności",
+                InterruptReason.UserCancelled => "Analiza anulowana",
+                _ => "Analiza przerwana",
+            }) (@snap.Completed/@snap.Total fragmentów ukończonych) — częściowy raport poniżej.
+            Dokument nie jest przechowywany na serwerze, więc dokończenie wymaga ponownego wgrania pliku.
         </div>
     }
     @if (snap.UnitsTruncated)
@@ -222,10 +230,15 @@ else
                 <span class="source-n">@unit.Heading</span>
                 @if (r is null)
                 {
-                    @* Postęp myślenia na żywo (naprawa 2026-09-02): bez tego jednostka w toku przez
-                       cały czas rozumowania LLM (dziesiątki sekund) wygląda identycznie jak czekająca. *@
+                    @* Stan na żywo (naprawy 2026-09-02): bez tego jednostka w obróbce przez
+                       kilkadziesiąt sekund wygląda identycznie jak czekająca w kolejce. *@
                     var thinking = snap.ThinkingChars is { } tc && unit.Index - 1 < tc.Count ? tc[unit.Index - 1] : 0;
-                    <span class="badge">@(_degraded ? "nieprzeanalizowany" : thinking > 0 ? $"🧠 myśli… ({thinking} zn.)" : "⏳ w kolejce…")</span>
+                    var live = snap.LiveStates is { } ls && unit.Index - 1 < ls.Count ? ls[unit.Index - 1] : UnitLiveState.Queued;
+                    <span class="badge">@(_degraded ? "nieprzeanalizowany"
+                        : live == UnitLiveState.Retrying ? "⚠️ błąd przejściowy — ponawiam…"
+                        : thinking > 0 ? $"🧠 myśli… ({thinking} zn.)"
+                        : live == UnitLiveState.Running ? "🔎 analizuję…"
+                        : "⏳ w kolejce…")</span>
                 }
                 else
                 {
@@ -447,16 +460,21 @@ else
         await RefreshUsageAsync();
     }
 
-    /// <summary>Licznik zużycia X/Y w stopce sidebara — jak w Chat.razor (czat i analiza liczą się
-    /// do wspólnego limitu planu). Best-effort; null w trybie bez kont.</summary>
+    /// <summary>Licznik zużycia w stopce sidebara. Od 2026-09-02 analiza ma OSOBNĄ pulę per dokument
+    /// (nie per fragment) — pokazujemy obie osie. Best-effort; null w trybie bez kont.</summary>
     private async Task RefreshUsageAsync()
     {
         if (!CurrentUser.IsAuthenticated) return;
         try
         {
-            _usageLabel = await CostGuard.UsageAsync(_userId) is { } u
-                ? $"{u.Used} / {u.Limit} zapytań"
-                : null;
+            var chat = await CostGuard.UsageAsync(_userId);
+            var analyses = await CostGuard.AnalysisUsageAsync(_userId);
+            _usageLabel = (chat, analyses) switch
+            {
+                ({ } c, { } a) => $"{a.Used} / {a.Limit} analiz · {c.Used} / {c.Limit} zapytań",
+                ({ } c, null) => $"{c.Used} / {c.Limit} zapytań",
+                _ => null,
+            };
         }
         catch { /* best-effort */ }
     }
@@ -492,8 +510,8 @@ else
             if (stored.Status == AnalysisStatus.Analyzing)
             {
                 // Samonaprawa: proces nie ma żywej sesji o tym id → analiza zginęła (restart).
-                await Store.MarkInterruptedAsync(id, CancellationToken.None);
-                stored = stored with { Status = AnalysisStatus.Interrupted };
+                await Store.MarkInterruptedAsync(id, InterruptReason.ProcessRestart, CancellationToken.None);
+                stored = stored with { Status = AnalysisStatus.Interrupted, InterruptReason = InterruptReason.ProcessRestart };
             }
             _storedSnapshot = stored.ToSnapshot();
             _storedUnits = stored.Units.ToDictionary(u => u.UnitIndex);
@@ -596,8 +614,29 @@ else
                 _docNotice = "Nie udało się wyodrębnić fragmentów do analizy z tego pliku.";
                 return;
             }
-            _unitsTruncated = units.Count > Options.Value.MaxUnits;
-            _units = _unitsTruncated ? units.Take(Options.Value.MaxUnits).ToList() : units;
+            // Bramka intencji (model Aux, fail-open): dokument prawny vs proza/artykuł — zanim
+            // ktoś spali analizę z puli na „Panu Tadeuszu". Próbka = początek tekstu + nagłówki
+            // jednostek (to one najlepiej odróżniają umowę od powieści).
+            if (Options.Value.IntentGateEnabled)
+            {
+                var pagesText = string.Concat(pdf.Pages.Take(2));
+                var sample = string.Join("\n", units.Take(8).Select(u => u.Heading)) + "\n\n" +
+                             pagesText[..Math.Min(1500, pagesText.Length)];
+                var gate = await DocumentGate.ClassifyAsync(sample, CancellationToken.None);
+                if (!gate.IsLegalDocument)
+                {
+                    _docNotice = "Ten plik nie wygląda na dokument do analizy prawnej" +
+                                 (string.IsNullOrWhiteSpace(gate.Reason) ? "." : $" ({gate.Reason}).") +
+                                 " Analiza działa na umowach, regulaminach, pismach i decyzjach — nie na tekstach literackich czy artykułach.";
+                    return;
+                }
+            }
+
+            // Cap fragmentów: globalny (Analysis:MaxUnits) I per plan — bez tego capu pula
+            // „analiz na miesiąc" nie ograniczałaby realnego kosztu (1 analiza = do 40 wywołań LLM).
+            var maxUnits = Math.Min(Options.Value.MaxUnits, await CostGuard.MaxUnitsForAsync(_userId));
+            _unitsTruncated = units.Count > maxUnits;
+            _units = _unitsTruncated ? units.Take(maxUnits).ToList() : units;
             _pdf = pdf;
             _fileName = file.Name;
         }
@@ -627,6 +666,15 @@ else
         if (!RateGuard.TryAcquire(_userId))
         {
             _notice = "Za dużo operacji w krótkim czasie — spróbuj ponownie za chwilę.";
+            return;
+        }
+
+        // Pula analiz naliczana PER DOKUMENT (osobna od zapytań czatu, naprawa 2026-09-02) —
+        // bramka PRZED utworzeniem sesji; fragmenty w środku nie zżerają już limitu czatu.
+        if (await CostGuard.TryAcquireAnalysisAsync(_userId) is { Allowed: false } denied)
+        {
+            _notice = denied.Message;
+            _noticePlanLimit = denied.PlanLimit;
             return;
         }
 
