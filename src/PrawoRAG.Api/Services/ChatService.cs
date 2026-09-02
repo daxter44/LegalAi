@@ -204,6 +204,7 @@ public sealed class ChatService(
         // je wystawił (Gemini/Gemma) — provider oddaje je osobno, poza widocznym strumieniem.
         LlmUsage? usage = null;
         string? reasoning = null;
+        string? finishReason = null; // AJ-2: `length` = ucięcie po MaxTokens (diagnoza pustych werdyktów)
         // Rozumowanie NA ŻYWO (Zadanie 1; naprawa 2026-09-02): callback pisze do kanału (nie może
         // `yield return`), a pętla generacji niżej czyta kanał RÓWNOLEGLE ze strumieniem LLM (pompa) —
         // bez tego podczas myślenia provider nie emituje ŻADNEJ widocznej delty, konsument wisi na
@@ -228,6 +229,7 @@ public sealed class ChatService(
             OnUsage = u => usage = u,
             OnReasoning = r => reasoning = r,
             OnReasoningDelta = onReasoningDelta,
+            OnFinishReason = fr => finishReason = fr,
         };
 
         // ANTY-FABRYKACJA — czy cytaty [n]/[Dk]/artykuły/sygnatury istnieją w dostarczonym kontekście.
@@ -362,6 +364,7 @@ public sealed class ChatService(
                             OnUsage = u => usage = u,
                             OnReasoning = r => reasoning = r,
                             OnReasoningDelta = onReasoningDelta,
+                            OnFinishReason = fr => finishReason = fr,
                         };
                         yield return new SourcesEvent(sources
                             .Select(s => new ChatSource(s.Index, s.Label, s.Title, s.SourceUrl, s.Snippet,
@@ -408,7 +411,7 @@ public sealed class ChatService(
         // (model złamał regułę 3: fraza + treść z [n]) to nie odmowa, użytkownik dostał odpowiedź.
         yield return new DoneEvent(
             Abstained: GroundedPrompt.IsContentRefusal(answer),
-            Model: llm.ModelId, Check: check, Usage: usage, Regenerated: regenerated);
+            Model: llm.ModelId, Check: check, Usage: usage, Regenerated: regenerated, FinishReason: finishReason);
     }
 
     /// <summary>

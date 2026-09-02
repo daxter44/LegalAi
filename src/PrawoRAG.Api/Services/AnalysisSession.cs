@@ -57,7 +57,8 @@ public sealed record UnitAnalysis(
     string? Answer,
     IReadOnlyList<ChatSource> Sources,
     CitationCheck? Check = null,
-    string? Error = null);
+    string? Error = null,
+    string? FinishReason = null);
 
 /// <summary>
 /// Stan jednej długiej analizy dokumentu (SPK-2) — żyje WYŁĄCZNIE w pamięci procesu

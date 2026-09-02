@@ -51,6 +51,14 @@ public sealed record LlmRequest
     public Action<string>? OnReasoningDelta { get; init; }
 
     /// <summary>
+    /// Wywoływany z <c>finish_reason</c> ostatniego chunka SSE (AJ-2, 2026-09-02): <c>stop</c> = normalny
+    /// koniec, <c>length</c> = ucięcie po <c>MaxTokens</c> (myślenie wliczone — hipoteza pustych
+    /// werdyktów „?" w analizie), <c>tool_calls</c>, <c>content_filter</c>. Dotąd provider w ogóle
+    /// nie czytał tego pola, więc ucięcie było nieodróżnialne od końca. Null = nie interesuje.
+    /// </summary>
+    public Action<string>? OnFinishReason { get; init; }
+
+    /// <summary>
     /// Narzędzia udostępnione modelowi (Zadanie 14 planu ROU). Null/pusto = żądanie identyczne
     /// bajt w bajt jak dotąd (ciało JSON bez pól `tools`/`tool_choice`).
     /// </summary>

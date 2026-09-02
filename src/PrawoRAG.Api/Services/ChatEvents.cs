@@ -100,7 +100,8 @@ public sealed record RetryingRetrievalEvent(string NewQuery, string Reason) : Ch
 /// <see cref="Regenerated"/> = odpowiedź przeszła regenerację bramki (materiał do pomiaru fałszywych
 /// alarmów; próg zabicia bramki: >10% regeneracji na poprawnych odpowiedziach).</summary>
 public sealed record DoneEvent(
-    bool Abstained, string? Model, CitationCheck? Check, LlmUsage? Usage = null, bool Regenerated = false) : ChatEvent;
+    bool Abstained, string? Model, CitationCheck? Check, LlmUsage? Usage = null, bool Regenerated = false,
+    string? FinishReason = null) : ChatEvent;
 
 /// <summary>Błąd przetwarzania.</summary>
 public sealed record ChatErrorEvent(string Message) : ChatEvent;

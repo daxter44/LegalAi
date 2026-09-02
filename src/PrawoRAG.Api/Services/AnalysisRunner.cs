@@ -189,6 +189,7 @@ public sealed class AnalysisRunner(
         PrawoRAG.Llm.Grounding.CitationCheck? check = null;
         string? abstainMessage = null;
         string? error = null;
+        string? finishReason = null;
 
         // forceRetrieval: jednostka analizowanego dokumentu NIGDY nie jest small-talkiem, a jej treść
         // (preambuła, komparycja, dane stron) często nie zawiera żadnego tokenu prawnego — czyli
@@ -205,7 +206,7 @@ public sealed class AnalysisRunner(
                 // „…" przez cały czas rozumowania (naprawa 2026-09-02, lustro czatu).
                 case ReasoningDeltaEvent rd: session.ReportUnitThinking(unit.Index, rd.Text.Length); break;
                 case AbstainEvent a: abstainMessage = a.Message; break;
-                case DoneEvent d: check = d.Check; break;
+                case DoneEvent d: check = d.Check; finishReason = d.FinishReason; break;
                 case ChatErrorEvent err: error = err.Message; break;
             }
 
@@ -217,7 +218,7 @@ public sealed class AnalysisRunner(
             return new UnitAnalysis(unit.Index, unit.Heading, UnitVerdict.NoSources, abstainMessage, []);
 
         var (verdict, text) = AnalysisPrompts.ParseVerdict(answer.ToString());
-        return new UnitAnalysis(unit.Index, unit.Heading, verdict, text, sources, check);
+        return new UnitAnalysis(unit.Index, unit.Heading, verdict, text, sources, check, FinishReason: finishReason);
     }
 
     /// <summary>Faza reduce: JEDNO wywołanie LLM (bez retrievalu — streszcza wyłącznie dostarczone

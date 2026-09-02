@@ -144,6 +144,12 @@ public sealed class OpenAiCompatibleLlmProvider(HttpClient http, IOptions<LocalL
                     choices.GetArrayLength() > 0)
                 {
                     var choice = choices[0];
+                    // finish_reason przychodzi w OSTATNIM chunku z treścią (AJ-2): `length` = ucięcie po
+                    // MaxTokens — jedyny sposób odróżnienia „model skończył" od „model nie zdążył".
+                    if (request.OnFinishReason is not null &&
+                        choice.TryGetProperty("finish_reason", out var fr) && fr.ValueKind == JsonValueKind.String &&
+                        fr.GetString() is { Length: > 0 } finishReason)
+                        request.OnFinishReason(finishReason);
                     if (choice.TryGetProperty("delta", out var d))
                     {
                         if (d.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)

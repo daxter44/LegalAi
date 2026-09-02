@@ -124,6 +124,7 @@ public sealed class AnalysisStore(IServiceScopeFactory scopeFactory) : IAnalysis
         row.Sources = unit.Sources.Count == 0 ? null : JsonSerializer.SerializeToDocument(unit.Sources);
         row.CitationClean = unit.Check?.IsClean;
         row.Error = unit.Error is { } e ? Trunc(e, 2000) : null;
+        row.FinishReason = unit.FinishReason is { } fr ? Trunc(fr, 40) : null;
         await db.Analyses.Where(a => a.Id == analysisId)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.UpdatedAt, now), ct);
         await db.SaveChangesAsync(ct);

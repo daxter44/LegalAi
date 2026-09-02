@@ -33,6 +33,11 @@ public class AnalysisUnitEntity
     public bool? CitationClean { get; set; }
 
     public string? Error { get; set; }
+
+    /// <summary><c>finish_reason</c> generacji LLM (AJ-2): stop | length | tool_calls | content_filter;
+    /// null = provider nie zgłosił (Claude, błąd przed końcem). `length` przy pustej odpowiedzi
+    /// = model zużył cały MaxTokens na myślenie — diagnoza werdyktów „?".</summary>
+    public string? FinishReason { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 
     public AnalysisUnitFeedbackEntity? Feedback { get; set; }
