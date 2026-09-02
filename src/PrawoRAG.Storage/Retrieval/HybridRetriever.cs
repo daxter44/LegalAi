@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using PrawoRAG.Domain;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
@@ -14,7 +15,7 @@ namespace PrawoRAG.Storage.Retrieval;
 /// Wyszukiwanie hybrydowe: tor gęsty (pgvector cosine) + tor rzadki (tsvector BM25), fuzja RRF.
 /// Numery artykułów/sygnatury łapie BM25; intencję semantyczną — dense. Filtry metadanych w SQL.
 /// </summary>
-public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider embedder, IReranker? reranker = null) : IRetriever
+public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider embedder, IReranker? reranker = null, ILogger<HybridRetriever>? logger = null) : IRetriever
 {
     private const int RrfK = 60;
 
@@ -191,14 +192,28 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         if (reranker is not null && deduped.Count > 0)
         {
             query.ReportStage("rerank.main", "Oceniam trafność kandydatów…", deduped.Count);
-            var scores = await LatencyLog.TimeAsync("rerank.main",
-                () => reranker.RerankAsync(query.EffectiveRerankText, deduped.Select(c => c.Text).ToList(), ct));
-            var byIndex = scores.ToDictionary(x => x.Index, x => x.Score);
-            ranked = deduped
-                .Select((c, i) => c with { RerankScore = byIndex.GetValueOrDefault(i) })
-                .OrderByDescending(c => c.RerankScore ?? double.MinValue)
-                .ToList();
-            rerankTop = ranked.Count > 0 ? ranked[0].RerankScore : null;
+            try
+            {
+                var scores = await LatencyLog.TimeAsync("rerank.main",
+                    () => reranker.RerankAsync(query.EffectiveRerankText, deduped.Select(c => c.Text).ToList(), ct));
+                var byIndex = scores.ToDictionary(x => x.Index, x => x.Score);
+                ranked = deduped
+                    .Select((c, i) => c with { RerankScore = byIndex.GetValueOrDefault(i) })
+                    .OrderByDescending(c => c.RerankScore ?? double.MinValue)
+                    .ToList();
+                rerankTop = ranked.Count > 0 ? ranked[0].RerankScore : null;
+            }
+            // Awaria cross-encodera (ubity spot VM, restart TEI, 503, timeout) degraduje JAKOŚĆ
+            // kolejności, nie może wywracać zapytania — schodzimy do kolejności RRF, a RerankTopScore
+            // zostaje null, żeby sygnał abstynencji nie udawał, że reranker działał. Anulowanie
+            // przepuszczamy dalej (wzorzec jak przy moście cytowań wyżej).
+            catch (Exception ex) when (ct.IsCancellationRequested == false)
+            {
+                ranked = deduped;
+                logger?.LogWarning(ex,
+                    "Reranker padł na głównej puli ({Count} kandydatów) — schodzę do kolejności RRF, " +
+                    "RerankTopScore=null. Jakość kolejności jest gorsza niż zwykle.", deduped.Count);
+            }
         }
         else
         {
@@ -250,19 +265,31 @@ public sealed class HybridRetriever(PrawoRagDbContext db, IEmbeddingProvider emb
         if (reranker is not null && bridge.Count > 0)
         {
             query.ReportStage("rerank.bridge", "Oceniam przepisy z cytowań…", bridge.Count);
-            var bridgeScores = await LatencyLog.TimeAsync("rerank.bridge", () => reranker.RerankAsync(
-                query.EffectiveRerankText, bridge.Select(c => c.Text).ToList(), ct));
-            var byIndex = bridgeScores.ToDictionary(x => x.Index, x => x.Score);
-            // Most PRZED `ranked` w konkatenacji: gdy ten sam chunk przyszedł oboma torami, ma zostać
-            // wersja mostu (Score=double.MaxValue — po tym markerze testy i diagnostyka poznają, że to
-            // most dociągnął przepis, a nie tor gęsty). Dopiero po dedupie sortujemy po sędzim.
-            ranked = bridge
-                .Select((c, i) => c with { RerankScore = byIndex.GetValueOrDefault(i) })
-                .Concat(ranked)
-                .GroupBy(c => c.ChunkId).Select(g => g.First())
-                .OrderByDescending(c => c.RerankScore ?? double.MinValue)
-                .ToList();
-            bridge = [];   // most jest już wtopiony w `ranked` — nie dokładać go drugi raz
+            try
+            {
+                var bridgeScores = await LatencyLog.TimeAsync("rerank.bridge", () => reranker.RerankAsync(
+                    query.EffectiveRerankText, bridge.Select(c => c.Text).ToList(), ct));
+                var byIndex = bridgeScores.ToDictionary(x => x.Index, x => x.Score);
+                // Most PRZED `ranked` w konkatenacji: gdy ten sam chunk przyszedł oboma torami, ma zostać
+                // wersja mostu (Score=double.MaxValue — po tym markerze testy i diagnostyka poznają, że to
+                // most dociągnął przepis, a nie tor gęsty). Dopiero po dedupie sortujemy po sędzim.
+                ranked = bridge
+                    .Select((c, i) => c with { RerankScore = byIndex.GetValueOrDefault(i) })
+                    .Concat(ranked)
+                    .GroupBy(c => c.ChunkId).Select(g => g.First())
+                    .OrderByDescending(c => c.RerankScore ?? double.MinValue)
+                    .ToList();
+                bridge = [];   // most jest już wtopiony w `ranked` — nie dokładać go drugi raz
+            }
+            // Jak wyżej: awaria cross-encodera nie wywraca zapytania. Zostawiamy `bridge` i `ranked`
+            // nietknięte — to dokładnie ten sam stan co przy wyłączonym rerankerze, więc most trafia
+            // do konkatenacji niżej na swój własny slot, zamiast zostać wtopiony wg sędziego.
+            catch (Exception ex) when (ct.IsCancellationRequested == false)
+            {
+                logger?.LogWarning(ex,
+                    "Reranker padł na moście cytowań ({Count} pasaży) — most zachowuje własny slot " +
+                    "zamiast zostać wtopiony wg cross-encodera.", bridge.Count);
+            }
         }
 
         // Kolejność slotów: SYGNATURA/AKT (najbardziej konkretny ask) → cytat strukturalny → most → semantyka.

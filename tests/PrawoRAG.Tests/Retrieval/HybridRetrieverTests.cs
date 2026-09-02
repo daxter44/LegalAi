@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Pgvector;
 using PrawoRAG.Domain;
 using PrawoRAG.Domain.Retrieval;
@@ -188,6 +189,47 @@ public class HybridRetrieverTests
             new RetrievalQuery { Text = "Rerankfallback przepis testowy", MinChunkTokens = 0 }, default);
 
         Assert.Equal("Rerankfallback przepis testowy", reranker.LastQuery);
+        await CleanAsync(src);
+    }
+
+    [Fact] // R9: awaria rerankera W LOCIE (ubity spot VM, restart TEI, 503, timeout) NIE może wywracać
+           // zapytania użytkownika — retrieval schodzi do kolejności RRF. Gałąź `else` w HybridRetriever
+           // łapała dotąd WYŁĄCZNIE reranker wyłączony w DI (== null), nie awarię działającego.
+    public async Task Reranker_failure_degrades_to_rrf_order_instead_of_throwing()
+    {
+        const string src = "TEST-RETR-9";
+        await CleanAsync(src);
+        await SeedAsync(src, "a", DocTypes.Judgment, "Rerankawaria alfa przepis testowy pierwszy", tokenCount: 20);
+
+        await using var db = NewDb();
+        var reranker = new ThrowingReranker();
+        var res = await new HybridRetriever(db, Emb, reranker).RetrieveAsync(
+            new RetrievalQuery { Text = "Rerankawaria przepis testowy", MinChunkTokens = 0 }, default);
+
+        Assert.NotEmpty(res.Chunks);        // zapytanie przeżyło awarię
+        Assert.Null(res.RerankTopScore);    // sygnał NIE udaje, że cross-encoder działał
+        Assert.True(reranker.Calls > 0);    // próba faktycznie była
+        await CleanAsync(src);
+    }
+
+    [Fact] // R10: awaria rerankera NIE może być cicha. Degradacja jakości bez śladu w logach to ta sama
+           // klasa problemu co martwy tor rzadki czy niezliczane Abstained — działa "prawie dobrze",
+           // nikt nie wie dlaczego wyniki są gorsze. Log jest warunkiem wstępnym dla GPU na spocie.
+    public async Task Reranker_failure_is_logged()
+    {
+        const string src = "TEST-RETR-10";
+        await CleanAsync(src);
+        await SeedAsync(src, "a", DocTypes.Judgment, "Rerankolog alfa przepis testowy pierwszy", tokenCount: 20);
+
+        await using var db = NewDb();
+        var logger = new CollectingLogger<HybridRetriever>();
+        await new HybridRetriever(db, Emb, new ThrowingReranker(), logger).RetrieveAsync(
+            new RetrievalQuery { Text = "Rerankolog przepis testowy", MinChunkTokens = 0 }, default);
+
+        var warnings = logger.Entries.Where(e => e.Level == LogLevel.Warning).ToList();
+        Assert.NotEmpty(warnings);
+        // Przyczyna musi dotrzeć do logu — inaczej nie odróżnisz ubitego spota od timeoutu czy 422.
+        Assert.Contains(warnings, w => w.Exception is HttpRequestException);
         await CleanAsync(src);
     }
 }
