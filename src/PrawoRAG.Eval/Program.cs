@@ -61,6 +61,15 @@ if (args.Contains("--refusals"))
     return;
 }
 
+// AJ-1b: eval analizy dokumentów — golden set analysis-set.json przez fazę map (ten sam prompt
+// i retrieval co produkcja); recall wbudowanych ryzyk, fałszywe RYZYKO, trafienie normy, czas.
+// --no-generate (lub Eval:AnalysisGenerate=false) = tylko retrieval; Eval:AnalysisDocs=id1,id2 = podzbiór.
+if (args.Contains("--analysis"))
+{
+    await AnalysisEvalRunner.RunAsync(host.Services, cfg, args, default);
+    return;
+}
+
 // Raport z żywego ruchu (Zadanie 16 planu ROU): metryka odmów i zachowanie bramek policzone na
 // historii tabeli messages — także wstecz. Zero wywołań LLM, więc darmowy i powtarzalny.
 if (args.Contains("--live-report"))
