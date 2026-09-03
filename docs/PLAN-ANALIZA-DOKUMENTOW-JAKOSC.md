@@ -22,7 +22,20 @@ Zasady wspólne:
 | D4 | Skład golden setu (AJ-0) | Umowy i regulamin z wbudowanymi wadami układa programista; decyzja administracyjna wchodzi z flagą `NeedsLawyer` i nie jest scorowana merytorycznie do przeglądu prawnika | AJ-14 czeka na przegląd prawnika i na dane o użyciu. |
 | D5 | Kolejność faz 2 i 3 | **DOCX (AJ-11) i splitter (AJ-13) między AJ-2 a AJ-3**; reszta fazy 3 (AJ-12) po AJ-6 | Testerzy dostarczający dokumenty do golden setu od razu wgrywają Word. |
 
-Status planu: decyzje zamknięte, **implementacja czeka na jawne „go"** (start = AJ-0).
+Status planu (2026-09-03): „go" 2026-09-02. **Zrobione i zacommitowane:** AJ-0, AJ-1a/1b, AJ-2,
+AJ-3, AJ-4, **AJ-4b** (dodane: zapytanie retrievalu rozdzielone od promptu — patrz niżej), AJ-5,
+AJ-6, AJ-11, AJ-12, AJ-13. **Czeka na dostęp do stacku (.11) i klucz LLM:** pomiar AJ-2 z generacją,
+biegi AJ-4/4b (retrieval z samą treścią fragmentu vs treść + kotwica), AJ-7. **Nie zaczęte:** AJ-8…10, AJ-14.
+
+### AJ-4b (dodane 2026-09-03 po pomiarze): zapytanie retrievalu ≠ prompt fazy map
+- Pomiar: kotwica-wyrocznia dodana do promptu map nie zmieniła trafienia normy (3/17 → 3/17).
+  Przyczyna: zapytaniem retrievalu był CAŁY prompt (intencja + kontekst + fragment + instrukcja
+  „WERDYKT: OK / RYZYKO…"), ucinany przez embedder do 512 tokenów; kotwica tonęła w instrukcji.
+- Zrobione: `IChatService.AskAsync(..., retrievalQuery)`, `AnalysisPrompts.RetrievalQuery(unit,
+  profile)` = kotwica + treść fragmentu do 1800 znaków, bez intencji i instrukcji; runner i eval
+  używają tego samego zapytania. Historia retrievalu przy podanym zapytaniu pusta.
+- Do zmierzenia (dwa biegi `--no-generate`): sama treść (`--no-profile`) vs treść + kotwica
+  (`--oracle-profile`). Wynik rozstrzyga, czy AJ-8 (zagadnienie jako zapytanie) jest konieczne.
 
 ## Faza 0 — pomiar (warunek zabicia dla reszty)
 

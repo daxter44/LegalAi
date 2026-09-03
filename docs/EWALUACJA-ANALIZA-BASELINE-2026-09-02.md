@@ -53,6 +53,25 @@ Drobne: lokalizator chunku „art. 44-50" (chunk obejmujący kilka artykułów) 
 oczekiwanego „34" nawet gdyby to był właściwy fragment — metryka trafienia normy jest przez to
 konserwatywna (zaniża, nie zawyża).
 
+## Dopisek 2026-09-03: kotwica w prompcie nie działa, bo zapytaniem był cały prompt
+
+Bieg `--no-generate --oracle-profile` PO AJ-4 (profil-wyrocznia z klucza doklejony do promptu
+fazy map, zapytanie retrievalu = cały prompt): **trafienie normy 3/17 → 3/17, bez zmian.**
+Diagnoza: `ChatService` embeduje jako zapytanie całą treść pytania, czyli intencję użytkownika +
+kontekst + fragment + instrukcję formatu werdyktu („Pierwsza linia odpowiedzi to DOKŁADNIE…"),
+a TEI ucina do 512 tokenów (`Truncate=true`). Kotwica tonie w instrukcji; słowa „WERDYKT",
+„odpowiedzi", „uzasadnienia" trafiają też do BM25. Stąd AJ-4b: `retrievalQuery` rozdzielone od
+promptu (kotwica + treść fragmentu, ≤1800 zn).
+
+**Do wykonania po odzyskaniu dostępu do stacku (dwa biegi, kolejność ważna):**
+1. `--analysis --no-generate --no-profile` — sama treść fragmentu jako zapytanie (nowy baseline
+   retrievalu po AJ-4b; porównać z 3/17).
+2. `--analysis --no-generate --oracle-profile` — treść + kotwica; różnica względem (1) = efekt
+   kotwicy w czystej postaci. Jeśli ≈0, kotwica dziedzinowa nie wystarcza i AJ-8 (zagadnienie
+   prawne jako zapytanie) jest konieczne; sonda z 2026-09-02 (pytanie prawnicze → uopl na pozycji 1)
+   sugeruje, że tak będzie.
+Biegi z 2026-09-03 11:0x–11:4x przerwane: stack niedostępny (praca zdalna), 190 s timeoutów per jednostka.
+
 ## Tryb z generacją — DO WYKONANIA
 
 Bieg: `Llm__Provider=local Llm__Local__BaseUrl=... Llm__Local__Model=... Llm__Local__ApiKey=$OPENROUTER_API_KEY`
