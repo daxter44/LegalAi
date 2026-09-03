@@ -186,6 +186,8 @@ body {
 /* Banery stanu */
 .banner { padding: var(--s-3) var(--s-4); border-radius: var(--radius-sm); font-size: var(--fs-14); }
 .banner-warn { background: var(--c-warn-weak); color: var(--c-warn); }
+.banner-info { background: var(--c-surface-2, #f3f4f6); color: var(--c-text-2, inherit); }
+.banner-info > summary { cursor: pointer; }
 /* US-3.9: link do zakupu w komunikacie wyczerpanego limitu planu — miejsce konwersji. */
 .notice-upgrade { display: inline-block; margin-left: var(--s-2); font-weight: 700; color: var(--sl-accent); text-decoration: none; white-space: nowrap; }
 .notice-upgrade:hover { text-decoration: underline; }

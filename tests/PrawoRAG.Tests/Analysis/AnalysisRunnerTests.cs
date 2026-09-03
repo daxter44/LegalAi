@@ -102,9 +102,11 @@ public class AnalysisRunnerTests
     private static IReadOnlyList<DocUnit> Units(int n) =>
         Enumerable.Range(1, n).Select(i => new DocUnit(i, $"§ {i}", $"§ {i} Treść postanowienia numer {i}.")).ToList();
 
+    /// <param name="profile">Profil dokumentu (AJ-3) domyślnie WYŁĄCZONY w harnessie — testy liczą
+    /// wywołania LLM per jednostka; profil ma własne testy niżej.</param>
     private static (AnalysisRunner Runner, AnalysisSessionStore Store) Harness(
         ILlmProvider llm, double signal = 0.9, int maxParallelism = 4, AccessOptions? access = null,
-        RecordingAnalysisStore? analysisStore = null)
+        RecordingAnalysisStore? analysisStore = null, bool profile = false)
     {
         var services = new ServiceCollection();
         services.AddSingleton<IEmbeddingProvider>(new FakeEmbeddingProvider());
@@ -115,7 +117,7 @@ public class AnalysisRunnerTests
             Options.Create(new DocumentsOptions())));
         var provider = services.BuildServiceProvider();
 
-        var options = Options.Create(new AnalysisOptions { MaxParallelism = maxParallelism });
+        var options = Options.Create(new AnalysisOptions { MaxParallelism = maxParallelism, ProfileEnabled = profile });
         // Bramka kosztów bez bazy: liczniki w pamięci, brak planu (tryb sprzed kont) — tu testujemy
         // reakcję runnera na wyczerpany limit, nie samo liczenie (to CostGuard*Tests).
         var costGuard = new CostGuard(new MemoryUsageCounters(),
@@ -448,5 +450,74 @@ public class AnalysisRunnerTests
 
         Assert.Equal(UnitVerdict.Error, snap.Results[0]!.Verdict);
         Assert.Single(llm.MapRequests); // ZERO ponowień
+    }
+
+    // --- profil dokumentu (AJ-3) ---
+
+    private static bool IsProfileRequest(LlmRequest r) => r.Messages[0].Content == DocumentProfilePrompts.SystemPrompt;
+
+    [Fact] // profil = JEDNO wywołanie per dokument (nie per jednostka), przed fazą map, wynik w snapshotcie
+    public async Task Profile_is_requested_once_per_document_and_lands_in_snapshot()
+    {
+        var llm = new ScriptedLlm(r =>
+            IsProfileRequest(r) ? "TYP: umowa najmu lokalu mieszkalnego\nSTRONY: wynajmujący (osoba fizyczna), najemca (konsument)\nPRZEDMIOT: lokal nr 4 w Poznaniu"
+            : r.Messages[0].Content == AnalysisPrompts.SummarySystemPrompt ? "Streszczenie."
+            : "WERDYKT: OK\nOdpowiedź [1].");
+        var (runner, store) = Harness(llm, profile: true);
+
+        var snap = await RunAsync(runner, store, 3);
+
+        Assert.Equal(AnalysisStatus.Done, snap.Status);
+        Assert.Single(llm.Requests, IsProfileRequest);
+        Assert.Equal(5, llm.Requests.Count); // profil + 3 × map + streszczenie
+        Assert.NotNull(snap.Profile);
+        Assert.Equal("umowa najmu lokalu mieszkalnego", snap.Profile!.Kind);
+        Assert.Contains("konsument", snap.Profile.Parties);
+        // Profil idzie PRZED mapą: pierwsze zarejestrowane żądanie to profil.
+        Assert.True(IsProfileRequest(llm.Requests[0]));
+        // Próbka profilu = początek dokumentu (pierwsza jednostka), nie pojedyncza jednostka z prompta usera.
+        Assert.Contains("§ 1 Treść postanowienia numer 1.", llm.Requests[0].Messages[^1].Content);
+    }
+
+    [Fact] // profil z oceną prawną odrzucony w całości (strażnik) — analiza działa jak bez profilu
+    public async Task Profile_with_legal_assessment_is_rejected()
+    {
+        var llm = new ScriptedLlm(r =>
+            IsProfileRequest(r) ? "TYP: umowa najmu\nSTRONY: najemca narusza art. 6 uopl [1]"
+            : "WERDYKT: OK\nOdpowiedź [1].");
+        var (runner, store) = Harness(llm, profile: true);
+
+        var snap = await RunAsync(runner, store, 2);
+
+        Assert.Equal(AnalysisStatus.Done, snap.Status);
+        Assert.Null(snap.Profile);
+        Assert.Equal(2, snap.Completed);
+    }
+
+    [Fact] // awaria LLM przy profilu → analiza bez profilu, jednostki normalnie
+    public async Task Profile_failure_does_not_fail_analysis()
+    {
+        var llm = new ScriptedLlm(r =>
+            IsProfileRequest(r) ? throw new InvalidOperationException("awaria przy profilu")
+            : "WERDYKT: OK\nOdpowiedź [1].");
+        var (runner, store) = Harness(llm, profile: true);
+
+        var snap = await RunAsync(runner, store, 2);
+
+        Assert.Equal(AnalysisStatus.Done, snap.Status);
+        Assert.Null(snap.Profile);
+        Assert.All(snap.Results, r => Assert.Equal(UnitVerdict.Ok, r!.Verdict));
+    }
+
+    [Fact] // wyłącznik: ProfileEnabled=false → zero wywołań profilu (zachowanie sprzed AJ-3)
+    public async Task Profile_disabled_means_no_profile_call()
+    {
+        var llm = new ScriptedLlm(_ => "WERDYKT: OK\nOdpowiedź [1].");
+        var (runner, store) = Harness(llm, profile: false);
+
+        var snap = await RunAsync(runner, store, 2);
+
+        Assert.DoesNotContain(llm.Requests, IsProfileRequest);
+        Assert.Null(snap.Profile);
     }
 }

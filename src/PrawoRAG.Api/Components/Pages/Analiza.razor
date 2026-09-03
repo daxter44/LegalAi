@@ -204,6 +204,16 @@ else
             Dokument ma więcej fragmentów niż limit @Options.Value.MaxUnits — przeanalizowano pierwsze @snap.Total.
         </div>
     }
+    @if (snap.Profile is { } profile)
+    {
+        @* Profil dokumentu (AJ-3): fakty z całości, które każda jednostka dostaje jako kontekst.
+           Widoczny, żeby użytkownik wiedział, „jak" system rozumie dokument — i mógł to skorygować
+           w promptcie, gdy się pomylił (np. uznał najem lokalu użytkowego za mieszkalny). *@
+        <details class="banner banner-info" role="note">
+            <summary>Kontekst dokumentu rozpoznany przez system@(profile.Kind is { } k ? $": {k}" : "")</summary>
+            <pre style="white-space:pre-wrap;margin:.5rem 0 0">@profile.ToPromptBlock()</pre>
+        </details>
+    }
 
     @if (!_degraded && snap.Status is AnalysisStatus.Done or AnalysisStatus.Interrupted && FailedUnitCount(snap) > 0)
     {

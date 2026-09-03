@@ -42,6 +42,12 @@ public sealed class AnalysisRunner(
             catch (OperationCanceledException) { throw; }
             catch { /* best-effort */ }
 
+            // Profil dokumentu (AJ-3): JEDNO wywołanie LLM per dokument, fakty z całości, doklejane
+            // potem do promptu każdej jednostki (AJ-4). Best-effort i fail-safe: brak/odrzucony profil
+            // = analiza jak dotąd. Liczy się do pojemności CostGuard jak każde wywołanie LLM.
+            if (options.Value.ProfileEnabled)
+                session.SetProfile(await ProfileAsync(session, userId, ct));
+
             session.SetStatus(AnalysisStatus.Analyzing);
             await MapUnitsAsync(session, userId, session.Units, ct);
         }, ct);
@@ -219,6 +225,44 @@ public sealed class AnalysisRunner(
 
         var (verdict, text) = AnalysisPrompts.ParseVerdict(answer.ToString());
         return new UnitAnalysis(unit.Index, unit.Heading, verdict, text, sources, check, FinishReason: finishReason);
+    }
+
+    /// <summary>Profil dokumentu (AJ-3): próbka = wstęp + kolejne jednostki do budżetu znaków → LLM
+    /// (bez retrievalu, temperatura 0) → parser liniowy → strażnik czystości (profil z oceną prawną
+    /// odrzucony w całości — zaraziłby wszystkie werdykty). Null przy każdej awarii.</summary>
+    private async Task<DocumentProfile?> ProfileAsync(AnalysisSession session, string userId, CancellationToken ct)
+    {
+        if (session.Units.Count == 0) return null;
+        try
+        {
+            if (await costGuard.TryAcquireAsync(userId, ct, chargePlan: false) is { Allowed: false }) return null;
+
+            using var scope = scopes.CreateScope();
+            var llm = scope.ServiceProvider.GetRequiredService<ILlmProvider>();
+            var request = new LlmRequest
+            {
+                Messages =
+                [
+                    new(ChatRole.System, DocumentProfilePrompts.SystemPrompt),
+                    new(ChatRole.User, DocumentProfilePrompts.UserInput(DocumentProfilePrompts.BuildSample(session.Units))),
+                ],
+                Temperature = 0,
+            };
+            var sb = new StringBuilder();
+            await foreach (var delta in llm.StreamCompletionAsync(request, ct)) sb.Append(delta);
+            await costGuard.RecordAsync(userId, sb.Length, ct);
+
+            var profile = DocumentProfilePrompts.ParseClean(sb.ToString());
+            if (profile is null && sb.Length > 0)
+                logger?.LogInformation("Profil dokumentu odrzucony lub pusty ({AnalysisId}, {Chars} zn.)", session.Id, sb.Length);
+            return profile;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Profil dokumentu nieudany ({AnalysisId}) — analiza bez profilu", session.Id);
+            return null;
+        }
     }
 
     /// <summary>Faza reduce: JEDNO wywołanie LLM (bez retrievalu — streszcza wyłącznie dostarczone

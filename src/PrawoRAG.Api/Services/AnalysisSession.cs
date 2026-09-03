@@ -23,6 +23,10 @@ public sealed class AnalysisOptions
     /// <summary>Bramka intencji na wejściu (model Aux): dokument prawny vs proza/artykuł — chroni
     /// pulę analiz przed spaleniem na treści, na której analiza nie ma sensu. Fail-open.</summary>
     public bool IntentGateEnabled { get; set; } = true;
+
+    /// <summary>Profil dokumentu przed fazą map (AJ-3): jedno wywołanie LLM per dokument, fakty z całości
+    /// doklejane do promptu każdej jednostki. Wyłącznik awaryjny (i dla testów liczących wywołania).</summary>
+    public bool ProfileEnabled { get; set; } = true;
 }
 
 /// <summary><see cref="Interrupted"/> = anulowana przez użytkownika ALBO ucięta restartem procesu —
@@ -163,6 +167,22 @@ public sealed class AnalysisSession
         get { lock (_lock) return _unitEmbeddings; }
     }
 
+    /// <summary>Profil dokumentu (AJ-3): fakty z całości, ustalane raz przed fazą map; null = nie
+    /// udało się / odrzucony przez strażnik (analiza działa jak bez profilu). NIE persystowany (D1) —
+    /// żyje w sesji jak treść §.</summary>
+    private DocumentProfile? _profile;
+
+    public void SetProfile(DocumentProfile? profile)
+    {
+        lock (_lock) _profile = profile;
+        Changed?.Invoke();
+    }
+
+    public DocumentProfile? Profile
+    {
+        get { lock (_lock) return _profile; }
+    }
+
     /// <summary>Zapis wyniku jednostki (faza map, wołane współbieżnie). Index = DocUnit.Index (1-based).
     /// Odświeża też <see cref="LastTouched"/> — analiza W TOKU sama przedłuża sobie TTL (bez tego
     /// sweep store'a mógłby ubić długą analizę, której nikt nie ogląda).</summary>
@@ -253,7 +273,7 @@ public sealed class AnalysisSession
         lock (_lock)
             return new AnalysisSnapshot(
                 Id, FileName, PageCount, Prompt, _status, Units, UnitsTruncated,
-                [.. _results], _completed, _summary, _error, [.. _thinkingChars], [.. _live], CancelReason);
+                [.. _results], _completed, _summary, _error, [.. _thinkingChars], [.. _live], CancelReason, _profile);
     }
 }
 
@@ -275,7 +295,9 @@ public sealed record AnalysisSnapshot(
     // Stan „na żywo" jednostek bez wyniku (w kolejce / analizuję / ponawiam); null = snapshot z DB.
     IReadOnlyList<UnitLiveState>? LiveStates = null,
     // Przyczyna statusu Interrupted (żywa sesja: powód anulowania; snapshot z DB: zapisana kolumna).
-    InterruptReason? InterruptReason = null)
+    InterruptReason? InterruptReason = null,
+    // Profil dokumentu (AJ-3) — tylko żywa sesja; snapshot z DB zawsze null (D1: nie persystujemy).
+    DocumentProfile? Profile = null)
 {
     public int Total => Units.Count;
 }
