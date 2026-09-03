@@ -40,6 +40,26 @@ public static class AnalysisPrompts
         return anchor + MapQuestionCore(userPrompt, unit, context);
     }
 
+    /// <summary>Budżet zapytania retrievalu w znakach: embedder (mmlw, 512 tokenów) ucina dłuższe;
+    /// ~1800 znaków polskiego tekstu prawniczego mieści się z zapasem na kotwicę.</summary>
+    public const int RetrievalQueryChars = 1800;
+
+    /// <summary>Zapytanie TYLKO do retrievalu (AJ-4b): kotwica dziedzinowa z profilu + treść jednostki,
+    /// BEZ intencji użytkownika i BEZ instrukcji formatu werdyktu. Dotąd zapytaniem był cały prompt
+    /// fazy map; pomiar 2026-09-03: kotwica dodana do takiego zapytania nie zmieniła trafienia normy
+    /// (3/17), bo tonęła w instrukcji i była ucinana przez embedder. Treść jednostki ucinana na
+    /// granicy słowa do <see cref="RetrievalQueryChars"/>.</summary>
+    public static string RetrievalQuery(DocUnit unit, DocumentProfile? profile)
+    {
+        var text = unit.Text.Trim();
+        if (text.Length > RetrievalQueryChars)
+        {
+            var cut = text.LastIndexOf(' ', RetrievalQueryChars - 1);
+            text = text[..(cut > 0 ? cut : RetrievalQueryChars)];
+        }
+        return profile?.RetrievalAnchor is { } anchor ? $"{anchor}\n{text}" : text;
+    }
+
     private static string MapQuestionCore(string userPrompt, DocUnit unit, string? context) =>
         $"""
         {userPrompt}

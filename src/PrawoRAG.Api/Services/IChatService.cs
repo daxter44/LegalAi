@@ -31,5 +31,21 @@ public interface IChatService
     /// </summary>
     IAsyncEnumerable<ChatEvent> AskAsync(
         string question, IReadOnlyList<ChatTurn> history, DocumentContext? document,
-        bool forceRetrieval, CancellationToken ct);
+        bool forceRetrieval, CancellationToken ct)
+        => AskAsync(question, history, document, forceRetrieval, retrievalQuery: null, ct);
+
+    /// <summary>
+    /// Wariant z ROZDZIELONYM zapytaniem retrievalu (AJ-4b, 2026-09-03). Domyślnie zapytaniem do
+    /// korpusu jest cała treść <paramref name="question"/> — dla czatu to właściwe. Dla analizy
+    /// dokumentów <paramref name="question"/> to prompt fazy map: intencja użytkownika + kontekst +
+    /// fragment + instrukcja formatu werdyktu; embedder ucina go do 512 tokenów, a BM25 dostaje
+    /// słowa instrukcji („WERDYKT", „odpowiedzi", „uzasadnienia"). Pomiar 2026-09-03: kotwica
+    /// dziedzinowa dodana do TAKIEGO zapytania nie zmieniła trafienia normy (3/17 → 3/17), bo tonie
+    /// w szumie. <paramref name="retrievalQuery"/> = krótkie zapytanie tylko do retrievalu (kotwica +
+    /// treść fragmentu); null = zachowanie jak dotąd. Historia retrievalu przy podanym zapytaniu jest
+    /// pusta (zapytanie jest samodzielne — jak przy tool callingu).
+    /// </summary>
+    IAsyncEnumerable<ChatEvent> AskAsync(
+        string question, IReadOnlyList<ChatTurn> history, DocumentContext? document,
+        bool forceRetrieval, string? retrievalQuery, CancellationToken ct);
 }

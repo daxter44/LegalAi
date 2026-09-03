@@ -141,6 +141,9 @@ public static class AnalysisEvalRunner
     {
         var clock = Stopwatch.StartNew();
         var question = AnalysisPrompts.MapQuestion(doc.Prompt, unit, profile);
+        // AJ-4b: zapytanie retrievalu ROZDZIELONE od promptu LLM (jak AnalysisRunner → ChatService
+        // z retrievalQuery): kotwica + treść fragmentu, bez instrukcji formatu werdyktu.
+        var retrievalQuery = AnalysisPrompts.RetrievalQuery(unit, profile);
         var needsLawyer = doc.NeedsLawyer || key.NeedsLawyer;
 
         try
@@ -150,7 +153,7 @@ public static class AnalysisEvalRunner
 
             // To samo wejście retrievalu co ChatService (parytet jak w RefusalEvalRunner).
             var retrieval = await GapClosingRetrieval.RetrieveAsync(
-                retriever, Query, question, [], margin, rerankMargin, gapClosingThreshold,
+                retriever, Query, retrievalQuery, [], margin, rerankMargin, gapClosingThreshold,
                 sp.GetService<IQueryReformulator>(), maxExtraRounds: 1, ct);
             var (query, result) = (retrieval.Query, retrieval.Result);
             var secondRound = retrieval.ExtraRound ? 1 : 0;

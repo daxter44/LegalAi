@@ -33,9 +33,14 @@ public sealed class ChatService(
         string question, IReadOnlyList<ChatTurn> history, DocumentContext? document, CancellationToken ct)
         => AskAsync(question, history, document, forceRetrieval: false, ct);
 
+    public IAsyncEnumerable<ChatEvent> AskAsync(
+        string question, IReadOnlyList<ChatTurn> history, DocumentContext? document,
+        bool forceRetrieval, CancellationToken ct)
+        => AskAsync(question, history, document, forceRetrieval, retrievalQuery: null, ct);
+
     public async IAsyncEnumerable<ChatEvent> AskAsync(
         string question, IReadOnlyList<ChatTurn> history, DocumentContext? document,
-        bool forceRetrieval, [EnumeratorCancellation] CancellationToken ct)
+        bool forceRetrieval, string? retrievalQuery, [EnumeratorCancellation] CancellationToken ct)
     {
         var chatSw = System.Diagnostics.Stopwatch.StartNew();
         var o = options.Value;
@@ -109,11 +114,14 @@ public sealed class ChatService(
         // JEGO zapytanie zasila retrieval; jeśli nie (albo serwer nie wspiera `tools` i provider
         // zdegradował), lecimy dalej z pytaniem użytkownika. Brak wywołania NIGDY nie prowadzi do
         // odpowiedzi bez źródeł — po prostu wracamy do ścieżki klasycznej.
-        var retrievalQuestion = question;
+        // AJ-4b: wołający może podać KRÓTKIE zapytanie tylko do retrievalu (analiza dokumentów:
+        // kotwica + treść fragmentu, bez instrukcji formatu werdyktu) — wtedy jest samodzielne,
+        // więc historia retrievalu pusta (jak przy zapytaniu z tool callingu niżej).
+        var retrievalQuestion = retrievalQuery ?? question;
         // Historia DLA RETRIEVALU, osobno od historii dla promptu (ta zostaje pełna zawsze). Sklejka
         // kontekstowa w FollowUpSelector istnieje TYLKO dlatego, że surowe dopytanie nie niesie
         // treści — a zapytanie napisane przez model, który widział rozmowę, już ją niesie.
-        var retrievalHistory = history;
+        var retrievalHistory = retrievalQuery is null ? history : [];
         if (o.ToolCallingEnabled)
         {
             yield return new StageEvent("tool_call", "Ustalam, czego szukać w przepisach…", null);

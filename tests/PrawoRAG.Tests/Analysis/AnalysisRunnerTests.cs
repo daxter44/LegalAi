@@ -21,13 +21,19 @@ public class AnalysisRunnerTests
 {
     private sealed class FixedRetriever(double signal) : IRetriever
     {
-        public Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, CancellationToken ct) =>
-            Task.FromResult(new RetrievalResult([new RetrievedChunk
+        /// <summary>Zapytania, które faktycznie trafiły do retrievalu (AJ-4b: ≠ prompt LLM).</summary>
+        public List<string> Queries { get; } = [];
+
+        public Task<RetrievalResult> RetrieveAsync(RetrievalQuery query, CancellationToken ct)
+        {
+            lock (Queries) Queries.Add(query.Text);
+            return Task.FromResult(new RetrievalResult([new RetrievedChunk
             {
                 ChunkId = Guid.NewGuid(), DocumentId = Guid.NewGuid(),
                 Text = "Art. 484. Kara umowna…", Source = "ELI", DocType = DocTypes.Act,
                 Title = "Kodeks cywilny", Score = 1.0,
             }], signal));
+        }
     }
 
     private sealed class NoOpAugmenter : ITemporalAugmenter
@@ -106,13 +112,14 @@ public class AnalysisRunnerTests
     /// wywołania LLM per jednostka; profil ma własne testy niżej.</param>
     private static (AnalysisRunner Runner, AnalysisSessionStore Store) Harness(
         ILlmProvider llm, double signal = 0.9, int maxParallelism = 4, AccessOptions? access = null,
-        RecordingAnalysisStore? analysisStore = null, bool profile = false)
+        RecordingAnalysisStore? analysisStore = null, bool profile = false, FixedRetriever? retriever = null)
     {
+        retriever ??= new FixedRetriever(signal);
         var services = new ServiceCollection();
         services.AddSingleton<IEmbeddingProvider>(new FakeEmbeddingProvider());
         services.AddSingleton(llm);
         services.AddScoped<IChatService>(sp => new ChatService(
-            new FixedRetriever(signal), new NoOpAugmenter(), sp.GetRequiredService<ILlmProvider>(),
+            retriever, new NoOpAugmenter(), sp.GetRequiredService<ILlmProvider>(),
             Options.Create(new RetrievalOptions()), sp.GetRequiredService<IEmbeddingProvider>(),
             Options.Create(new DocumentsOptions())));
         var provider = services.BuildServiceProvider();
@@ -519,5 +526,31 @@ public class AnalysisRunnerTests
 
         Assert.DoesNotContain(llm.Requests, IsProfileRequest);
         Assert.Null(snap.Profile);
+    }
+
+    [Fact] // AJ-4b: do retrievalu idzie kotwica + treść jednostki, NIE cały prompt map z instrukcją werdyktu
+    public async Task Retrieval_query_is_separated_from_map_prompt()
+    {
+        var llm = new ScriptedLlm(r =>
+            IsProfileRequest(r) ? "TYP: umowa najmu lokalu mieszkalnego\nSTRONY: najemca – konsument"
+            : "WERDYKT: OK\nOdpowiedź [1].");
+        var retriever = new FixedRetriever(0.9);
+        var (runner, store) = Harness(llm, profile: true, retriever: retriever);
+
+        await RunAsync(runner, store, 2, prompt: "oceń ryzyka najemcy");
+
+        Assert.Equal(2, retriever.Queries.Count);
+        Assert.All(retriever.Queries, q =>
+        {
+            Assert.StartsWith("umowa najmu lokalu mieszkalnego; najemca – konsument\n", q);
+            Assert.Contains("Treść postanowienia numer", q);
+            Assert.DoesNotContain("WERDYKT", q);
+            Assert.DoesNotContain("oceń ryzyka najemcy", q);
+        });
+        // Prompt LLM nadal niesie intencję, kontekst i instrukcję werdyktu.
+        var map = llm.Requests.First(r => !IsProfileRequest(r) && r.Messages[0].Content != AnalysisPrompts.SummarySystemPrompt);
+        Assert.Contains("oceń ryzyka najemcy", map.Messages[^1].Content);
+        Assert.Contains("KONTEKST DOKUMENTU", map.Messages[^1].Content);
+        Assert.Contains("WERDYKT", map.Messages[^1].Content);
     }
 }

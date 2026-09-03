@@ -41,6 +41,28 @@ public class AnalysisPromptsTests
         Assert.Contains("80 000 zł", q);
     }
 
+    [Fact] // AJ-4b: zapytanie retrievalu = kotwica + treść jednostki, bez intencji i bez instrukcji werdyktu
+    public void Retrieval_query_is_anchor_plus_unit_text_without_instructions()
+    {
+        var profile = new DocumentProfile("umowa najmu lokalu mieszkalnego", "najemca – konsument", null, null, null, null);
+        var q = AnalysisPrompts.RetrievalQuery(Unit, profile);
+        Assert.Equal("umowa najmu lokalu mieszkalnego; najemca – konsument\n" + Unit.Text, q);
+        Assert.DoesNotContain("WERDYKT", q);
+        Assert.DoesNotContain("oceń", q);
+
+        Assert.Equal(Unit.Text, AnalysisPrompts.RetrievalQuery(Unit, null));
+        Assert.Equal(Unit.Text, AnalysisPrompts.RetrievalQuery(Unit, new DocumentProfile(null, null, "x", null, null, null)));
+    }
+
+    [Fact] // AJ-4b: długa jednostka ucinana do budżetu embeddera na granicy słowa
+    public void Retrieval_query_truncates_long_unit_at_word_boundary()
+    {
+        var words = string.Join(" ", Enumerable.Repeat("postanowienie", 400)); // ~5600 zn
+        var q = AnalysisPrompts.RetrievalQuery(new DocUnit(1, "§ 1", words), null);
+        Assert.True(q.Length <= AnalysisPrompts.RetrievalQueryChars);
+        Assert.EndsWith("postanowienie", q);
+    }
+
     [Fact]
     public void Profile_without_anchor_fields_still_adds_context_but_no_anchor_line()
     {
