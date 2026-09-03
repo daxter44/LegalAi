@@ -131,6 +131,21 @@ public class AnalysisPromptsTests
             Assert.Contains(label, q);
     }
 
+    [Fact] // AJ-6: streszczenie dostaje nagłówek mechaniczny jako podstawę meta-wniosku (D2)
+    public void Summary_input_carries_headline_before_digest()
+    {
+        var input = AnalysisPrompts.SummaryInput("czy warto się odwołać?",
+        [
+            new UnitDigest("§ 1", UnitVerdict.Ok, "ok"),
+            new UnitDigest("§ 2", UnitVerdict.RiskHigh, "kaucja za wysoka [1]"),
+        ]);
+        Assert.Contains("Pytanie użytkownika: czy warto się odwołać?", input);
+        Assert.Contains("Nagłówek: 1 z 2 fragmentów z ryzykiem (wysokie: § 2).", input);
+        Assert.True(input.IndexOf("Nagłówek:") < input.IndexOf("§ 1: OK"));
+        Assert.Contains("§ 2: RYZYKO WYSOKIE — kaucja za wysoka", input); // digest bez [n]
+        Assert.Contains("ODPOWIADA WPROST", AnalysisPrompts.SummarySystemPrompt);
+    }
+
     [Fact]
     public void Profile_without_anchor_fields_still_adds_context_but_no_anchor_line()
     {

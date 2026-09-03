@@ -235,6 +235,16 @@ else
         </div>
     }
 
+    @* Nagłówek mechaniczny (AJ-6): liczony z werdyktów w kodzie, nie przez LLM — widoczny także
+       gdy streszczenia nie ma (awaria LLM, analiza przerwana, raport z archiwum). *@
+    @if (snap.Status is AnalysisStatus.Done or AnalysisStatus.Interrupted
+         && snap.Results.Any(r => r is not null))
+    {
+        <p class="analysis-headline"><strong>@AnalysisReport.Headline(snap.Results
+            .Where(r => r is not null)
+            .Select(r => new UnitDigest(r!.Heading, r.Verdict, r.Answer ?? r.Error ?? ""))
+            .ToList())</strong></p>
+    }
     @if (snap.Status == AnalysisStatus.Done && snap.Summary is not null)
     {
         <div class="msg msg-assistant analysis-summary">

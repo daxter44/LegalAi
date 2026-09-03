@@ -27,6 +27,15 @@ public class AnalysisFollowUpTests
             units.Count, summary, null);
     }
 
+    [Fact] // AJ-6: nagłówek mechaniczny w kotwicy — pytania przekrojowe mają odpowiedź bez retrievalu
+    public void Anchor_turn_carries_mechanical_headline_before_verdict_table()
+    {
+        var units = Units("§ 1", "§ 2", "§ 3");
+        var turn = AnalysisFollowUp.ComposeAnchorTurn(Snap(units), [2]);
+        Assert.Contains("Podsumowanie: 1 z 3 fragmentów z ryzykiem (wysokie: § 2)", turn.Answer);
+        Assert.True(turn.Answer.IndexOf("Podsumowanie:") < turn.Answer.IndexOf("Werdykty:"));
+    }
+
     [Theory]
     [InlineData("a co dokładnie z § 2?", new[] { 2 })]
     [InlineData("czy paragraf 3 jest ważny?", new[] { 3 })]

@@ -158,12 +158,17 @@ public static class AnalysisPrompts
 
     public const string SummarySystemPrompt =
         """
-        Jesteś asystentem prawnym. Dostajesz wyniki analizy dokumentu przeprowadzonej fragment po
-        fragmencie (werdykt + uzasadnienie per fragment). Napisz zwięzłe streszczenie całości po polsku
-        (maksymalnie 120 słów): wskaż najważniejsze ryzyka i fragmenty bez pokrycia w źródłach.
-        Zasady bezwzględne: NIE dodawaj żadnych twierdzeń prawnych, przepisów, sygnatur ani ocen,
-        których nie ma w dostarczonych wynikach. Nie używaj znaczników [n]. Odwołuj się do fragmentów
-        po ich nagłówkach (np. „§ 7").
+        Jesteś asystentem prawnym. Dostajesz pytanie użytkownika, mechanicznie policzony NAGŁÓWEK
+        (ile i które fragmenty mają jakie werdykty) oraz wyniki analizy dokumentu fragment po fragmencie
+        (werdykt + uzasadnienie). Napisz zwięzłe streszczenie po polsku (maksymalnie 150 słów):
+        1. Pierwsze zdanie ODPOWIADA WPROST na pytanie użytkownika — WYŁĄCZNIE jako wniosek z nagłówka
+           i werdyktów (np. „Tak, warto rozważyć odwołanie: 3 z 14 fragmentów budzi ryzyko wysokie…");
+           jeśli werdykty nie dają podstawy do odpowiedzi, napisz to wprost.
+        2. Potem najważniejsze ryzyka (najpierw wysokie) z odwołaniem do nagłówków fragmentów (np. „§ 7")
+           i krótko: co narusza / co zmienić — tylko to, co jest w wynikach.
+        3. Na końcu jednym zdaniem: fragmenty poza zakresem korpusu lub bez podstawy w źródłach, jeśli są.
+        Zasady bezwzględne: NIE dodawaj żadnych twierdzeń prawnych, przepisów, sygnatur ani ocen, których
+        nie ma w dostarczonych wynikach. Nie używaj znaczników [n]. Nie oceniaj fragmentów, które dostały OK.
         """;
 
     /// <summary>Budżet znaków uzasadnienia jednej jednostki w digestcie streszczenia (okno lokalnego
@@ -174,9 +179,11 @@ public static class AnalysisPrompts
     /// (bez markerów [n] — numeracja per jednostka nie ma sensu między jednostkami).</summary>
     public static string SummaryInput(string userPrompt, IEnumerable<UnitDigest> results)
     {
-        var lines = results.Select(r =>
+        var list = results.ToList();
+        var lines = list.Select(r =>
             $"{r.Heading}: {Label(r.Verdict)} — {Digest(r.Text)}");
-        return $"Pytanie użytkownika: {userPrompt}\n\nWyniki analizy fragmentów:\n{string.Join("\n", lines)}";
+        // Nagłówek mechaniczny (AJ-6) jako jedyna podstawa meta-wniosku streszczenia (D2).
+        return $"Pytanie użytkownika: {userPrompt}\n\nNagłówek: {AnalysisReport.Headline(list)}\n\nWyniki analizy fragmentów:\n{string.Join("\n", lines)}";
     }
 
     private static string Digest(string answer)

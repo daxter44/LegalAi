@@ -94,9 +94,15 @@ public static class AnalysisFollowUp
         if (!string.IsNullOrWhiteSpace(snap.Summary))
             sb.Append("\nStreszczenie: ").Append(snap.Summary).Append('\n');
 
-        sb.Append("\nWerdykty: ").Append(string.Join("; ", snap.Results
-            .Where(r => r is not null)
-            .Select(r => $"{r!.Heading} — {AnalysisPrompts.Label(r.Verdict)}")));
+        // Nagłówek mechaniczny (AJ-6) przed tabelą — pytania przekrojowe („które paragrafy są
+        // najgroźniejsze?") mają odpowiedź w kontekście bez retrievalu.
+        var done = snap.Results.Where(r => r is not null).Select(r => r!).ToList();
+        if (done.Count > 0)
+            sb.Append("\nPodsumowanie: ").Append(AnalysisReport.Headline(
+                done.Select(r => new UnitDigest(r.Heading, r.Verdict, r.Answer ?? r.Error ?? "")).ToList())).Append('\n');
+
+        sb.Append("\nWerdykty: ").Append(string.Join("; ", done
+            .Select(r => $"{r.Heading} — {AnalysisPrompts.Label(r.Verdict)}")));
 
         var answer = sb.ToString();
         if (answer.Length > PrawoRAG.Llm.Grounding.GroundedPrompt.MaxHistoryAnswerChars)

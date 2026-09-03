@@ -577,3 +577,6 @@ a.app-who:hover .app-avatar { background: rgb(199 208 236 / .28); }
 .unit-actions dt { font-weight: 600; color: var(--c-danger); }
 .unit-actions dd { margin: 0; }
 .unit-note { font-size: var(--fs-14); color: var(--c-text-muted); margin: var(--s-2) 0; }
+
+/* Analiza (AJ-6): naglowek mechaniczny nad streszczeniem */
+.analysis-headline { margin: var(--s-3) 0 var(--s-2); font-size: var(--fs-16); }
