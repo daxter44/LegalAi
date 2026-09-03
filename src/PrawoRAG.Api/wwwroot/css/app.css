@@ -580,3 +580,15 @@ a.app-who:hover .app-avatar { background: rgb(199 208 236 / .28); }
 
 /* Analiza (AJ-6): naglowek mechaniczny nad streszczeniem */
 .analysis-headline { margin: var(--s-3) 0 var(--s-2); font-size: var(--fs-16); }
+
+/* Analiza (AJ-12): druk / zapis do PDF — tylko raport, bez nawigacji i formularzy */
+.analysis-export { display: inline-flex; gap: var(--s-2); }
+@media print {
+  .app-header, .chat-sidebar, .sidebar-backdrop, .analysis-export, .analysis-id,
+  .chat-input, .feedback, .btn-ghost, progress, details.analysis-unit summary::marker { display: none !important; }
+  .analysis, .app-shell, .app-main { display: block !important; max-width: none !important; }
+  details.analysis-unit { break-inside: avoid; border: 1px solid #ccc; border-radius: 4px; padding: 6px 10px; margin: 0 0 8px; }
+  details.analysis-unit > summary { list-style: none; font-weight: 600; }
+  .source-card { break-inside: avoid; }
+  a[href]::after { content: " (" attr(href) ")"; font-size: 10px; color: #555; }
+}

@@ -15,6 +15,7 @@
 @inject AuthenticationStateProvider AuthState
 @inject Microsoft.Extensions.Options.IOptions<AnalysisOptions> Options
 @inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.Billing.BillingOptions> Billing
+@inject IJSRuntime JS
 @implements IDisposable
 
 <h1 class="sr-only">Analiza dokumentu</h1>
@@ -165,6 +166,17 @@ else
                 {
                     <span class="badge">@nlcN BEZ TREŚCI PRAWNEJ</span>
                 }
+            </span>
+        }
+        @if (snap.Status is AnalysisStatus.Done or AnalysisStatus.Interrupted)
+        {
+            @* Eksport (AJ-12): raport wychodzi z aplikacji jako Markdown (schowek) albo wydruk/PDF
+               z przeglądarki — zero renderingu po stronie serwera, działa też z archiwum. *@
+            <span class="analysis-export">
+                <button class="btn-ghost" @onclick="CopyReport" title="Kopiuje cały raport jako Markdown do schowka">
+                    @(_copied ? "✓ skopiowano" : "📋 Kopiuj raport")
+                </button>
+                <button class="btn-ghost" @onclick="PrintReport" title="Rozwija wszystkie fragmenty i otwiera okno drukowania (zapis do PDF)">🖨 Drukuj / PDF</button>
             </span>
         }
         <span class="analysis-id" title="Id sesji — analiza działa dalej po odświeżeniu strony; raport zostaje na liście">
@@ -865,6 +877,38 @@ else
         RemoveDocument();
         _prompt = "";
         await RefreshAnalysesAsync();
+    }
+
+    // --- eksport raportu (AJ-12) ---
+    private bool _copied;
+
+    /// <summary>Markdown całego raportu do schowka (navigator.clipboard — wymaga HTTPS/localhost;
+    /// błąd interop = brak potwierdzenia, bez wywrotki strony).</summary>
+    private async Task CopyReport()
+    {
+        if (Snap() is not { } snap) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", AnalysisReportExport.ToMarkdown(snap, DateTimeOffset.Now));
+            _copied = true;
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(2500);
+            _copied = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSException) { /* schowek niedostępny (http, uprawnienia) — przycisk po prostu nie potwierdza */ }
+    }
+
+    /// <summary>Rozwija wszystkie fragmenty (zwinięty &lt;details&gt; nie drukuje treści) i otwiera
+    /// okno drukowania — „Zapisz jako PDF" załatwia eksport bez renderingu serwerowego.</summary>
+    private async Task PrintReport()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval",
+                "document.querySelectorAll('details.analysis-unit').forEach(d => d.open = true); window.print();");
+        }
+        catch (JSException) { }
     }
 
     private static string VerdictCss(UnitVerdict v) => v switch
