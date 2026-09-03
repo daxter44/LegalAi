@@ -112,7 +112,8 @@ public class AnalysisRunnerTests
     /// wywołania LLM per jednostka; profil ma własne testy niżej.</param>
     private static (AnalysisRunner Runner, AnalysisSessionStore Store) Harness(
         ILlmProvider llm, double signal = 0.9, int maxParallelism = 4, AccessOptions? access = null,
-        RecordingAnalysisStore? analysisStore = null, bool profile = false, FixedRetriever? retriever = null)
+        RecordingAnalysisStore? analysisStore = null, bool profile = false, FixedRetriever? retriever = null,
+        bool anchor = false)
     {
         retriever ??= new FixedRetriever(signal);
         var services = new ServiceCollection();
@@ -124,7 +125,7 @@ public class AnalysisRunnerTests
             Options.Create(new DocumentsOptions())));
         var provider = services.BuildServiceProvider();
 
-        var options = Options.Create(new AnalysisOptions { MaxParallelism = maxParallelism, ProfileEnabled = profile });
+        var options = Options.Create(new AnalysisOptions { MaxParallelism = maxParallelism, ProfileEnabled = profile, RetrievalAnchorEnabled = anchor });
         // Bramka kosztów bez bazy: liczniki w pamięci, brak planu (tryb sprzed kont) — tu testujemy
         // reakcję runnera na wyczerpany limit, nie samo liczenie (to CostGuard*Tests).
         var costGuard = new CostGuard(new MemoryUsageCounters(),
@@ -535,7 +536,7 @@ public class AnalysisRunnerTests
             IsProfileRequest(r) ? "TYP: umowa najmu lokalu mieszkalnego\nSTRONY: najemca – konsument"
             : "WERDYKT: OK\nOdpowiedź [1].");
         var retriever = new FixedRetriever(0.9);
-        var (runner, store) = Harness(llm, profile: true, retriever: retriever);
+        var (runner, store) = Harness(llm, profile: true, retriever: retriever, anchor: true);
 
         await RunAsync(runner, store, 2, prompt: "oceń ryzyka najemcy");
 
@@ -552,5 +553,24 @@ public class AnalysisRunnerTests
         Assert.Contains("oceń ryzyka najemcy", map.Messages[^1].Content);
         Assert.Contains("KONTEKST DOKUMENTU", map.Messages[^1].Content);
         Assert.Contains("WERDYKT", map.Messages[^1].Content);
+    }
+
+    [Fact] // domyślnie (pomiar 2026-09-03: 8/17 bez kotwicy vs 7/17 z) zapytanie = sama treść jednostki, profil tylko w prompcie
+    public async Task Retrieval_anchor_is_off_by_default_even_with_profile()
+    {
+        var llm = new ScriptedLlm(r =>
+            IsProfileRequest(r) ? "TYP: umowa najmu lokalu mieszkalnego\nSTRONY: najemca – konsument"
+            : "WERDYKT: OK\nOdpowiedź [1].");
+        var retriever = new FixedRetriever(0.9);
+        var (runner, store) = Harness(llm, profile: true, retriever: retriever);
+
+        var snap = await RunAsync(runner, store, 1);
+
+        Assert.NotNull(snap.Profile);
+        var q = Assert.Single(retriever.Queries);
+        Assert.StartsWith("§ 1 Treść postanowienia", q);
+        Assert.DoesNotContain("umowa najmu", q);
+        var map = llm.Requests.Single(r => !IsProfileRequest(r) && r.Messages[0].Content != AnalysisPrompts.SummarySystemPrompt);
+        Assert.Contains("KONTEKST DOKUMENTU", map.Messages[^1].Content); // profil nadal w prompcie
     }
 }

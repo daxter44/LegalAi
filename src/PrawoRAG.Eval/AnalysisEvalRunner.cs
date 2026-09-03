@@ -38,6 +38,9 @@ public static class AnalysisEvalRunner
         var generate = (cfg.GetValue<bool?>("Eval:AnalysisGenerate") ?? true) && !args.Contains("--no-generate");
         var oracleProfile = args.Contains("--oracle-profile") || (cfg.GetValue<bool?>("Eval:AnalysisOracleProfile") ?? false);
         var profileEnabled = (cfg.GetValue<bool?>("Eval:AnalysisProfile") ?? true) && !args.Contains("--no-profile");
+        // Kotwica profilu w ZAPYTANIU retrievalu: domyślnie nie (parytet z produkcją po pomiarze
+        // 2026-09-03: 8/17 bez kotwicy vs 7/17 z); --anchor wymusza, --oracle-profile implikuje (to jego cel).
+        var anchorInQuery = args.Contains("--anchor") || oracleProfile;
         var topK = cfg.GetValue<int?>("Retrieval:TopK") ?? 8;
         var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
         var gapClosingThreshold = cfg.GetValue<double?>("Retrieval:GapClosingTriggerThreshold") ?? AbstentionPolicy.DefaultThreshold;
@@ -87,7 +90,7 @@ public static class AnalysisEvalRunner
             {
                 var key = doc.Units[i];
                 using var scope = services.CreateScope();
-                var r = await EvaluateUnitAsync(scope.ServiceProvider, doc, units[i], key, profile, generate,
+                var r = await EvaluateUnitAsync(scope.ServiceProvider, doc, units[i], key, profile, anchorInQuery, generate,
                     topK, threshold, gapClosingThreshold, minChunkTokens, margin, rerankMargin, ct);
                 results.Add(r);
                 await raw.WriteLineAsync(JsonSerializer.Serialize(r));
@@ -135,7 +138,7 @@ public static class AnalysisEvalRunner
     }
 
     private static async Task<UnitEvalResult> EvaluateUnitAsync(
-        IServiceProvider sp, AnalysisGoldenDoc doc, DocUnit unit, AnalysisGoldenUnit key, DocumentProfile? profile, bool generate,
+        IServiceProvider sp, AnalysisGoldenDoc doc, DocUnit unit, AnalysisGoldenUnit key, DocumentProfile? profile, bool anchorInQuery, bool generate,
         int topK, double threshold, double gapClosingThreshold, int minChunkTokens, double margin, double rerankMargin,
         CancellationToken ct)
     {
@@ -143,7 +146,9 @@ public static class AnalysisEvalRunner
         var question = AnalysisPrompts.MapQuestion(doc.Prompt, unit, profile);
         // AJ-4b: zapytanie retrievalu ROZDZIELONE od promptu LLM (jak AnalysisRunner → ChatService
         // z retrievalQuery): kotwica + treść fragmentu, bez instrukcji formatu werdyktu.
-        var retrievalQuery = AnalysisPrompts.RetrievalQuery(unit, profile);
+        // Kotwica w zapytaniu tylko na żądanie (--anchor) albo przy profilu-wyroczni (to jego cel);
+        // domyślnie parytet z produkcją (Analysis:RetrievalAnchorEnabled=false po pomiarze 2026-09-03).
+        var retrievalQuery = AnalysisPrompts.RetrievalQuery(unit, anchorInQuery ? profile : null);
         var needsLawyer = doc.NeedsLawyer || key.NeedsLawyer;
 
         try

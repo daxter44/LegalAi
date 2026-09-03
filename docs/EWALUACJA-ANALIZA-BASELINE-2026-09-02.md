@@ -72,6 +72,34 @@ promptu (kotwica + treść fragmentu, ≤1800 zn).
    sugeruje, że tak będzie.
 Biegi z 2026-09-03 11:0x–11:4x przerwane: stack niedostępny (praca zdalna), 190 s timeoutów per jednostka.
 
+### Wyniki (2026-09-03, po odzyskaniu dostępu) — ZMIERZONE
+
+| zapytanie do retrievalu | trafienie normy |
+|---|---|
+| cały prompt fazy map (stan sprzed AJ-4b, baseline) | 3 / 17 (18%) |
+| sama treść fragmentu (AJ-4b, `--no-profile`) | **8 / 17 (47%)** |
+| treść fragmentu + kotwica z profilu-wyroczni (`--oracle-profile`) | 7 / 17 (41%) |
+
+Co weszło do top-8 z samą treścią fragmentu: uopl dla kaucji (§ 5), podwyżki czynszu (§ 7)
+i zwrotu kaucji (§ 11); upk dla odstąpienia (§ 4 kursu) i zwrotu płatności (§ 7 regulaminu);
+KPA dla wszystkich trzech jednostek decyzji. Nadal chybione: KC art. 664 i 483 (najem), KC 483
+i upk 7a (kurs), upk 27 i 34 (regulamin), wszystkie normy kontroli B2B (KC 483, 558, 509).
+
+**Wnioski i decyzje:**
+1. Dźwignią było rozdzielenie zapytania od promptu (AJ-4b), nie kotwica. Skok 18% → 47% bez
+   zmiany modelu, korpusu ani promptu dla LLM.
+2. Kotwica dziedzinowa w zapytaniu nie pomaga (7 vs 8 przy n=17 to szum, z lekkim minusem).
+   Decyzja: `Analysis:RetrievalAnchorEnabled=false` domyślnie; profil zostaje w prompcie modelu
+   (kontekst dla oceny — efekt do zmierzenia w biegu z generacją). Eval: `--anchor` włącza kotwicę
+   w zapytaniu, `--oracle-profile` implikuje.
+3. Pozostałe 9 chybionych norm to przypadki, gdzie klauzula nie dzieli słownictwa z przepisem
+   (kara umowna ↔ „zobowiązanie niepieniężne", wyłączenie rękojmi ↔ art. 558). To ta sama klasa,
+   co diagnoza skargi na jednostkę budżetową (`DIAGNOZA-SKARGA-JEDNOSTKA-BUDZETOWA-2026-09-02`):
+   zapytanie musi użyć słów przepisu albo nazwać akt. Argument za AJ-8 (zagadnienie prawne jako
+   zapytanie), z zastrzeżeniem z tamtej diagnozy: przeformułowanie BEZ nazwy aktu bywa gorsze niż nic.
+   Sonda `--probe-akty` na pytaniu o skargę (2026-09-03): w puli SAMYCH aktów top-20 nie ma KPA ani
+   rozporządzenia o skargach — tor act-only tego przypadku nie ratuje.
+
 ## Tryb z generacją — DO WYKONANIA
 
 Bieg: `Llm__Provider=local Llm__Local__BaseUrl=... Llm__Local__Model=... Llm__Local__ApiKey=$OPENROUTER_API_KEY`
