@@ -224,8 +224,9 @@ public sealed class AnalysisRunner(
         if (abstainMessage is not null)
             return new UnitAnalysis(unit.Index, unit.Heading, UnitVerdict.NoSources, abstainMessage, []);
 
-        var (verdict, text) = AnalysisPrompts.ParseVerdict(answer.ToString());
-        return new UnitAnalysis(unit.Index, unit.Heading, verdict, text, sources, check, FinishReason: finishReason);
+        var parsed = AnalysisPrompts.ParseUnit(answer.ToString());
+        return new UnitAnalysis(unit.Index, unit.Heading, parsed.Verdict, parsed.Answer, sources, check,
+            FinishReason: finishReason, Violates: parsed.Violates, Suggestion: parsed.Suggestion);
     }
 
     /// <summary>Profil dokumentu (AJ-3): próbka = wstęp + kolejne jednostki do budżetu znaków → LLM

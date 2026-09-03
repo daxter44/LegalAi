@@ -145,13 +145,25 @@ else
                 {
                     <span class="badge badge-ok">@okN OK</span>
                 }
-                @if (doneResults.Count(r => r!.Verdict == UnitVerdict.Risk) is > 0 and var riskN)
+                @if (doneResults.Count(r => r!.Verdict is UnitVerdict.RiskHigh or UnitVerdict.Risk) is > 0 and var riskHiN)
                 {
-                    <span class="badge badge-danger">@riskN RYZYKO</span>
+                    <span class="badge badge-danger">@riskHiN RYZYKO WYSOKIE</span>
+                }
+                @if (doneResults.Count(r => r!.Verdict == UnitVerdict.RiskLow) is > 0 and var riskLoN)
+                {
+                    <span class="badge badge-warn">@riskLoN RYZYKO NISKIE</span>
                 }
                 @if (doneResults.Count(r => r!.Verdict == UnitVerdict.NoSources) is > 0 and var nsN)
                 {
-                    <span class="badge badge-warn">@nsN BRAK ŹRÓDEŁ</span>
+                    <span class="badge badge-warn">@nsN BRAK PODSTAWY</span>
+                }
+                @if (doneResults.Count(r => r!.Verdict == UnitVerdict.OutOfScope) is > 0 and var oosN)
+                {
+                    <span class="badge">@oosN POZA ZAKRESEM</span>
+                }
+                @if (doneResults.Count(r => r!.Verdict == UnitVerdict.NoLegalContent) is > 0 and var nlcN)
+                {
+                    <span class="badge">@nlcN BEZ TREŚCI PRAWNEJ</span>
                 }
             </span>
         }
@@ -235,7 +247,9 @@ else
     @foreach (var unit in snap.Units)
     {
         var r = snap.Results[unit.Index - 1];
-        <details class="analysis-unit" open="@(r is { Verdict: UnitVerdict.Risk or UnitVerdict.Error })">
+        @* Otwarte: każde ryzyko i błąd. BEZ TREŚCI PRAWNEJ / POZA ZAKRESEM domyślnie zwinięte (AJ-5) —
+           to informacja, nie znalezisko. *@
+        <details class="analysis-unit" open="@(r is { } rr && (rr.Verdict.IsRisk() || rr.Verdict == UnitVerdict.Error))">
             <summary>
                 <span class="source-n">@unit.Heading</span>
                 @if (r is null)
@@ -261,6 +275,27 @@ else
             }
             @if (r is not null)
             {
+                @* AJ-5: akcjonowalne RYZYKO — co narusza i co zmienić, jako osobne wiersze nad uzasadnieniem. *@
+                @if (r.Violates is not null || r.Suggestion is not null)
+                {
+                    <dl class="unit-actions">
+                        @if (r.Violates is not null)
+                        {
+                            <dt>Narusza</dt>
+                            <dd>@((MarkupString)MarkdownRenderer.ToSafeHtml(r.Violates, r.Sources.Count, UnitAnchor(snap, unit.Index)))</dd>
+                        }
+                        @if (r.Suggestion is not null)
+                        {
+                            <dt>Do rozważenia</dt>
+                            <dd>@r.Suggestion</dd>
+                        }
+                    </dl>
+                }
+                @if (r.Verdict == UnitVerdict.OutOfScope)
+                {
+                    <p class="unit-note">Ocena tego fragmentu wymaga dokumentu, którego nie ma w korpusie
+                        (np. akt prawa miejscowego, załącznik). To ograniczenie zakresu źródeł, nie błąd analizy.</p>
+                }
                 @if (r.Error is not null)
                 {
                     <div class="banner banner-danger" role="alert">
@@ -702,7 +737,7 @@ else
     private void CancelAnalysis() => _session?.Cancel();
 
     private static int FailedUnitCount(AnalysisSnapshot snap) =>
-        snap.Results.Count(r => r is { Verdict: UnitVerdict.Error });
+        snap.Results.Count(r => r is { Verdict: UnitVerdict.Error or UnitVerdict.Unknown }); // AJ-5: „?" też do ponowienia
 
     private void RetryFailed()
     {
@@ -825,10 +860,11 @@ else
     private static string VerdictCss(UnitVerdict v) => v switch
     {
         UnitVerdict.Ok => "badge-ok",
-        UnitVerdict.Risk => "badge-danger",
+        UnitVerdict.Risk or UnitVerdict.RiskHigh => "badge-danger",
+        UnitVerdict.RiskLow => "badge-warn",
         UnitVerdict.NoSources => "badge-warn",
         UnitVerdict.Error => "badge-danger",
-        _ => "",
+        _ => "", // BEZ TREŚCI PRAWNEJ / POZA ZAKRESEM / ? — neutralne
     };
 
     private static string StatusIcon(AnalysisStatus s) => s switch

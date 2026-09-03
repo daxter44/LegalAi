@@ -38,6 +38,12 @@ public class AnalysisUnitEntity
     /// null = provider nie zgłosił (Claude, błąd przed końcem). `length` przy pustej odpowiedzi
     /// = model zużył cały MaxTokens na myślenie — diagnoza werdyktów „?".</summary>
     public string? FinishReason { get; set; }
+
+    /// <summary>AJ-5: przy RYZYKO — przepis, którego fragment nie respektuje (z cytowaniem [n]).</summary>
+    public string? Violates { get; set; }
+
+    /// <summary>AJ-5: przy RYZYKO — co zmienić w treści fragmentu (jedno zdanie).</summary>
+    public string? Suggestion { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 
     public AnalysisUnitFeedbackEntity? Feedback { get; set; }

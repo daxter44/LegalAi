@@ -68,9 +68,16 @@ public static class AnalysisPrompts
         ---
         {unit.Text}
         ---
-        Pierwsza linia odpowiedzi to DOKŁADNIE jedno z: „WERDYKT: OK" (fragment nie budzi zastrzeżeń),
-        „WERDYKT: RYZYKO" (fragment budzi zastrzeżenia prawne), „WERDYKT: BRAK ŹRÓDEŁ" (źródła nie
-        pozwalają ocenić). Potem 1–3 zdania uzasadnienia z cytowaniami [n].
+        Pierwsza linia odpowiedzi to DOKŁADNIE jedno z:
+        „WERDYKT: OK" — fragment zgodny z prawem, nie budzi zastrzeżeń;
+        „WERDYKT: RYZYKO WYSOKIE" — fragment sprzeczny z przepisem bezwzględnie obowiązującym albo nieważny;
+        „WERDYKT: RYZYKO NISKIE" — fragment niekorzystny, wątpliwy lub do negocjacji, ale nie oczywiście sprzeczny z prawem;
+        „WERDYKT: BEZ TREŚCI PRAWNEJ" — fragment nie zawiera żadnego postanowienia do oceny (komparycja, dane stron, opis przedmiotu);
+        „WERDYKT: POZA ZAKRESEM" — ocena wymaga dokumentu, którego nie ma w źródłach (akt prawa miejscowego, załącznik, regulamin zewnętrzny) — nazwij ten dokument;
+        „WERDYKT: BRAK PODSTAWY" — fragment zawiera postanowienie do oceny, ale źródła nie dają podstawy prawnej.
+        Przy RYZYKO WYSOKIE lub NISKIE dodaj dwie kolejne linie: „NARUSZA: " + przepis z cytowaniem [n], którego
+        fragment nie respektuje, oraz „DO ROZWAŻENIA: " + jedno zdanie, co zmienić w treści fragmentu.
+        Potem 1–3 zdania uzasadnienia z cytowaniami [n].
         """;
 
     /// <summary>Werdykt z pierwszej linii odpowiedzi + odpowiedź bez tej linii (UI pokazuje werdykt
@@ -78,32 +85,73 @@ public static class AnalysisPrompts
     /// nawet jeśli model wbrew instrukcji napisał inny werdykt.</summary>
     public static (UnitVerdict Verdict, string Answer) ParseVerdict(string full)
     {
-        var text = full.Trim();
-        if (text.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase))
-            return (UnitVerdict.NoSources, text);
-
-        var nl = text.IndexOf('\n');
-        var firstLine = (nl < 0 ? text : text[..nl]).Trim();
-        if (!firstLine.StartsWith(VerdictPrefix, StringComparison.OrdinalIgnoreCase))
-            return (UnitVerdict.Unknown, text);
-
-        var rest = nl < 0 ? "" : text[(nl + 1)..].Trim();
-        var verdict = firstLine.ToUpperInvariant() switch
-        {
-            var l when l.Contains("RYZYKO") => UnitVerdict.Risk,
-            var l when l.Contains("BRAK") => UnitVerdict.NoSources,
-            var l when l.Contains("OK") => UnitVerdict.Ok,
-            _ => UnitVerdict.Unknown,
-        };
-        return (verdict, rest.Length > 0 ? rest : text);
+        var p = ParseUnit(full);
+        return (p.Verdict, p.Answer);
     }
 
-    /// <summary>Etykieta werdyktu dla UI i digestu streszczenia.</summary>
+    /// <summary>Sparsowana odpowiedź fazy map (AJ-5): werdykt, linie NARUSZA / DO ROZWAŻENIA (tylko przy
+    /// ryzyku; null gdy model ich nie podał) i uzasadnienie bez linii strukturalnych.</summary>
+    public sealed record ParsedUnit(UnitVerdict Verdict, string Answer, string? Violates, string? Suggestion);
+
+    private const string ViolatesPrefix = "NARUSZA:";
+    private const string SuggestionPrefix = "DO ROZWAŻENIA:";
+
+    /// <summary>Parser odpowiedzi fazy map. Pierwsza linia decyduje o werdykcie (zestaw D3); legacy
+    /// „RYZYKO" bez wagi → <see cref="UnitVerdict.Risk"/>, „BRAK ŹRÓDEŁ" (stary prompt) → NoSources.
+    /// Linie NARUSZA/DO ROZWAŻENIA wycinane z uzasadnienia do osobnych pól — UI pokazuje je jako
+    /// akcjonowalne wiersze, nie jako prozę. Fraza odmowy ma pierwszeństwo (odmowa treściowa).</summary>
+    public static ParsedUnit ParseUnit(string full)
+    {
+        var text = full.Trim();
+        if (text.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase))
+            return new(UnitVerdict.NoSources, text, null, null);
+
+        var lines = text.Split('\n');
+        var firstLine = lines[0].Trim();
+        if (!firstLine.StartsWith(VerdictPrefix, StringComparison.OrdinalIgnoreCase))
+            return new(UnitVerdict.Unknown, text, null, null);
+
+        var verdict = ParseVerdictLine(firstLine);
+        string? violates = null, suggestion = null;
+        var rest = new List<string>();
+        foreach (var raw in lines.Skip(1))
+        {
+            var line = raw.Trim().TrimStart('*', '-', ' ');
+            if (violates is null && line.StartsWith(ViolatesPrefix, StringComparison.OrdinalIgnoreCase))
+                violates = Clean(line[ViolatesPrefix.Length..]);
+            else if (suggestion is null && line.StartsWith(SuggestionPrefix, StringComparison.OrdinalIgnoreCase))
+                suggestion = Clean(line[SuggestionPrefix.Length..]);
+            else rest.Add(raw);
+        }
+        var answer = string.Join('\n', rest).Trim();
+        return new(verdict, answer.Length > 0 ? answer : text, violates, suggestion);
+
+        static string? Clean(string s) => s.Trim().TrimStart('*', ' ').Trim() is { Length: > 0 } v ? v : null;
+    }
+
+    private static UnitVerdict ParseVerdictLine(string firstLine)
+    {
+        var l = firstLine.ToUpperInvariant();
+        if (l.Contains("RYZYKO WYSOKIE")) return UnitVerdict.RiskHigh;
+        if (l.Contains("RYZYKO NISKIE")) return UnitVerdict.RiskLow;
+        if (l.Contains("RYZYKO")) return UnitVerdict.Risk;
+        if (l.Contains("BEZ TREŚCI") || l.Contains("BEZ TRESCI")) return UnitVerdict.NoLegalContent;
+        if (l.Contains("POZA ZAKRESEM")) return UnitVerdict.OutOfScope;
+        if (l.Contains("BRAK")) return UnitVerdict.NoSources;
+        if (l.Contains("OK")) return UnitVerdict.Ok;
+        return UnitVerdict.Unknown;
+    }
+
+    /// <summary>Etykieta werdyktu dla UI i digestu streszczenia (brzmienie D3, 2026-09-02).</summary>
     public static string Label(UnitVerdict v) => v switch
     {
         UnitVerdict.Ok => "OK",
         UnitVerdict.Risk => "RYZYKO",
-        UnitVerdict.NoSources => "BRAK ŹRÓDEŁ",
+        UnitVerdict.RiskHigh => "RYZYKO WYSOKIE",
+        UnitVerdict.RiskLow => "RYZYKO NISKIE",
+        UnitVerdict.NoLegalContent => "BEZ TREŚCI PRAWNEJ",
+        UnitVerdict.OutOfScope => "POZA ZAKRESEM",
+        UnitVerdict.NoSources => "BRAK PODSTAWY",
         UnitVerdict.Error => "BŁĄD",
         _ => "?",
     };

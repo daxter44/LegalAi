@@ -17,7 +17,8 @@ public sealed record StoredAnalysis(
 
 public sealed record StoredUnit(
     Guid Id, int UnitIndex, string Heading, UnitVerdict Verdict, string? Answer,
-    IReadOnlyList<ChatSource> Sources, bool? CitationClean, string? Error, string? FeedbackGiven);
+    IReadOnlyList<ChatSource> Sources, bool? CitationClean, string? Error, string? FeedbackGiven,
+    string? Violates = null, string? Suggestion = null);
 
 /// <summary>
 /// Trwały zapis i odczyt RAPORTÓW analizy dokumentów (AN-3) — wzorzec <see cref="IConversationStore"/>:
@@ -73,7 +74,8 @@ public static class StoredAnalysisExtensions
             .ToList();
         var results = Enumerable.Range(1, total)
             .Select(i => byIndex.TryGetValue(i, out var u)
-                ? new UnitAnalysis(i, u.Heading, u.Verdict, u.Answer, u.Sources, Check: null, Error: u.Error)
+                ? new UnitAnalysis(i, u.Heading, u.Verdict, u.Answer, u.Sources, Check: null, Error: u.Error,
+                    Violates: u.Violates, Suggestion: u.Suggestion)
                 : null)
             .ToList();
 
@@ -125,6 +127,8 @@ public sealed class AnalysisStore(IServiceScopeFactory scopeFactory) : IAnalysis
         row.CitationClean = unit.Check?.IsClean;
         row.Error = unit.Error is { } e ? Trunc(e, 2000) : null;
         row.FinishReason = unit.FinishReason is { } fr ? Trunc(fr, 40) : null;
+        row.Violates = unit.Violates is { } vi ? Trunc(vi, 1000) : null;
+        row.Suggestion = unit.Suggestion is { } su ? Trunc(su, 1000) : null;
         await db.Analyses.Where(a => a.Id == analysisId)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.UpdatedAt, now), ct);
         await db.SaveChangesAsync(ct);
@@ -187,7 +191,7 @@ public sealed class AnalysisStore(IServiceScopeFactory scopeFactory) : IAnalysis
             .Select(u => new StoredUnit(
                 u.Id, u.UnitIndex, u.Heading, ParseVerdict(u.Verdict), u.Answer,
                 ConversationStore.ParseSources(u.Sources), u.CitationClean, u.Error,
-                u.Feedback?.Verdict))
+                u.Feedback?.Verdict, u.Violates, u.Suggestion))
             .ToList();
         return new StoredAnalysis(
             a.Id, a.FileName, a.PageCount, a.Prompt, ParseStatus(a.Status),

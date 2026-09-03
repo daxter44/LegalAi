@@ -62,7 +62,10 @@ public sealed record UnitAnalysis(
     IReadOnlyList<ChatSource> Sources,
     CitationCheck? Check = null,
     string? Error = null,
-    string? FinishReason = null);
+    string? FinishReason = null,
+    // AJ-5: akcjonowalne RYZYKO — przepis, którego fragment nie respektuje, i co zmienić w treści.
+    string? Violates = null,
+    string? Suggestion = null);
 
 /// <summary>
 /// Stan jednej długiej analizy dokumentu (SPK-2) — żyje WYŁĄCZNIE w pamięci procesu
@@ -228,12 +231,13 @@ public sealed class AnalysisSession
         if (notify) Changed?.Invoke();
     }
 
-    /// <summary>Indeksy jednostek z werdyktem BŁĄD — kandydaci do ponowienia (AN-4).</summary>
+    /// <summary>Indeksy jednostek z werdyktem BŁĄD lub „?" (pusta/niesparsowana odpowiedź, AJ-5) —
+    /// kandydaci do ponowienia (AN-4).</summary>
     public IReadOnlyList<int> ErrorUnitIndexes()
     {
         lock (_lock)
             return _results
-                .Where(r => r is { Verdict: UnitVerdict.Error })
+                .Where(r => r is { Verdict: UnitVerdict.Error or UnitVerdict.Unknown })
                 .Select(r => r!.Index)
                 .ToList();
     }

@@ -63,6 +63,74 @@ public class AnalysisPromptsTests
         Assert.EndsWith("postanowienie", q);
     }
 
+    // --- AJ-5: zestaw werdyktów D3 + linie NARUSZA / DO ROZWAŻENIA ---
+
+    [Theory]
+    [InlineData("WERDYKT: OK\nZgodne [1].", UnitVerdict.Ok)]
+    [InlineData("WERDYKT: RYZYKO WYSOKIE\nx", UnitVerdict.RiskHigh)]
+    [InlineData("Werdykt: ryzyko niskie\nx", UnitVerdict.RiskLow)]
+    [InlineData("WERDYKT: RYZYKO\nx", UnitVerdict.Risk)] // legacy bez wagi
+    [InlineData("WERDYKT: BEZ TREŚCI PRAWNEJ\nx", UnitVerdict.NoLegalContent)]
+    [InlineData("WERDYKT: POZA ZAKRESEM\nplan miejscowy", UnitVerdict.OutOfScope)]
+    [InlineData("WERDYKT: BRAK PODSTAWY\nx", UnitVerdict.NoSources)]
+    [InlineData("WERDYKT: BRAK ŹRÓDEŁ\nx", UnitVerdict.NoSources)] // stary prompt
+    [InlineData("Nie wiem.", UnitVerdict.Unknown)]
+    public void ParseUnit_maps_first_line_to_verdict(string full, UnitVerdict expected) =>
+        Assert.Equal(expected, AnalysisPrompts.ParseUnit(full).Verdict);
+
+    [Fact]
+    public void ParseUnit_extracts_violates_and_suggestion_out_of_answer()
+    {
+        var full = """
+            WERDYKT: RYZYKO WYSOKIE
+            NARUSZA: art. 6 ust. 1 ustawy o ochronie praw lokatorów [2] — kaucja maks. 12-krotność czynszu
+            DO ROZWAŻENIA: obniżyć kaucję do najwyżej dwunastokrotności miesięcznego czynszu.
+            Kaucja w wysokości 25-krotności przekracza ustawowy limit [2], co czyni postanowienie nieważnym w tej części [1].
+            """;
+        var p = AnalysisPrompts.ParseUnit(full);
+        Assert.Equal(UnitVerdict.RiskHigh, p.Verdict);
+        Assert.StartsWith("art. 6 ust. 1", p.Violates);
+        Assert.StartsWith("obniżyć kaucję", p.Suggestion);
+        Assert.StartsWith("Kaucja w wysokości", p.Answer);
+        Assert.DoesNotContain("NARUSZA", p.Answer);
+        Assert.DoesNotContain("DO ROZWAŻENIA", p.Answer);
+    }
+
+    [Fact]
+    public void ParseUnit_tolerates_markdown_bullets_and_missing_action_lines()
+    {
+        var p = AnalysisPrompts.ParseUnit("WERDYKT: RYZYKO NISKIE\n- **NARUSZA:** art. 483 KC [1]\nUzasadnienie.");
+        Assert.Equal("art. 483 KC [1]", p.Violates);
+        Assert.Null(p.Suggestion);
+        Assert.Equal("Uzasadnienie.", p.Answer);
+
+        var ok = AnalysisPrompts.ParseUnit("WERDYKT: OK\nZgodne [1].");
+        Assert.Null(ok.Violates);
+        Assert.Null(ok.Suggestion);
+        Assert.Equal("Zgodne [1].", ok.Answer);
+    }
+
+    [Fact]
+    public void Labels_follow_D3_wording_and_IsRisk_covers_all_risk_kinds()
+    {
+        Assert.Equal("RYZYKO WYSOKIE", AnalysisPrompts.Label(UnitVerdict.RiskHigh));
+        Assert.Equal("RYZYKO NISKIE", AnalysisPrompts.Label(UnitVerdict.RiskLow));
+        Assert.Equal("BEZ TREŚCI PRAWNEJ", AnalysisPrompts.Label(UnitVerdict.NoLegalContent));
+        Assert.Equal("POZA ZAKRESEM", AnalysisPrompts.Label(UnitVerdict.OutOfScope));
+        Assert.Equal("BRAK PODSTAWY", AnalysisPrompts.Label(UnitVerdict.NoSources));
+        Assert.All(new[] { UnitVerdict.Risk, UnitVerdict.RiskHigh, UnitVerdict.RiskLow }, v => Assert.True(v.IsRisk()));
+        Assert.All(new[] { UnitVerdict.Ok, UnitVerdict.NoSources, UnitVerdict.NoLegalContent, UnitVerdict.OutOfScope, UnitVerdict.Error, UnitVerdict.Unknown },
+            v => Assert.False(v.IsRisk()));
+    }
+
+    [Fact]
+    public void Map_prompt_lists_all_six_verdicts_and_action_lines()
+    {
+        var q = AnalysisPrompts.MapQuestion("oceń", Unit);
+        foreach (var label in new[] { "WERDYKT: OK", "WERDYKT: RYZYKO WYSOKIE", "WERDYKT: RYZYKO NISKIE", "WERDYKT: BEZ TREŚCI PRAWNEJ", "WERDYKT: POZA ZAKRESEM", "WERDYKT: BRAK PODSTAWY", "NARUSZA:", "DO ROZWAŻENIA:" })
+            Assert.Contains(label, q);
+    }
+
     [Fact]
     public void Profile_without_anchor_fields_still_adds_context_but_no_anchor_line()
     {

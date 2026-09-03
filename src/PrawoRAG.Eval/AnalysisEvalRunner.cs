@@ -227,7 +227,8 @@ public sealed record AnalysisEvalSummary(
     int LegalUnits, int LegalNoSources,
     int NormKeyed, int NormHits,
     int Unknown, int Errors,
-    double MedianSeconds, double TotalMinutes)
+    double MedianSeconds, double TotalMinutes,
+    int FalseSkips = 0)
 {
     public double? Recall => PlantedRisks == 0 ? null : (double)PlantedCaught / PlantedRisks;
     public double? FalseRiskRate => SafeUnits == 0 ? null : (double)FalseRisks / SafeUnits;
@@ -242,6 +243,7 @@ public sealed record AnalysisEvalSummary(
         sb.AppendLine($"fałszywe RYZYKO (na § bez wady):   {FalseRisks}/{SafeUnits}  {Pct(FalseRiskRate)}");
         sb.AppendLine($"BRAK ŹRÓDEŁ na § z treścią prawną: {LegalNoSources}/{LegalUnits}  {Pct(LegalNoSourcesRate)}");
         sb.AppendLine($"trafienie normy w źródłach:        {NormHits}/{NormKeyed}  {Pct(NormHitRate)}   (retrieval, niezależne od LLM)");
+        sb.AppendLine($"fałszywe pominięcie (§ z treścią → BEZ TREŚCI PRAWNEJ): {FalseSkips}");
         sb.AppendLine($"werdykt „?\": {Unknown}, BŁĄD: {Errors}");
         sb.AppendLine($"czas: mediana {MedianSeconds:F0} s/jednostka, łącznie {TotalMinutes:F1} min");
         return sb.ToString();
@@ -252,7 +254,13 @@ public sealed record AnalysisEvalSummary(
 
 public static class AnalysisEvalScorer
 {
-    public static bool IsRisk(UnitVerdict v) => v is UnitVerdict.Risk;
+    public static bool IsRisk(UnitVerdict v) => v.IsRisk();
+
+    /// <summary>Fałszywe pominięcie (AJ-5/AJ-10): § z treścią prawną (klucz Ok/Risk) zaklasyfikowany
+    /// jako BEZ TREŚCI PRAWNEJ — najgroźniejszy błąd nowego zestawu werdyktów (ryzyko przepuszczone
+    /// bez oceny). Liczone osobno, bo BRAK PODSTAWY to inna kategoria (retrieval), nie klasyfikacja.</summary>
+    public static int FalseSkips(IReadOnlyList<UnitEvalResult> results) =>
+        results.Count(r => r.Expected is ExpectedVerdict.Ok or ExpectedVerdict.Risk && r.Verdict == UnitVerdict.NoLegalContent);
 
     public static AnalysisEvalSummary Aggregate(IReadOnlyList<UnitEvalResult> results, bool generate)
     {
@@ -272,6 +280,7 @@ public static class AnalysisEvalScorer
             keyed.Count, keyed.Count(r => r.NormHit == true),
             results.Count(r => r.Verdict == UnitVerdict.Unknown && generate),
             results.Count(r => r.Verdict == UnitVerdict.Error),
-            median, secs.Sum() / 60.0);
+            median, secs.Sum() / 60.0,
+            generate ? FalseSkips(results) : 0);
     }
 }
