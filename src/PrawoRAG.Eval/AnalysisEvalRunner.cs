@@ -36,6 +36,8 @@ public static class AnalysisEvalRunner
     public static async Task RunAsync(IServiceProvider services, IConfiguration cfg, string[] args, CancellationToken ct)
     {
         var generate = (cfg.GetValue<bool?>("Eval:AnalysisGenerate") ?? true) && !args.Contains("--no-generate");
+        var oracleProfile = args.Contains("--oracle-profile") || (cfg.GetValue<bool?>("Eval:AnalysisOracleProfile") ?? false);
+        var profileEnabled = (cfg.GetValue<bool?>("Eval:AnalysisProfile") ?? true) && !args.Contains("--no-profile");
         var topK = cfg.GetValue<int?>("Retrieval:TopK") ?? 8;
         var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
         var gapClosingThreshold = cfg.GetValue<double?>("Retrieval:GapClosingTriggerThreshold") ?? AbstentionPolicy.DefaultThreshold;
@@ -68,13 +70,24 @@ public static class AnalysisEvalRunner
                 Console.WriteLine($"[{doc.Id}] POMINIĘTY: splitter dał {units.Count} jednostek, klucz ma {doc.Units.Count}.");
                 continue;
             }
-            Console.WriteLine($"=== {doc.Id} ({doc.Kind}, {units.Count} jednostek{(doc.NeedsLawyer ? ", NeedsLawyer" : "")}) — „{doc.Prompt}”");
+            // Profil dokumentu (AJ-3/4): z LLM jak produkcja (gdy generacja), albo wyrocznia z klucza
+            // (--oracle-profile) — górna granica efektu kotwicy bez zależności od modelu profilującego.
+            DocumentProfile? profile = null;
+            string profileSource = "brak";
+            if (oracleProfile && doc.OracleProfile is { } op) { profile = op.ToProfile(); profileSource = "wyrocznia"; }
+            else if (generate && profileEnabled)
+            {
+                using var scope = services.CreateScope();
+                profile = await ProfileAsync(scope.ServiceProvider, units, ct);
+                profileSource = profile is null ? "LLM: odrzucony/pusty" : "LLM";
+            }
+            Console.WriteLine($"=== {doc.Id} ({doc.Kind}, {units.Count} jednostek{(doc.NeedsLawyer ? ", NeedsLawyer" : "")}) — „{doc.Prompt}” | profil: {profileSource}{(profile?.RetrievalAnchor is { } an ? $" [{an}]" : "")}");
             var docClock = Stopwatch.StartNew();
             for (var i = 0; i < units.Count; i++)
             {
                 var key = doc.Units[i];
                 using var scope = services.CreateScope();
-                var r = await EvaluateUnitAsync(scope.ServiceProvider, doc, units[i], key, generate,
+                var r = await EvaluateUnitAsync(scope.ServiceProvider, doc, units[i], key, profile, generate,
                     topK, threshold, gapClosingThreshold, minChunkTokens, margin, rerankMargin, ct);
                 results.Add(r);
                 await raw.WriteLineAsync(JsonSerializer.Serialize(r));
@@ -95,13 +108,39 @@ public static class AnalysisEvalRunner
         Console.WriteLine($"Podsumowanie: {snapPath}");
     }
 
+    /// <summary>Profil jak w produkcji (AnalysisRunner.ProfileAsync): ten sam prompt, parser i strażnik.</summary>
+    private static async Task<DocumentProfile?> ProfileAsync(IServiceProvider sp, IReadOnlyList<DocUnit> units, CancellationToken ct)
+    {
+        try
+        {
+            var llm = sp.GetRequiredService<ILlmProvider>();
+            var req = new LlmRequest
+            {
+                Messages =
+                [
+                    new(ChatRole.System, DocumentProfilePrompts.SystemPrompt),
+                    new(ChatRole.User, DocumentProfilePrompts.UserInput(DocumentProfilePrompts.BuildSample(units))),
+                ],
+                Temperature = 0,
+            };
+            var sb = new StringBuilder();
+            await foreach (var d in llm.StreamCompletionAsync(req, ct)) sb.Append(d);
+            return DocumentProfilePrompts.ParseClean(sb.ToString());
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Console.WriteLine($"  profil: BŁĄD {e.GetType().Name} — analiza bez profilu");
+            return null;
+        }
+    }
+
     private static async Task<UnitEvalResult> EvaluateUnitAsync(
-        IServiceProvider sp, AnalysisGoldenDoc doc, DocUnit unit, AnalysisGoldenUnit key, bool generate,
+        IServiceProvider sp, AnalysisGoldenDoc doc, DocUnit unit, AnalysisGoldenUnit key, DocumentProfile? profile, bool generate,
         int topK, double threshold, double gapClosingThreshold, int minChunkTokens, double margin, double rerankMargin,
         CancellationToken ct)
     {
         var clock = Stopwatch.StartNew();
-        var question = AnalysisPrompts.MapQuestion(doc.Prompt, unit);
+        var question = AnalysisPrompts.MapQuestion(doc.Prompt, unit, profile);
         var needsLawyer = doc.NeedsLawyer || key.NeedsLawyer;
 
         try

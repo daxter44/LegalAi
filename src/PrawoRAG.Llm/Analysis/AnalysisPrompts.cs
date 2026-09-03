@@ -20,11 +20,31 @@ public static class AnalysisPrompts
 
     /// <summary>Pytanie fazy map — idzie przez PEŁNY ChatService (retrieval korpusu + ugruntowanie +
     /// abstynencja za darmo). Treść jednostki w pytaniu zasila też retrieval (BM25/dense po treści §).</summary>
-    public static string MapQuestion(string userPrompt, DocUnit unit) =>
+    public static string MapQuestion(string userPrompt, DocUnit unit) => MapQuestion(userPrompt, unit, profile: null);
+
+    /// <summary>Wariant z profilem dokumentu (AJ-4). Bez profilu — prompt IDENTYCZNY z dotychczasowym
+    /// (asercja w testach). Z profilem: (1) kotwica dziedzinowa (typ dokumentu + strony) w PIERWSZEJ
+    /// linii — treść pytania jest zapytaniem retrievalu, a baseline AJ-1 pokazał, że surowa klauzula
+    /// nie znajduje ustawy o ochronie praw lokatorów, podczas gdy „umowa najmu lokalu mieszkalnego,
+    /// najemca konsument" ją znajduje; (2) blok KONTEKST DOKUMENTU (fakty z całości) nad fragmentem,
+    /// żeby ogólna klauzula była oceniana w kontekście TEJ umowy, nie abstrakcyjnie.</summary>
+    public static string MapQuestion(string userPrompt, DocUnit unit, DocumentProfile? profile)
+    {
+        if (profile is null || profile.IsEmpty) return MapQuestionCore(userPrompt, unit, context: null);
+        var anchor = profile.RetrievalAnchor is { } a ? $"Dokument: {a}.\n" : "";
+        var context = $"""
+            KONTEKST DOKUMENTU (fakty z całości załącznika, nie oceniaj ich — służą zrozumieniu fragmentu):
+            {profile.ToPromptBlock()}
+
+            """;
+        return anchor + MapQuestionCore(userPrompt, unit, context);
+    }
+
+    private static string MapQuestionCore(string userPrompt, DocUnit unit, string? context) =>
         $"""
         {userPrompt}
 
-        Analizowany fragment dokumentu ({unit.Heading}) — oceń WYŁĄCZNIE ten fragment:
+        {context}Analizowany fragment dokumentu ({unit.Heading}) — oceń WYŁĄCZNIE ten fragment:
         ---
         {unit.Text}
         ---
