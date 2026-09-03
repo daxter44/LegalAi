@@ -36,3 +36,30 @@ document.addEventListener('click', function (e) {
         card.classList.add('cite-flash');
     })();
 });
+
+// --- Eksport raportu analizy (AJ-12) ---
+// Wywoływane z Analiza.razor przez IJSRuntime. MUSI być zwykłym plikiem serwowanym z 'self':
+// polityka CSP tej aplikacji (Program.cs) to `script-src 'self'` bez 'unsafe-eval', więc interop
+// przez window.eval leci EvalError i przycisk nie robi nic.
+window.analysisExport = {
+    // Zwinięty <details> nie drukuje treści — rozwijamy wszystkie fragmenty przed oknem druku.
+    // window.print() jest modalne i synchroniczne: wywołane w tym samym ticku trzymałoby otwarte
+    // wywołanie interopu (a z nim dispatch obwodu Blazor Server) aż do zamknięcia okienka.
+    print: function () {
+        document.querySelectorAll('details.analysis-unit').forEach(function (d) { d.open = true; });
+        setTimeout(function () { window.print(); }, 0);
+    },
+
+    // true tylko przy realnym zapisie do schowka. navigator.clipboard NIE ISTNIEJE poza secure
+    // context (np. http po IP w LAN), więc bez tego strażnika interop rzuciłby wyjątkiem zamiast
+    // zwrócić false. Fallback (raport do ręcznego zaznaczenia) robi strona po stronie Blazora.
+    copy: async function (text) {
+        if (!window.isSecureContext || !navigator.clipboard) return false;
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+};

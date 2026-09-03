@@ -173,16 +173,32 @@ else
             @* Eksport (AJ-12): raport wychodzi z aplikacji jako Markdown (schowek) albo wydruk/PDF
                z przeglądarki — zero renderingu po stronie serwera, działa też z archiwum. *@
             <span class="analysis-export">
-                <button class="btn-ghost" @onclick="CopyReport" title="Kopiuje cały raport jako Markdown do schowka">
+                <button type="button" class="btn-ghost" @onclick="CopyReport" title="Kopiuje cały raport jako Markdown do schowka">
                     @(_copied ? "✓ skopiowano" : "📋 Kopiuj raport")
                 </button>
-                <button class="btn-ghost" @onclick="PrintReport" title="Rozwija wszystkie fragmenty i otwiera okno drukowania (zapis do PDF)">🖨 Drukuj / PDF</button>
+                <button type="button" class="btn-ghost" @onclick="PrintReport" title="Rozwija wszystkie fragmenty i otwiera okno drukowania (zapis do PDF)">🖨 Drukuj / PDF</button>
             </span>
         }
         <span class="analysis-id" title="Id sesji — analiza działa dalej po odświeżeniu strony; raport zostaje na liście">
             sesja: <code>@snap.Id.ToString("N")[..8]</code>
         </span>
     </div>
+
+    @if (_exportError is not null)
+    {
+        <div class="banner banner-warn" role="status">@_exportError</div>
+    }
+
+    @if (_reportFallback is not null)
+    {
+        @* Schowek przeglądarki istnieje tylko w secure context (HTTPS albo localhost). Na http po IP
+           w LAN nie ma go wcale — zamiast po cichu nie zrobić nic, pokazujemy raport do zaznaczenia. *@
+        <details class="analysis-export-fallback" open>
+            <summary>Schowek niedostępny (strona po http) — zaznacz i skopiuj ręcznie</summary>
+            <textarea readonly rows="18" aria-label="Raport w formacie Markdown">@_reportFallback</textarea>
+            <button type="button" class="btn-ghost" @onclick="() => _reportFallback = null">Zamknij</button>
+        </details>
+    }
 
     @if (_degraded)
     {
@@ -880,35 +896,57 @@ else
     }
 
     // --- eksport raportu (AJ-12) ---
+    // Obie akcje idą przez wwwroot/js/cite.js (window.analysisExport), NIE przez window.eval:
+    // CSP aplikacji to `script-src 'self'` bez 'unsafe-eval', więc interop na eval jest martwy.
     private bool _copied;
+    private string? _reportFallback;
+    private string? _exportError;
 
-    /// <summary>Markdown całego raportu do schowka (navigator.clipboard — wymaga HTTPS/localhost;
-    /// błąd interop = brak potwierdzenia, bez wywrotki strony).</summary>
+    /// <summary>Markdown całego raportu do schowka. Poza secure context (http po IP) schowka nie ma —
+    /// wtedy raport ląduje w polu tekstowym do ręcznego skopiowania, zamiast zniknąć bez śladu.</summary>
     private async Task CopyReport()
     {
         if (Snap() is not { } snap) return;
+        _exportError = null;
+        var markdown = AnalysisReportExport.ToMarkdown(snap, DateTimeOffset.Now);
+
+        bool copied;
         try
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", AnalysisReportExport.ToMarkdown(snap, DateTimeOffset.Now));
-            _copied = true;
-            await InvokeAsync(StateHasChanged);
-            await Task.Delay(2500);
-            _copied = false;
-            await InvokeAsync(StateHasChanged);
+            copied = await JS.InvokeAsync<bool>("analysisExport.copy", markdown);
         }
-        catch (JSException) { /* schowek niedostępny (http, uprawnienia) — przycisk po prostu nie potwierdza */ }
+        catch (JSException) { copied = false; }
+
+        if (!copied)
+        {
+            _reportFallback = markdown;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _reportFallback = null;
+        _copied = true;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(2500);
+        _copied = false;
+        await InvokeAsync(StateHasChanged);
     }
 
     /// <summary>Rozwija wszystkie fragmenty (zwinięty &lt;details&gt; nie drukuje treści) i otwiera
     /// okno drukowania — „Zapisz jako PDF" załatwia eksport bez renderingu serwerowego.</summary>
     private async Task PrintReport()
     {
+        _exportError = null;
         try
         {
-            await JS.InvokeVoidAsync("eval",
-                "document.querySelectorAll('details.analysis-unit').forEach(d => d.open = true); window.print();");
+            await JS.InvokeVoidAsync("analysisExport.print");
         }
-        catch (JSException) { }
+        catch (JSException ex)
+        {
+            // Cicha porażka tu właśnie ukryła błąd CSP — od teraz widać, że coś nie wyszło.
+            _exportError = $"Nie udało się otworzyć okna drukowania: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private static string VerdictCss(UnitVerdict v) => v switch
