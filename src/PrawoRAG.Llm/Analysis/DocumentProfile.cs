@@ -7,9 +7,8 @@ namespace PrawoRAG.Llm.Analysis;
 /// Profil dokumentu (AJ-3): FAKTY z całości załącznika, ustalane raz per dokument i doklejane do
 /// promptu każdej jednostki fazy map (AJ-4). Rozwiązuje lukę A z przeglądu 2026-09-02: fragment
 /// oceniany w izolacji nie wie, czy to najem mieszkania czy B2B, kto jest konsumentem, co
-/// zdefiniowano w § 1. <see cref="RetrievalAnchor"/> (typ + strony) wchodzi też do zapytania
-/// retrievalu jako kotwica dziedzinowa — baseline AJ-1 pokazał, że surowy tekst klauzuli o kaucji
-/// nie znajduje ustawy o ochronie praw lokatorów, a pytanie „najem lokalu mieszkalnego, kaucja…" tak.
+/// zdefiniowano w § 1. Profil idzie WYŁĄCZNIE do promptu modelu; do zapytania retrievalu nie wchodzi
+/// (zmierzone 2026-09-03: typ dokumentu + strony w zapytaniu nie poprawiały trafienia normy).
 /// Profil NIE jest persystowany (D1) — żyje w sesji jak treść §. Zero ocen prawnych — patrz
 /// <see cref="DocumentProfilePrompts.IsClean"/>.
 /// </summary>
@@ -23,17 +22,6 @@ public sealed record DocumentProfile(
 {
     public bool IsEmpty =>
         Kind is null && Parties is null && Subject is null && Definitions is null && CitedActs is null && CitedJudgments is null;
-
-    /// <summary>Jedna linia do zapytania retrievalu: rodzaj dokumentu + strony (role, status).
-    /// Tylko to, co zawęża DZIEDZINĘ prawa — definicje i cytaty nie kotwiczą, tylko rozmywają.</summary>
-    public string? RetrievalAnchor
-    {
-        get
-        {
-            var parts = new[] { Kind, Parties }.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-            return parts.Count == 0 ? null : string.Join("; ", parts);
-        }
-    }
 
     /// <summary>Blok do promptu fazy map — wyłącznie fakty, etykiety po polsku, puste pola pomijane.</summary>
     public string ToPromptBlock()

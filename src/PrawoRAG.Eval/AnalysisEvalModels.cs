@@ -56,11 +56,6 @@ public sealed record AnalysisGoldenDoc
     public bool NeedsLawyer { get; init; }
     public string? Note { get; init; }
 
-    /// <summary>Profil-wyrocznia (AJ-4): ręcznie ułożony typ dokumentu + strony. Tryb
-    /// <c>--oracle-profile</c> mierzy GÓRNĄ granicę efektu kotwicy dziedzinowej na retrieval
-    /// niezależnie od jakości modelu profilującego (i bez klucza LLM).</summary>
-    public OracleProfile? OracleProfile { get; init; }
-
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() },
@@ -88,8 +83,3 @@ public sealed record AnalysisGoldenDoc
     }
 }
 
-/// <summary>Profil-wyrocznia z klucza (AJ-4): ręcznie ułożony typ dokumentu + strony.</summary>
-public sealed record OracleProfile(string Kind, string Parties, string? Subject = null)
-{
-    public PrawoRAG.Llm.Analysis.DocumentProfile ToProfile() => new(Kind, Parties, Subject, null, null, null);
-}

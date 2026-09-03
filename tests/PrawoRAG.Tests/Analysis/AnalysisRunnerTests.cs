@@ -112,8 +112,7 @@ public class AnalysisRunnerTests
     /// wywołania LLM per jednostka; profil ma własne testy niżej.</param>
     private static (AnalysisRunner Runner, AnalysisSessionStore Store) Harness(
         ILlmProvider llm, double signal = 0.9, int maxParallelism = 4, AccessOptions? access = null,
-        RecordingAnalysisStore? analysisStore = null, bool profile = false, FixedRetriever? retriever = null,
-        bool anchor = false)
+        RecordingAnalysisStore? analysisStore = null, bool profile = false, FixedRetriever? retriever = null)
     {
         retriever ??= new FixedRetriever(signal);
         var services = new ServiceCollection();
@@ -125,7 +124,7 @@ public class AnalysisRunnerTests
             Options.Create(new DocumentsOptions())));
         var provider = services.BuildServiceProvider();
 
-        var options = Options.Create(new AnalysisOptions { MaxParallelism = maxParallelism, ProfileEnabled = profile, RetrievalAnchorEnabled = anchor });
+        var options = Options.Create(new AnalysisOptions { MaxParallelism = maxParallelism, ProfileEnabled = profile });
         // Bramka kosztów bez bazy: liczniki w pamięci, brak planu (tryb sprzed kont) — tu testujemy
         // reakcję runnera na wyczerpany limit, nie samo liczenie (to CostGuard*Tests).
         var costGuard = new CostGuard(new MemoryUsageCounters(),
@@ -529,34 +528,9 @@ public class AnalysisRunnerTests
         Assert.Null(snap.Profile);
     }
 
-    [Fact] // AJ-4b: do retrievalu idzie kotwica + treść jednostki, NIE cały prompt map z instrukcją werdyktu
-    public async Task Retrieval_query_is_separated_from_map_prompt()
-    {
-        var llm = new ScriptedLlm(r =>
-            IsProfileRequest(r) ? "TYP: umowa najmu lokalu mieszkalnego\nSTRONY: najemca – konsument"
-            : "WERDYKT: OK\nOdpowiedź [1].");
-        var retriever = new FixedRetriever(0.9);
-        var (runner, store) = Harness(llm, profile: true, retriever: retriever, anchor: true);
-
-        await RunAsync(runner, store, 2, prompt: "oceń ryzyka najemcy");
-
-        Assert.Equal(2, retriever.Queries.Count);
-        Assert.All(retriever.Queries, q =>
-        {
-            Assert.StartsWith("umowa najmu lokalu mieszkalnego; najemca – konsument\n", q);
-            Assert.Contains("Treść postanowienia numer", q);
-            Assert.DoesNotContain("WERDYKT", q);
-            Assert.DoesNotContain("oceń ryzyka najemcy", q);
-        });
-        // Prompt LLM nadal niesie intencję, kontekst i instrukcję werdyktu.
-        var map = llm.Requests.First(r => !IsProfileRequest(r) && r.Messages[0].Content != AnalysisPrompts.SummarySystemPrompt);
-        Assert.Contains("oceń ryzyka najemcy", map.Messages[^1].Content);
-        Assert.Contains("KONTEKST DOKUMENTU", map.Messages[^1].Content);
-        Assert.Contains("WERDYKT", map.Messages[^1].Content);
-    }
-
-    [Fact] // domyślnie (pomiar 2026-09-03: 8/17 bez kotwicy vs 7/17 z) zapytanie = sama treść jednostki, profil tylko w prompcie
-    public async Task Retrieval_anchor_is_off_by_default_even_with_profile()
+    [Fact] // AJ-4b: do retrievalu idzie SAMA treść jednostki — nie prompt map z intencją i instrukcją werdyktu,
+           // nie profil (zmierzone 2026-09-03: profil w zapytaniu nie poprawia trafienia normy)
+    public async Task Retrieval_query_is_unit_text_only_while_prompt_keeps_intent_and_profile()
     {
         var llm = new ScriptedLlm(r =>
             IsProfileRequest(r) ? "TYP: umowa najmu lokalu mieszkalnego\nSTRONY: najemca – konsument"
@@ -564,13 +538,22 @@ public class AnalysisRunnerTests
         var retriever = new FixedRetriever(0.9);
         var (runner, store) = Harness(llm, profile: true, retriever: retriever);
 
-        var snap = await RunAsync(runner, store, 1);
+        var snap = await RunAsync(runner, store, 2, prompt: "oceń ryzyka najemcy");
 
         Assert.NotNull(snap.Profile);
-        var q = Assert.Single(retriever.Queries);
-        Assert.StartsWith("§ 1 Treść postanowienia", q);
-        Assert.DoesNotContain("umowa najmu", q);
-        var map = llm.Requests.Single(r => !IsProfileRequest(r) && r.Messages[0].Content != AnalysisPrompts.SummarySystemPrompt);
-        Assert.Contains("KONTEKST DOKUMENTU", map.Messages[^1].Content); // profil nadal w prompcie
+        Assert.Equal(2, retriever.Queries.Count);
+        Assert.All(retriever.Queries, q =>
+        {
+            Assert.StartsWith("§ ", q);
+            Assert.Contains("Treść postanowienia numer", q);
+            Assert.DoesNotContain("WERDYKT", q);
+            Assert.DoesNotContain("oceń ryzyka najemcy", q);
+            Assert.DoesNotContain("umowa najmu", q);
+        });
+        // Prompt LLM nadal niesie intencję, kontekst z profilu i instrukcję werdyktu.
+        var map = llm.Requests.First(r => !IsProfileRequest(r) && r.Messages[0].Content != AnalysisPrompts.SummarySystemPrompt);
+        Assert.Contains("oceń ryzyka najemcy", map.Messages[^1].Content);
+        Assert.Contains("KONTEKST DOKUMENTU", map.Messages[^1].Content);
+        Assert.Contains("WERDYKT", map.Messages[^1].Content);
     }
 }

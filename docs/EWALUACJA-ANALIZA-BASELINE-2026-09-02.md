@@ -89,9 +89,10 @@ i upk 7a (kurs), upk 27 i 34 (regulamin), wszystkie normy kontroli B2B (KC 483, 
 1. Dźwignią było rozdzielenie zapytania od promptu (AJ-4b), nie kotwica. Skok 18% → 47% bez
    zmiany modelu, korpusu ani promptu dla LLM.
 2. Kotwica dziedzinowa w zapytaniu nie pomaga (7 vs 8 przy n=17 to szum, z lekkim minusem).
-   Decyzja: `Analysis:RetrievalAnchorEnabled=false` domyślnie; profil zostaje w prompcie modelu
-   (kontekst dla oceny — efekt do zmierzenia w biegu z generacją). Eval: `--anchor` włącza kotwicę
-   w zapytaniu, `--oracle-profile` implikuje.
+   Decyzja: mechanizm dopisywania typu dokumentu i stron do zapytania **usunięty z kodu** (razem
+   z profilem-wyrocznią w evalu i polami `oracleProfile` w zestawie). Zapytanie = sama treść
+   fragmentu. Profil zostaje wyłącznie w prompcie modelu (kontekst dla oceny — efekt do zmierzenia
+   w biegu z generacją).
 3. Pozostałe 9 chybionych norm to przypadki, gdzie klauzula nie dzieli słownictwa z przepisem
    (kara umowna ↔ „zobowiązanie niepieniężne", wyłączenie rękojmi ↔ art. 558). To ta sama klasa,
    co diagnoza skargi na jednostkę budżetową (`DIAGNOZA-SKARGA-JEDNOSTKA-BUDZETOWA-2026-09-02`):

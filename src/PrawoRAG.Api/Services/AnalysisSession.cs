@@ -27,11 +27,6 @@ public sealed class AnalysisOptions
     /// <summary>Profil dokumentu przed fazą map (AJ-3): jedno wywołanie LLM per dokument, fakty z całości
     /// doklejane do promptu każdej jednostki. Wyłącznik awaryjny (i dla testów liczących wywołania).</summary>
     public bool ProfileEnabled { get; set; } = true;
-
-    /// <summary>Czy kotwica z profilu (typ dokumentu + strony) wchodzi też do ZAPYTANIA retrievalu.
-    /// Pomiar 2026-09-03 (17 norm, tylko retrieval): sama treść fragmentu 8/17, treść + kotwica 7/17 —
-    /// kotwica nie pomaga, więc domyślnie WYŁĄCZONA; profil nadal idzie do promptu modelu (kontekst).</summary>
-    public bool RetrievalAnchorEnabled { get; set; } = false;
 }
 
 /// <summary><see cref="Interrupted"/> = anulowana przez użytkownika ALBO ucięta restartem procesu —

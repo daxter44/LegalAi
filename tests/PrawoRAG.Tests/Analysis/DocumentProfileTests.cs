@@ -72,14 +72,6 @@ public class DocumentProfileTests
     }
 
     [Fact]
-    public void Retrieval_anchor_is_kind_and_parties_only()
-    {
-        var p = new DocumentProfile("umowa najmu lokalu mieszkalnego", "najemca konsument", "lokal nr 4", "Lokal", "KC", null);
-        Assert.Equal("umowa najmu lokalu mieszkalnego; najemca konsument", p.RetrievalAnchor);
-        Assert.Null(new DocumentProfile(null, null, "x", null, null, null).RetrievalAnchor);
-    }
-
-    [Fact]
     public void Prompt_block_skips_empty_fields()
     {
         var p = new DocumentProfile("umowa", null, "przedmiot", null, null, null);

@@ -22,15 +22,15 @@ public class AnalysisPromptsTests
     }
 
     [Fact]
-    public void With_profile_anchor_is_first_line_and_context_block_precedes_fragment()
+    public void With_profile_context_block_precedes_fragment()
     {
         var profile = new DocumentProfile(
             "umowa najmu lokalu mieszkalnego", "najemca – konsument", "lokal nr 4", "Lokal", "Kodeks cywilny", null);
         var q = AnalysisPrompts.MapQuestion("oceń ryzyka", Unit, profile);
 
-        var firstLine = q.Split('\n')[0];
-        Assert.Equal("Dokument: umowa najmu lokalu mieszkalnego; najemca – konsument.", firstLine);
+        Assert.StartsWith("oceń ryzyka", q); // intencja użytkownika nadal pierwsza, profil to kontekst niżej
         Assert.Contains("KONTEKST DOKUMENTU", q);
+        Assert.Contains("Strony: najemca – konsument", q);
         Assert.Contains("Rodzaj dokumentu: umowa najmu lokalu mieszkalnego", q);
         Assert.Contains("Powołane akty: Kodeks cywilny", q);
         // Kontekst przed fragmentem, fragment przed instrukcją werdyktu — kolejność ma znaczenie dla modelu.
@@ -41,24 +41,20 @@ public class AnalysisPromptsTests
         Assert.Contains("80 000 zł", q);
     }
 
-    [Fact] // AJ-4b: zapytanie retrievalu = kotwica + treść jednostki, bez intencji i bez instrukcji werdyktu
-    public void Retrieval_query_is_anchor_plus_unit_text_without_instructions()
+    [Fact] // AJ-4b: zapytanie retrievalu = sama treść jednostki, bez intencji i bez instrukcji werdyktu
+    public void Retrieval_query_is_unit_text_without_instructions()
     {
-        var profile = new DocumentProfile("umowa najmu lokalu mieszkalnego", "najemca – konsument", null, null, null, null);
-        var q = AnalysisPrompts.RetrievalQuery(Unit, profile);
-        Assert.Equal("umowa najmu lokalu mieszkalnego; najemca – konsument\n" + Unit.Text, q);
+        var q = AnalysisPrompts.RetrievalQuery(Unit);
+        Assert.Equal(Unit.Text, q);
         Assert.DoesNotContain("WERDYKT", q);
         Assert.DoesNotContain("oceń", q);
-
-        Assert.Equal(Unit.Text, AnalysisPrompts.RetrievalQuery(Unit, null));
-        Assert.Equal(Unit.Text, AnalysisPrompts.RetrievalQuery(Unit, new DocumentProfile(null, null, "x", null, null, null)));
     }
 
     [Fact] // AJ-4b: długa jednostka ucinana do budżetu embeddera na granicy słowa
     public void Retrieval_query_truncates_long_unit_at_word_boundary()
     {
         var words = string.Join(" ", Enumerable.Repeat("postanowienie", 400)); // ~5600 zn
-        var q = AnalysisPrompts.RetrievalQuery(new DocUnit(1, "§ 1", words), null);
+        var q = AnalysisPrompts.RetrievalQuery(new DocUnit(1, "§ 1", words));
         Assert.True(q.Length <= AnalysisPrompts.RetrievalQueryChars);
         Assert.EndsWith("postanowienie", q);
     }

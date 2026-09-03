@@ -35,8 +35,9 @@ biegi AJ-4/4b (retrieval z samą treścią fragmentu vs treść + kotwica), AJ-7
   profile)` = kotwica + treść fragmentu do 1800 znaków, bez intencji i instrukcji; runner i eval
   używają tego samego zapytania. Historia retrievalu przy podanym zapytaniu pusta.
 - **Zmierzone 2026-09-03:** sama treść 8/17 (47%), treść + kotwica 7/17 (41%), baseline 3/17.
-  Rozdzielenie zapytania od promptu to dźwignia; kotwica nie pomaga → `RetrievalAnchorEnabled=false`
-  domyślnie, profil zostaje w prompcie. 9 chybionych norm to klauzule bez wspólnego słownictwa
+  Rozdzielenie zapytania od promptu to dźwignia; dopisywanie typu dokumentu i stron do zapytania
+  nie pomaga → **usunięte z kodu** (zapytanie = sama treść fragmentu; profil zostaje tylko w prompcie
+  modelu). 9 chybionych norm to klauzule bez wspólnego słownictwa
   z przepisem → argument za AJ-8, ale z zastrzeżeniem z diagnozy skargi (przeformułowanie bez nazwy
   aktu bywa gorsze niż nic). Szczegóły w EWALUACJA-ANALIZA-BASELINE-2026-09-02.
 

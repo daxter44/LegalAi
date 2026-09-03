@@ -204,7 +204,7 @@ public sealed class AnalysisRunner(
         // routera o to jest bezcelowe, a ryzykowne — więc go tu nie pytamy.
         await foreach (var e in chat.AskAsync(
             AnalysisPrompts.MapQuestion(userPrompt, unit, session.Profile), [], null, forceRetrieval: true,
-            retrievalQuery: AnalysisPrompts.RetrievalQuery(unit, options.Value.RetrievalAnchorEnabled ? session.Profile : null), ct))
+            retrievalQuery: AnalysisPrompts.RetrievalQuery(unit), ct))
             switch (e)
             {
                 case SourcesEvent s: sources = s.Sources; break;

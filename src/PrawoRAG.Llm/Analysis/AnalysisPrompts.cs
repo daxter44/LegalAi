@@ -23,41 +23,36 @@ public static class AnalysisPrompts
     public static string MapQuestion(string userPrompt, DocUnit unit) => MapQuestion(userPrompt, unit, profile: null);
 
     /// <summary>Wariant z profilem dokumentu (AJ-4). Bez profilu — prompt IDENTYCZNY z dotychczasowym
-    /// (asercja w testach). Z profilem: (1) kotwica dziedzinowa (typ dokumentu + strony) w PIERWSZEJ
-    /// linii — treść pytania jest zapytaniem retrievalu, a baseline AJ-1 pokazał, że surowa klauzula
-    /// nie znajduje ustawy o ochronie praw lokatorów, podczas gdy „umowa najmu lokalu mieszkalnego,
-    /// najemca konsument" ją znajduje; (2) blok KONTEKST DOKUMENTU (fakty z całości) nad fragmentem,
-    /// żeby ogólna klauzula była oceniana w kontekście TEJ umowy, nie abstrakcyjnie.</summary>
+    /// (asercja w testach). Z profilem: blok KONTEKST DOKUMENTU (fakty z całości) nad fragmentem,
+    /// żeby ogólna klauzula była oceniana w kontekście TEJ umowy, nie abstrakcyjnie. Profil NIE wchodzi
+    /// do zapytania retrievalu (zmierzone 2026-09-03: nie pomaga) — zapytanie to sama treść jednostki,
+    /// patrz <see cref="RetrievalQuery"/>.</summary>
     public static string MapQuestion(string userPrompt, DocUnit unit, DocumentProfile? profile)
     {
         if (profile is null || profile.IsEmpty) return MapQuestionCore(userPrompt, unit, context: null);
-        var anchor = profile.RetrievalAnchor is { } a ? $"Dokument: {a}.\n" : "";
         var context = $"""
             KONTEKST DOKUMENTU (fakty z całości załącznika, nie oceniaj ich — służą zrozumieniu fragmentu):
             {profile.ToPromptBlock()}
 
             """;
-        return anchor + MapQuestionCore(userPrompt, unit, context);
+        return MapQuestionCore(userPrompt, unit, context);
     }
 
     /// <summary>Budżet zapytania retrievalu w znakach: embedder (mmlw, 512 tokenów) ucina dłuższe;
     /// ~1800 znaków polskiego tekstu prawniczego mieści się z zapasem na kotwicę.</summary>
     public const int RetrievalQueryChars = 1800;
 
-    /// <summary>Zapytanie TYLKO do retrievalu (AJ-4b): kotwica dziedzinowa z profilu + treść jednostki,
-    /// BEZ intencji użytkownika i BEZ instrukcji formatu werdyktu. Dotąd zapytaniem był cały prompt
-    /// fazy map; pomiar 2026-09-03: kotwica dodana do takiego zapytania nie zmieniła trafienia normy
-    /// (3/17), bo tonęła w instrukcji i była ucinana przez embedder. Treść jednostki ucinana na
-    /// granicy słowa do <see cref="RetrievalQueryChars"/>.</summary>
-    public static string RetrievalQuery(DocUnit unit, DocumentProfile? profile)
+    /// <summary>Zapytanie TYLKO do retrievalu (AJ-4b): sama treść jednostki, BEZ intencji użytkownika
+    /// i BEZ instrukcji formatu werdyktu. Dotąd zapytaniem był cały prompt fazy map, ucinany przez
+    /// embedder do 512 tokenów; pomiar 2026-09-03 na 17 normach: cały prompt 3/17, sama treść 8/17,
+    /// treść + typ dokumentu i strony z profilu 7/17 (odrzucone). Treść ucinana na granicy słowa
+    /// do <see cref="RetrievalQueryChars"/>.</summary>
+    public static string RetrievalQuery(DocUnit unit)
     {
         var text = unit.Text.Trim();
-        if (text.Length > RetrievalQueryChars)
-        {
-            var cut = text.LastIndexOf(' ', RetrievalQueryChars - 1);
-            text = text[..(cut > 0 ? cut : RetrievalQueryChars)];
-        }
-        return profile?.RetrievalAnchor is { } anchor ? $"{anchor}\n{text}" : text;
+        if (text.Length <= RetrievalQueryChars) return text;
+        var cut = text.LastIndexOf(' ', RetrievalQueryChars - 1);
+        return text[..(cut > 0 ? cut : RetrievalQueryChars)];
     }
 
     private static string MapQuestionCore(string userPrompt, DocUnit unit, string? context) =>
