@@ -84,6 +84,13 @@ rebuildu HNSW nie jest planem odtworzenia.
 aktywacji**, przyznawane indywidualnie (CloudFerro zastrzega prawo odmowy), na koncie w ciągu
 maks. 1 dnia roboczego. Wniosek przez portal Free Trial na `ecommerce.cloudferro.com`.
 
+> **STATUS: PRZYZNANE 2026-09-03.** Wniosek złożony 2026-09-02 (dwa zamówienia, 1793 i 1794 —
+> duplikat formularza), kredyt na koncie następnego dnia, zgodnie z deklarowanym oknem 1 dnia
+> roboczego. **Okno 6 miesięcy liczone od tej daty upływa ~2026-03-03.**
+> ⚠️ Do potwierdzenia w panelu: (a) czy „aktywacja" to data przyznania, czy pierwszego użycia —
+> przyjmuję wariant ostrożniejszy (przyznanie); (b) waluta salda — cała kalkulacja niżej jest
+> w EUR, a saldo w USD skróciłoby zasięg o ~8%.
+
 Zestawienie z realnym zużyciem pokazuje, że to **więcej niż wystarczy na wszystko, co macie
 u CloudFerro**:
 
@@ -126,6 +133,40 @@ w czasie.
 Konsekwencja budżetowa, jedyne miejsce w planie z realnym wydatkiem w trakcie kredytów: **od ok.
 5. miesiąca użycia CloudFerro, gdy €250 się wyczerpie, płacisz ~€51/mies. (GPU 8–17 + LLM) z własnej
 kieszeni** — aż do wyczerpania kredytów Azure (§7). Do tego jednorazowo €99 na próbę generalną (§6).
+
+### 1.5a Region: WAW3-2. Sherlock to osobny byt, nie projekt OpenStack
+
+**[zweryfikowane 2026-09-03]** Aktywować i zasilić należy **`openstack_waw3_2`**. Powód nie jest
+dowolny: **tylko WAW3-2 ma opublikowane ułamkowe flavory L40S**, na których stoi cała kalkulacja
+w §1.5 i §1.5b — `vm.l40s.1` (1/8 L40S, 4 GB VRAM, €0,246/h) oraz warianty spot (od €0,123/h).
+
+| Region | GPU w cenniku |
+|---|---|
+| **WAW3-2** | ✅ H100 passthrough + **ułamkowe L40S + spot** |
+| WAW4-1, LCJ1-1 | tabela GPU istnieje, ale bez opublikowanych ułamków/spotu |
+| FRA1-2, FRA1-3 | ❌ brak tabeli GPU |
+
+Sprawdzone też pod kątem RTT z §0.6: Frankfurt byłby bliżej Azure West Europe niż Warszawa, ale
+**żaden region FRA nie ma GPU**, więc ten kompromis nie istnieje. WAW3-2 jest jedynym sensownym
+wyborem, a RTT trzeba po prostu zmierzyć.
+
+**Sherlock (LLM) NIE jest na liście „Cloud projects".** To osobna usługa z własnym panelem
+i własnymi projektami:
+
+1. organizacja w CloudFerro Cloud z numerem VAT/NIP (**zrobione**),
+2. projekt w panelu Sherlocka: `https://sherlock.cloudferro.com/panel/`,
+3. wygenerowanie klucza (w panelu nazywanego „service key"),
+4. endpoint OpenAI-compatible: **`https://api-sherlock.cloudferro.com/openai/v1`** → to jest
+   wartość pod `Llm__Local__BaseUrl` w §0.2.
+
+⚠️ **Niewiadoma, której nie rozstrzygnąłem:** czy €250 z free trial pokrywa tokeny Sherlocka, czy
+tylko IaaS (VM-y, storage). Nigdzie tego nie opisano. **Nie blokować na tym** — przy skali pilotażu
+LLM to ~€3/mies. (§1.5), więc nawet negatywna odpowiedź nie rusza budżetu. Zapytać przy okazji
+zgłoszenia duplikatu zamówień 1793/1794.
+
+⚠️ Publikowana lista modeli Sherlocka (Llama 3.1/3.3, Mistral, Bielik, PLLuM, DeepSeek) **nie
+wymienia Gemmy** — zgodnie z tym, co wiadomo o nieaktualnej dokumentacji. Dokładny identyfikator
+modelu potwierdzić w panelu, bo `Llm__Local__Model` wymaga konkretnego stringa.
 
 ### 1.5b Spot GPU — realne przy 1–5 klientach, po naprawie odporności (ZROBIONE)
 
@@ -191,8 +232,9 @@ RAM jest celem stałym.
 Wszystko tutaj da się zrobić **przed** jakimkolwiek kontaktem z Microsoftem i przed wydaniem
 pieniędzy. To jest właściwe miejsce na ryzyko.
 
-### 0.1 Kup domenę
-Korzeń zależności (§1.1). Zrób to pierwsze, dosłownie.
+### 0.1 Kup domenę — ZROBIONE 2026-09-02
+Korzeń zależności (§1.1). Odblokowuje jednocześnie: DNS dla Resend (§1.1), publiczny URL webhooków
+Stripe i TLS (§1.2), oraz stronę i wideo do wniosku MS (§0.5, §1.3).
 
 ### 0.2 Załóż konto CloudFerro, weź €250 i zmierz Gemmę — największe niezmierzone ryzyko produktowe
 
@@ -217,7 +259,69 @@ jakość odmów. Dwie rzeczy, które mogą tu wyjść i wywrócić harmonogram: 
 się inaczej niż w testach, albo €0,56/1M przy realnym zużyciu tokenów daje inny koszt niż szacunek.
 **Lepiej dowiedzieć się teraz niż po opłaceniu infrastruktury.**
 
-### 0.3 Zmniejsz bazę przed wysyłką — 106 GB → ~66–70 GB
+> **WYNIK 2026-09-03 [zmierzone]** — Gemma na Sherlocku działa na pełnym pipelinie.
+> Model potwierdzony w `/models`: **`google/gemma-4-31B-it`** (dokumentacja Sherlocka go nie
+> wymieniała). Endpoint: `https://api-sherlock.cloudferro.com/openai/v1`.
+>
+> | Metryka | PLAN-SIZING (lokalny 26B) | Sherlock / Gemma 31B |
+> |---|---|---|
+> | `llm.first_token` | — | **659 ms** |
+> | `llm.total` | 43–48 s | **6 183 ms** |
+> | `chat.total` | 46–50 s | **21 735 ms** |
+>
+> Brak sekcji rozumowania → model nie emituje myślenia, więc założenie ~1024 tok. wyjścia z §1.5
+> się broni, a pułapka pustych odpowiedzi przy małym `MaxTokens` tu nie zachodzi.
+>
+> ⚠️ **Teza §0 doku sizingowego przestała obowiązywać.** Tam LLM to było 90–96% `chat.total`;
+> teraz 28%. **~15,5 s (72%) to nie LLM** — przyspieszenie modelu odsłoniło koszt, który wcześniej
+> chował się w jego cieniu. `retrieval.total` miał medianę 1,6 s / p90 3,0 s, więc to poza znanym
+> budżetem. Niesprawdzeni podejrzani: rozgrzewka (JIT, EF, zimny HNSW — 422 ms vs 6,1 ms),
+> druga runda gap-closingu, `augment`, rozszerzenie sąsiedztwa.
+>
+> **DECYZJA 2026-09-03: nie optymalizujemy teraz** — czasy uznane za zadowalające, a część
+> infrastruktury i tak stoi lokalnie. Zapisane świadomie, nie przeoczone. Wrócić, gdy stack
+> pojedzie w całości do chmury, bo wtedy te 15 s nie będzie już miało lokalnego alibi.
+>
+> **GOLDEN-SET, Przebieg A (router OFF), 2026-09-03 [zmierzone]** — `--chat`, 54 pozycje:
+>
+> | Metryka | Wynik |
+> |---|---|
+> | **Anty-halucynacja (pułapki)** | **100%** (5/5) |
+> | **Abstynencja END-TO-END (LLM)** | **86%** (na 42 poz. z czatem) |
+> | Trafność abstynencji (próg similarity) | 81% (na 54) |
+> | Świeżość (nowela w źródłach) | 100% (1/1) |
+> | Recall@K (retrieval) | 66% → **69%** po korekcie klucza (22/32) |
+>
+> **Werdykt: Gemma zdała.** Anty-halucynacja 100% to ta cecha, na której Bielik poległ. Pułapka
+> `ue-trap-95-46` miała similarity 0,9226 (druga najwyższa w zestawie) i mimo to została odrzucona —
+> bramka cytatów obroniła produkt przy maksymalnie pewnym i maksymalnie błędnym retrievalu.
+>
+> **Pomiar potwierdza decyzję projektową:** bramka LLM (86%) bije próg podobieństwa (81%),
+> a kalibracja wskazuje najlepszy możliwy próg ≈0,30, który też daje tylko 81%. Trzymanie
+> `AbstentionThreshold=0.00` + `CitationGateEnabled=true` jest wyborem lepszym od alternatywy.
+>
+> **KOREKTA 2026-09-04:** `uodo-60` miał nieaktualny klucz odpowiedzi — jego pomiar odniesienia
+> pochodzi z 2026-08-11, a korpus UE (RODO `32016R0679`) wszedł do bazy dopiero **2026-08-27**.
+> Przed tą datą jedynym prawem o ochronie danych była polska uodo, więc art. 60 „trafiał" z braku
+> alternatywy. Oczekiwanie przeniesione na RODO art. 33 (zgłoszenie naruszenia w 72 h) —
+> zweryfikowane, pozycja trafia. **Recall@K 66% → 69%.**
+> Audyt reszty zestawu: tylko 2 pozycje-pudła mają notatki sprzed 27.08, z czego `ue-rodo-6` jest
+> poprawna (pisana w antycypacji korpusu UE), a `uodo-107` jest czerwona z założenia. Problem
+> nieaktualnego klucza okazał się **wąski, nie systemowy**.
+>
+> ⚠️ **Wąskim gardłem jest retrieval, nie model.** Recall@K 69% = w ~1/3 pytań właściwy przepis
+> nie trafia do kontekstu w ogóle. To sufit jakości produktu — żaden LLM nie odpowie z materiału,
+> którego nie dostał. Metryki retrievalowe nie zależą od LLM-a, więc ~21/32 wobec zapisanego
+> baseline'u 19/32 **nie jest zasługą Gemmy**; źródła tej różnicy nie ustaliłem.
+>
+> Uboczne, warte zapamiętania: `InCorpus` (0,8458) i `OutOfCorpus` (0,8450) są po similarity
+> **nierozróżnialne**, a pułapki mają średnią NAJWYŻSZĄ (0,8754). Cosine nie niesie sygnału
+> o obecności odpowiedzi w korpusie — całe bramkowanie stoi na bramce cytatów, bez zapasowego
+> mechanizmu. (Małe n: OutOfCorpus=2, Freshness=1 — kierunek, nie dowód.)
+>
+> **Wciąż otwarte w §0.2:** zużycie tokenów (do domknięcia kosztu w §5) i Przebieg B (router ON).
+
+### 0.3 Zmniejsz bazę przed wysyłką — 106 GB → ~85 GB
 Wysyłasz to raz, przez domowe łącze, i płacisz za provisioned storage. Rób to lokalnie, gdzie żaden
 zegar nie tyka:
 
@@ -232,7 +336,7 @@ zegar nie tyka:
 kosztuje więcej niż 2,7 GB miejsca. Sprawdź też, czy `feat/halfvec-retriever` już nie robi konwersji
 kolumny; jeśli tak, to zadanie odpada.
 
-### 0.4 Zmierz czas wysyłki 106 GB (a właściwie ~66 GB po 0.3)
+### 0.4 Zmierz czas wysyłki (~85 GB po 0.3)
 Nikt tego nie policzył, a to najbardziej prawdopodobne źródło niespodzianki w dniu wdrożenia.
 Metoda: wyślij 5 GB na cokolwiek zdalnego, zmierz, ekstrapoluj. Jeśli wyjdzie więcej niż jedna doba
 — to jest osobne zadanie do zaplanowania (dysk kurierem / etapowanie / restore z object storage),
@@ -374,14 +478,12 @@ planie nie zakłada, że musicie dotrwać do wyczerpania kredytów.
 
 Trzy rzeczy, których nie mogłem zweryfikować, a które mogą zmienić plan:
 
-1. **Czy CloudFerro przyzna €250** (§1.5) — przyznawane indywidualnie, z zastrzeżonym prawem odmowy.
-   To jest teraz ryzyko nr 1, bo na tym kredycie wisi cała ścieżka GPU. **Odmowa oznacza €48/mies.
-   za GPU z własnej kieszeni od pierwszego dnia** — czyli dokładnie ten wydatek pre-revenue, który
-   był powodem odrzucenia pierwotnego wariantu. Wtedy wracają dwie opcje: poczekać na quotę GPU
-   na Azure (§4.3) i wystartować bez rerankera lub z rerankerem na CPU, albo przesunąć start.
+1. ~~**Czy CloudFerro przyzna €250**~~ — **ZAMKNIĘTE 2026-09-03, przyznane** (§1.5). Ścieżka GPU
+   u CloudFerro jest sfinansowana; quota GPU na Azure pozostaje wyłącznie preferencją (§4.3).
 2. **Transze kredytów Azure** (§1.2) — jeśli $5 000 przychodzi etapami z osobnymi zegarami,
    harmonogram wymaga przeliczenia.
-3. **Czas wysyłki ~66 GB** (§0.4) — jedyna pozycja, której rząd wielkości jest kompletnie nieznany.
+3. **Czas wysyłki ~85 GB** (§0.4) — jedyna pozycja, której rząd wielkości jest kompletnie nieznany,
+   i jedyna, która blokuje podanie realnej daty releasu.
 4. ~~**Quota GPU na Azure**~~ — **zdegradowane z bramki do preferencji** (§4.3). Dzięki €250 odmowa
    nic nie kosztuje przez ~5 miesięcy.
 
