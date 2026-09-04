@@ -607,5 +607,16 @@ a.app-who:hover .app-avatar { background: rgb(199 208 236 / .28); }
   details.analysis-unit { break-inside: avoid; border: 1px solid #ccc; border-radius: 4px; padding: 6px 10px; margin: 0 0 8px; }
   details.analysis-unit > summary { list-style: none; font-weight: 600; }
   .source-card { break-inside: avoid; }
-  a[href]::after { content: " (" attr(href) ")"; font-size: 10px; color: #555; }
+  /* Źródła na papierze: same nagłówki (numer, tytuł aktu/orzeczenia, link), bez cytowanej treści.
+     Zawężone do .sources CELOWO — ta sama klasa niesie treść analizowanego paragrafu
+     (Analiza.razor, blok z Truncate(unit.Text)), a tej z raportu wycinać nie wolno. */
+  .sources .source-snippet { display: none !important; }
+  /* Trójkąt rozwijania jest na papierze bez sensu — nie ma czego kliknąć. Znika przez list-style,
+     nie przez ::marker (tak samo jak sąsiednia reguła dla details.analysis-unit > summary). */
+  details.sources > summary { list-style: none; }
+  /* Karty źródeł, na które fragment się nie powołuje (klasa nadawana w beforeprint). */
+  .source-card.print-skip { display: none !important; }
+  /* Tylko linki zewnętrzne dopisują adres. Kotwice cytowań (#src-…, #docsrc-…) prowadzą w obrębie
+     tej samej strony, więc na papierze dawały wyłącznie szum w rodzaju „[1] (#src-au01a068-2-1)". */
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 10px; color: #555; }
 }
