@@ -104,8 +104,33 @@ researchu prawnego · dane w Unii Europejskiej".
 ## 3. Pasek liczb — nowa sekcja pod hero (największy pojedynczy zysk)
 
 Ich pasek to cztery kafle. Nasz **nie może być kalką**, bo na liczbie dokumentów przegrywamy:
-oni deklarują 3 936 765, my mamy ~540 tys. (≈17,3 tys. aktów PL + 2 916 aktów UE + ~520 tys.
-orzeczeń). **Nie stawaj z nimi w tej konkurencji** — przegrasz nagłówkiem, który sam napisałeś.
+oni deklarują 3 936 765, my mamy **537 016**. **Nie stawaj z nimi w tej konkurencji** — przegrasz
+nagłówkiem, który sam napisałeś.
+
+**Skład korpusu — zweryfikowany zapytaniem do produkcji 2026-09-07** (`.11`, `Status='Indexed'`),
+nie przepisany z dokumentów sesyjnych:
+
+| Co | Ile |
+|---|---|
+| ELI: rozporządzenia | 10 827 |
+| ELI: ustawy (w tym wszystkie kodeksy) | 3 591 |
+| — w tym akty „o zmianie…" | 2 488 |
+| EUR-Lex: akty UE (CELEX 2002–2026; przed 2004 tylko 1 dokument) | 2 916 |
+| Sądy powszechne (SAOS COMMON) | 439 256 |
+| Sąd Najwyższy (SAOS SUPREME) | 38 080 |
+| **KIO (Krajowa Izba Odwoławcza)** | **22 168** |
+| **Trybunał Konstytucyjny** | **9 435** |
+| Administracyjne: WSA 8 507 + NSA 2 216 (+15 nieprzypisanych) | 10 738 |
+| **Razem dokumentów / fragmentów** | **537 016 / 8 356 682** |
+
+Sprawdzone wyrywkowo: k.c. (DU/1964/93), k.p.c. (DU/1964/296), k.p. (DU/1974/141), k.k.
+(DU/1997/553), k.p.k. (DU/1997/555), k.p.a. (DU/1960/168) — wszystkie obecne i `InForce=true`.
+Orzeczenia obejmują 1981-07-08 … 2026-06-19. 40 dokumentów ma status `Failed`.
+
+⚠️ **Dwie rzeczy, których landing NIE mówi, a mamy je w korpusie: KIO (22 168) i Trybunał
+Konstytucyjny (9 435).** Omnilexia reklamuje KIO jako jedną ze swoich 13 baz — my ją mamy
+i przemilczamy. To najtańsze uzupełnienie na całej liście: dopisanie dwóch nazw do zdania,
+które już stoi na stronie.
 
 Zamiast tego cztery osie, na których stoimy lepiej albo oni nie stoją wcale:
 
@@ -130,16 +155,17 @@ hasła reklamowego i przy pierwszym kontrprzykładzie kosztuje wiarygodność ca
 cytatów istnieje w kodzie (`CitationGateEnabled`, `CitationValidator`) i jest opisywalna zawsze
 prawdziwie. **Jeśli chcesz tam liczbę — najpierw rozszerz golden set do n≥30 na tej metryce.**
 
-⚠️ **Druga pułapka, na której sam się złapałem.** Pierwotnie podpisałem ten kafel „ustaw
+⚠️ **Druga pułapka, na której sam się złapałem** (liczba potwierdzona 2026-09-07 zapytaniem
+do produkcji — 2 488 zgadza się co do jednego, ale nadal mierzy co innego, niż deklarowal podpis). Pierwotnie podpisałem ten kafel „ustaw
 zmieniających POD KONTROLĄ". Liczba 2 488 (`ANALIZA-NADGODZINY-WCHLONIETE-NOWELE-POMIAR-2026-09-01.md`)
 mierzy co innego: **akty „o zmianie…" obecne w korpusie** (2 488 z 17 378 aktów, 14%) — to jest
 zasięg danych, nie dowód aktywnego pilnowania. Dowodem operacyjnym jest przebieg relinku
 z 2026-09-01: **skanowanych 2 583, odświeżonych 130, błędów 0**. Jeśli chcesz kafel o *pilnowaniu*,
 a nie o *posiadaniu* — użyj tamtych liczb i tak go opisz.
 
-Liczby aktualne na 2026-09-02 (8,38 mln fragmentów) i 2026-09-01 (2 488 aktów zmieniających).
-**Dwie z czterech pozycji tego paska wymagają przeliczenia zapytaniem do produkcyjnej bazy przed
-publikacją** — pochodzą z dokumentów sesyjnych, nie z żywego korpusu.
+**Status liczb: przeliczone na produkcji 2026-09-07** — 8 356 682 fragmentów (nie 8,38 mln;
+w kaflu zaokrąglić do „8,3 mln"), 2 916 aktów UE i 2 488 aktów zmieniających potwierdzone co do
+jednego. Wcześniejszy szacunek „≈17,3 tys. aktów PL" był **błędny** — realnie 14 422.
 
 ---
 

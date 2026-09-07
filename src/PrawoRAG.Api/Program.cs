@@ -464,67 +464,76 @@ const string LandingHtml = """
     /* Jeden rytm pionowy zamiast 90/82 px na sekcje; na telefonie sekcje byly nienaturalnie wysokie. */
     .light,.endcta{padding-top:84px;padding-bottom:84px}
     @media(max-width:720px){.light,.endcta{padding-top:56px;padding-bottom:56px}}
+    /* --- Makieta analizy 2.0 (2026-09-07): odwzorowuje realny wynik z /analiza --- */
+    .unit-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .unit-head strong{font-size:13px;color:var(--sl-text-primary)}
+    .unit-quote{margin:2px 0 0;padding-left:12px;border-left:3px solid var(--sl-border);color:var(--sl-text-tertiary);font-size:12.5px;line-height:1.55}
+    .unit-actions{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:8px 0 0;font-size:12.5px;line-height:1.55}
+    .unit-actions dt{font-weight:700;color:var(--sl-error);margin:0}
+    .unit-actions dd{margin:0;color:var(--sl-text-secondary)}
+    .unit-why{margin:8px 0 0;font-size:12.5px;line-height:1.6;color:var(--sl-text-secondary)}
     </style></head><body>
 
     <div class="nav">
       <a class="brand" href="/start" style="text-decoration:none"><svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><path d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#EDEFF8" stroke-width="9" stroke-linecap="butt"/><circle cx="50" cy="18" r="5" fill="#D97706"/></svg><span class="omnia">Omnia</span><span class="si">SI</span></a>
-      <span class="links"><a href="#roznice">Czym się różnimy</a><a href="#bezpieczenstwo">Bezpieczeństwo</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></span>
+      <span class="links"><a href="#roznice">Co nas wyróżnia</a><a href="#bezpieczenstwo">Bezpieczeństwo</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></span>
       <details class="nav-burger">
         <summary aria-label="Menu">☰</summary>
-        <nav class="nav-sheet"><a href="#roznice">Czym się różnimy</a><a href="#bezpieczenstwo">Bezpieczeństwo</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></nav>
+        <nav class="nav-sheet"><a href="#roznice">Co nas wyróżnia</a><a href="#bezpieczenstwo">Bezpieczeństwo</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></nav>
       </details>
     </div>
 
     <div class="hero">
       <div class="glow1"></div><div class="glow2"></div>
       <span class="eyebrow"><i></i>Asystent researchu prawnego · dane i modele w UE</span>
-      <h1>Zna źródła<br>każdej swojej odpowiedzi.</h1>
-      <p class="lead">Przepisy z pilnowaniem nowelizacji, orzecznictwo, cytowania do zweryfikowania jednym kliknięciem — a gdy źródła nie wystarczają, OmniaSI mówi to wprost, zamiast zgadywać.</p>
-      <div class="heroctas"><!--CTA--><a class="btn-line" href="#roznice">Czym się różnimy</a></div>
+      <h1>AI któremu<br>możesz zaufać</h1>
+      <p class="lead">Kada teza wysunięta przez nasz system musi być poparta dokumentem źródłowym. A gdy źródła nie wystarczają, OmniaSI mówi to wprost, zamiast zgadywać.</p>
+      <div class="heroctas"><!--CTA--><a class="btn-line" href="#roznice">Co nas wyróżnia</a></div>
       <p class="quiet">Twoje pytania i dokumenty nie trenują żadnego modelu.</p>
     </div>
 
     <div class="light" id="roznice">
-      <h2>Ogólny chatbot odpowie na wszystko.<br>OmniaSI odpowiada za coś.</h2>
-      <p class="sub">Cztery rzeczy, których nie dostaniesz od uniwersalnego czatu — a które rozstrzygają o tym, czy research nadaje się do pracy.</p>
+      <h2>Ogólny chatbot odpowie na wszystko.<br>OmniaSI sprawdzi - zweryfikuje - odpowie.</h2>
+      <p class="sub">Podstawą pracy Prawnika jest zaufanie - cztery rzeczy, których popularne AI Ci nie zagwarantują.</p>
       <div class="bento">
         <div class="cardw">
           <span class="k">Nowelizacje pod kontrolą</span>
-          <h3>To samo pytanie o zmieniony przepis. Zobacz różnicę.</h3>
-          <span class="q"><strong>Pytanie:</strong> [PYTANIE O PRZEPIS OBJĘTY ŚWIEŻĄ NOWELIZACJĄ]</span>
+          <h3>Codzienne aktualizacje bazy nowelizacji.</h3>
+          <span class="q"><strong>Pytanie:</strong>Czy aplikant adwokacki może zastępować radcę prawnego ?</span>
           <div class="cmp">
             <div class="ans ans-bad">
               <span class="who">Gemini <span class="tag" style="background:var(--sl-error)">NIEAKTUALNY STAN PRAWNY</span></span>
-              <span>[ODPOWIEDŹ OGÓLNEGO CZATU — pewna siebie, oparta na brzmieniu przepisu sprzed nowelizacji, bez źródeł do sprawdzenia]</span>
+              <span>Tak, aplikant adwokacki może zastępować radcę prawnego, ale tylko wtedy, gdy radca prawny jest wspólnikiem w spółce adwokacko-radcowskiej. </span>
             </div>
             <div class="ans ans-good">
-              <span class="who">OmniaSI <span class="tag" style="background:var(--sl-warning)">NOWELIZACJA — WEJDZIE W ŻYCIE [DATA]</span></span>
-              <span>[ODPOWIEDŹ OMNIASI — zestawia dotychczasowy i nowy stan prawny, podaje dokładną datę wejścia zmiany w życie] <span class="cite">1</span> <span class="cite">2</span></span>
+              <span class="who">OmniaSI <span class="tag" style="background:var(--sl-warning)">NOWELIZACJA — 18.06.2026</span></span>
+              <span>Tak, aplikant adwokacki może zastępować radcę prawnego na takich samych zasadach jak aplikant radcowski.
+              Aktualny stan prawny wynika z nowelizacji ustawy o radcach prawnych, która weszła w życie 18 czerwca 2026 r.<span class="cite">1</span> <span class="cite">2</span></span>
             </div>
           </div>
-          <span class="foot-note">Porównanie na rzeczywistym pytaniu — odpowiedzi z [DATA POROWNANIA], pełne zrzuty na życzenie.</span>
+          <span class="foot-note">Porównanie na rzeczywistym pytaniu — odpowiedzi z 15.08.2026.</span>
         </div>
         <div class="cardw dark">
           <span class="k" style="color:var(--sl-on-dark-accent)">Twoje sprawy zostają Twoje</span>
           <h3>Pytania i dokumenty nie trenują żadnego modelu.</h3>
-          <p>Całość działa na infrastrukturze w Unii Europejskiej — bez wysyłania danych za ocean. To argument dla tajemnicy zawodowej, którego nie daje research na amerykańskim API.</p>
+          <p>Całość działa na infrastrukturze w Unii Europejskiej — bez wysyłania danych za ocean. To argument dla tajemnicy zawodowej, którego nie daje research na amerykańskim AI.</p>
+        </div>
+        <div class="cardw">
+          <span class="k">Wszystko ze źródeł</span>
+          <h3>Każda teza z cytowaniem, każde cytowanie do sprawdzenia.</h3>
+          <p>Kodeksy, ustawy i rozporządzenia (ISAP), prawo Unii (EUR-Lex) oraz orzecznictwo: Sąd Najwyższy, sądy powszechne, sądy administracyjne, Trybunał Konstytucyjny i Krajowa Izba Odwoławcza — źródło otwierasz jednym kliknięciem <span class="cite" style="background:var(--sl-accent-light)">1</span>.</p>
         </div>
         <div class="cardw">
           <span class="k">Uczciwa odmowa</span>
           <h3>Woli powiedzieć „nie wiem" niż zmyślić przepis.</h3>
           <p>Każda odpowiedź przechodzi walidację cytowań — a brak podstaw w źródłach kończy się jawną odmową, nie zmyśloną sygnaturą podaną z pełnym przekonaniem.</p>
         </div>
-        <div class="cardw">
-          <span class="k">Wszystko ze źródeł</span>
-          <h3>Każda teza z cytowaniem, każde cytowanie do sprawdzenia.</h3>
-          <p>Kodeksy, ustawy i rozporządzenia (ISAP), prawo Unii (EUR-Lex) oraz orzecznictwo SN, sądów powszechnych i administracyjnych — źródło otwierasz jednym kliknięciem <span class="cite" style="background:var(--sl-accent-light)">1</span>.</p>
-        </div>
       </div>
 
       <div class="table">
-        <h3>To samo pytanie, dwa różne narzędzia</h3>
-        <div class="trow h"><span></span><span class="c" style="color:var(--sl-on-dark-accent)">OmniaSI</span><span class="c">Ogólny chatbot</span></div>
-        <div class="trow"><span>Odpowiedź wyłącznie ze źródeł, z cytowaniami do weryfikacji</span><span class="c yes">✓</span><span class="c no">✕</span></div>
+        <h3>To samo pytanie, dwa różne podejścia</h3>
+        <div class="trow h"><span></span><span class="c" style="color:var(--sl-on-dark-accent)">OmniaSI</span><span class="c">Ogólny AI</span></div>
+        <div class="trow"><span>Odpowiedź wyłącznie ze źródeł</span><span class="c yes">✓</span><span class="c no">✕</span></div>
         <div class="trow"><span>Pilnowanie nowelizacji: która wersja przepisu obowiązuje dziś</span><span class="c yes">✓</span><span class="c no">✕</span></div>
         <div class="trow"><span>Przyznaje się, gdy nie ma podstaw do odpowiedzi</span><span class="c yes">✓</span><span class="c no">✕</span></div>
         <div class="trow"><span>Pytania i dokumenty nie trenują modelu; dane w UE</span><span class="c yes">✓</span><span class="c no">zależnie od planu</span></div>
@@ -535,32 +544,63 @@ const string LandingHtml = """
       <div class="analys">
         <div>
           <span class="k">Analiza dokumentów</span>
-          <h2>Wgraj umowę.<br>Dostaniesz analizę paragraf po paragrafie.</h2>
-          <p class="sub" style="margin-bottom:20px">Ty ustawiasz kierunek pytaniem — np. <em>„oceń ryzyka dla najemcy"</em> — a OmniaSI ocenia dokument fragment po fragmencie, zderzając każdy z przepisami i orzecznictwem.</p>
+          <h2>Automatyczna analiza umów,<br> paragraf po paragrafie.</h2>
+          <p class="sub" style="margin-bottom:20px">Ty ustawiasz kierunek pytaniem — np. <em>„oceń ryzyka dla kupującego"</em> — a OmniaSI ocenia dokument fragment po fragmencie, zderzając każdy z przepisami i orzecznictwem.</p>
           <div class="checks">
-            <span>Werdykt dla każdego fragmentu: OK / ryzyko / brak źródeł do oceny</span>
+            <span>Analiza dokumentów w kilka minut - oszczędzasz godziny pracy</span>
+            <span>Werdykt dla każdego fragmentu: OK, ryzyko wysokie albo niskie, brak podstawy w źródłach</span>
+            <span>Propozycja poprawki także tam, gdzie zapis jest zgodny z prawem, a orzecznictwo podpowiada bezpieczniejsze brzmienie</span>
             <span>Uzasadnienie z cytowaniami przy każdej uwadze + streszczenie całości</span>
-            <span>Treść dokumentu nie jest nigdzie zapisywana — przechowujemy tylko raport</span>
+            <span>Treść dokumentu nie jest nigdzie zapisywana - na Twoim koncie zostaje jedynie raport</span>
           </div>
         </div>
         <div class="doc">
-          <strong style="font-size:14.5px;color:var(--sl-text-primary)">umowa-najmu-lokalu.pdf <span style="font-weight:400;color:var(--sl-text-tertiary)">· 12 fragmentów</span></strong>
-          <div class="unit"><span class="u-pill" style="background:var(--sl-success-bg);color:var(--sl-success)">§ 4 · OK</span>Czynsz i termin płatności określone jednoznacznie — zgodnie z wymogami k.c. <span class="cite" style="background:var(--sl-accent-light)">1</span></div>
-          <div class="unit" style="border:1.5px solid var(--sl-error-border);background:var(--sl-error-bg);color:var(--sl-text-primary)"><span class="u-pill" style="background:var(--sl-error);color:#fff">§ 7 · RYZYKO</span>Kara umowna bez górnej granicy — w orzecznictwie uznawana za rażąco wygórowaną i podlegającą miarkowaniu <span class="cite">2</span> <span class="cite">3</span></div>
-          <div class="unit" style="background:var(--sl-warning-bg)"><span class="u-pill" style="background:var(--sl-warning);color:#fff">§ 11 · BRAK ŹRÓDEŁ</span>Źródła nie pozwalają ocenić tego fragmentu — OmniaSI mówi to wprost zamiast zgadywać</div>
+          <strong style="font-size:14.5px;color:var(--sl-text-primary)">umowa-przedwstepna-sprzedazy.pdf <span style="font-weight:400;color:var(--sl-text-tertiary)">· 18 fragmentów</span></strong>
+
+          <div class="unit">
+            <div class="unit-head"><strong>§ 2</strong><span class="u-pill" style="background:var(--sl-success-bg);color:var(--sl-success)">OK</span></div>
+            Cena i termin zapłaty określone jednoznacznie <span class="cite" style="background:var(--sl-accent-light)">1</span>
+          </div>
+
+          <div class="unit" style="border:1.5px solid var(--sl-warning);background:var(--sl-warning-bg)">
+            <div class="unit-head"><strong>§ 4</strong><span class="u-pill" style="background:var(--sl-warning);color:#fff">RYZYKO NISKIE</span></div>
+            <p class="unit-quote">„Kupujący wręcza Sprzedającemu kwotę … tytułem zadatku. Sprzedający kwituje niniejszym jej odbiór. Kwota ta będzie zaliczona na poczet ceny sprzedaży nieruchomości…"</p>
+            <dl class="unit-actions">
+              <dt>Narusza</dt>
+              <dd>Brak bezpośredniego naruszenia — fragment nie zawiera jednak żadnego zabezpieczenia zwrotu zadatku <span class="cite">6</span> <span class="cite">7</span></dd>
+              <dt>Do rozważenia</dt>
+              <dd>Poddanie się Sprzedającego egzekucji w trybie art. 777 § 1 pkt 4 k.p.c. co do obowiązku zwrotu zadatku w podwójnej wysokości</dd>
+            </dl>
+            <p class="unit-why">Zapis jest zgodny z zasadą, że przy wykonaniu umowy zadatek zalicza się na poczet świadczenia <span class="cite">1</span>. Gdy umowy nie wykona Sprzedający, Kupujący może żądać sumy dwukrotnie wyższej <span class="cite">2</span> — a orzecznictwo wskazuje, że warto to z góry zabezpieczyć <span class="cite">6</span> <span class="cite">7</span>.</p>
+          </div>
+
+          <div class="unit" style="border:1.5px solid var(--sl-error-border);background:var(--sl-error-bg);color:var(--sl-text-primary)">
+            <div class="unit-head"><strong>§ 9</strong><span class="u-pill" style="background:var(--sl-error);color:#fff">RYZYKO WYSOKIE</span></div>
+            <dl class="unit-actions">
+              <dt>Narusza</dt>
+              <dd>art. 483 § 1 k.c. — karę umowną można zastrzec wyłącznie za zobowiązanie niepieniężne, a zapłata ceny jest świadczeniem pieniężnym <span class="cite">3</span> <span class="cite">4</span></dd>
+              <dt>Do rozważenia</dt>
+              <dd>Usunąć karę umowną za opóźnienie w zapłacie ceny i zastąpić ją odsetkami za opóźnienie</dd>
+            </dl>
+          </div>
+
+          <div class="unit">
+            <div class="unit-head"><strong>§ 14</strong><span class="u-pill" style="background:var(--sl-bg-secondary);color:var(--sl-text-secondary)">BRAK PODSTAWY</span></div>
+            Źródła nie pozwalają ocenić tego fragmentu — OmniaSI mówi to wprost zamiast zgadywać
+          </div>
         </div>
       </div>
     </div>
 
     <div class="light" id="dla-kogo" style="background:var(--sl-bg)">
       <span class="k">Dla kogo</span>
-      <h2>Research, który da się sprawdzić</h2>
-      <p class="sub">Niezależnie od tego, w jakiej roli sprawdzasz — mechanizm jest ten sam: teza, cytat, źródło do otwarcia.</p>
+      <h2>Sprawdzony research prawny</h2>
+      <p class="sub">Niezależnie od tego, w jakiej roli sprawdzasz — mechanizm jest ten sam: teza = cytat = źródło.</p>
       <div class="segs">
         <div class="seg">
           <span class="k">Szybszy pierwszy krok w sprawie</span>
           <h3>Małe i średnie kancelarie</h3>
-          <p>Pytasz po polsku, dostajesz przepisy i orzeczenia z sygnaturami do sprawdzenia. Zamiast godziny w wyszukiwarce — kilka minut i lista źródeł, od której zaczynasz pracę.</p>
+          <p>Rozmawiasz w języku naturalnym, dostajesz przepisy i orzeczenia z sygnaturami. Zamiast godziny w wyszukiwarce — kilka minut i masz podstawy, od których zaczynasz pracę.</p>
         </div>
         <div class="seg">
           <span class="k">Prawo polskie i unijne w jednym pytaniu</span>
@@ -569,26 +609,26 @@ const string LandingHtml = """
         </div>
         <div class="seg">
           <span class="k">Wiesz, co się zmieniło i od kiedy</span>
-          <h3>Praktycy w obszarach po nowelizacji</h3>
-          <p>Prawo pracy, procedura, podatki — tam gdzie tekst jednolity nie nadąża. OmniaSI pokazuje nowelizację, której jeszcze nie ma w tekście, i datę jej wejścia w życie.</p>
+          <h3>Na bieżąco z nowelizacjami</h3>
+          <p>OmniaSI pokazuje nowelizację, której jeszcze nie ma w tekście jednolitym, i datę jej wejścia w życie.</p>
         </div>
         <div class="seg">
           <span class="k">Każda teza do zweryfikowania</span>
           <h3>Aplikanci i młodsi prawnicy</h3>
-          <p>Nie musisz wierzyć odpowiedzi — otwierasz źródło i sprawdzasz. Plan Start (0 zł) wystarcza, żeby zobaczyć, czy to działa na Twoich sprawach.</p>
+          <p>Na początku drogi potrzebujesz sprawdzonej podstawy prawnej. To Twój asystent który pomaga w sprawdzaniu i weryfikacji informacji prawnych.</p>
         </div>
       </div>
     </div>
 
     <div class="light dark" id="bezpieczenstwo">
       <span class="k">Bezpieczeństwo</span>
-      <h2>Tajemnica zawodowa nie znosi wyjątków dla wygody.</h2>
-      <p class="sub">Za poufność wobec klienta odpowiadasz Ty, niezależnie od tego, jakiego narzędzia używasz. Dlatego OmniaSI jest zbudowana tak, żeby jak najmniej Twoich danych w ogóle powstawało.</p>
+      <h2>Tajemnica zawodowa to podstawa.</h2>
+      <p class="sub">Żeby zachować tajemnicę zawodową wybierasz narzędzia którym ufasz - OmniaSI chce spełnić Twoje oczekiwania pod względem prywatności.</p>
       <div class="secgrid">
         <div class="sectile">
           <span class="lbl">Lokalizacja danych</span>
           <span class="big">Unia Europejska</span>
-          <p>Baza, aplikacja i model językowy działają na infrastrukturze w UE. Twoje pytania nie wyjeżdżają za ocean — także zanonimizowane.</p>
+          <p>Baza, aplikacja i model językowy działają na infrastrukturze w UE. Twoje pytania nie wyjeżdżają za ocean.</p>
         </div>
         <div class="sectile">
           <span class="lbl">Treść dokumentów</span>
@@ -597,8 +637,8 @@ const string LandingHtml = """
         </div>
         <div class="sectile">
           <span class="lbl">Uprawnienia modelu</span>
-          <span class="big">Zero narzędzi</span>
-          <p>Model czyta źródła i odpowiada. Nie wysyła wiadomości, nie wywołuje usług, nie zapisuje niczego poza odpowiedzią.</p>
+          <span class="big">Brak trenowania AI</span>
+          <p>Twoje zapytania i dokumenty nie są wykorzystywane do trenowania ani ulepszania modeli językowych. Nie są też walutą, którą płacisz za korzystanie z narzędzia.</p>
         </div>
       </div>
 
@@ -614,8 +654,8 @@ const string LandingHtml = """
         <div class="pillar">
           <span class="pnum">02</span>
           <div>
-            <h3>Odgrodzone konta, sprawdzone testami</h3>
-            <p>Rozmowy i analizy są przypisane do właściciela i sprawdzane przy każdym odczycie, a zapytania do bazy są w całości parametryczne. Izolacja kont ma pokrycie w testach automatycznych, nie w deklaracji na stronie.</p>
+            <h3>Odgrodzone konta</h3>
+            <p>Rozmowy i analizy są przypisane do właściciela i sprawdzane przy każdym odczycie, a zapytania do bazy są w całości parametryczne. Izolacja kont ma pokrycie w testach developerskich, nie w deklaracji na stronie.</p>
           </div>
         </div>
         <div class="pillar">
@@ -679,7 +719,7 @@ const string LandingHtml = """
         </details>
         <details>
           <summary>Z jakich źródeł korzysta?</summary>
-          <p>Kodeksy, ustawy i rozporządzenia z ISAP/ELI, prawo Unii Europejskiej z EUR-Lex (od 2004 r.) oraz orzecznictwo Sądu Najwyższego, sądów powszechnych i administracyjnych (SAOS). Wszystko z publicznych, państwowych baz — bez treści licencjonowanych od komercyjnych wydawców.</p>
+          <p>Kodeksy, ustawy i rozporządzenia z ISAP/ELI oraz prawo Unii Europejskiej z EUR-Lex (od 2004 r.). Orzecznictwo: Sąd Najwyższy, sądy powszechne, Trybunał Konstytucyjny i Krajowa Izba Odwoławcza (zamówienia publiczne) z bazy SAOS, a sądy administracyjne — NSA i wojewódzkie — z CBOSA. Wszystko z publicznych, państwowych baz; bez treści licencjonowanych od komercyjnych wydawców.</p>
         </details>
         <details>
           <summary>Co się dzieje z moimi pytaniami i dokumentami?</summary>
