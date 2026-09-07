@@ -1,0 +1,6 @@
+
+{ "head": { "link": [], "vars": ["base", "rel", "target"] },
+  "results": { "distinct": false, "ordered": true, "bindings": [
+    { "base": { "type": "literal", "datatype": "http://www.w3.org/2001/XMLSchema#string", "value": "32018R0070" }	, "rel": { "type": "literal", "value": "amends" }	, "target": { "type": "literal", "datatype": "http://www.w3.org/2001/XMLSchema#string", "value": "32005R0396" }},
+    { "base": { "type": "literal", "datatype": "http://www.w3.org/2001/XMLSchema#string", "value": "32016R0679" }	, "rel": { "type": "literal", "value": "repeals" }	, "target": { "type": "literal", "datatype": "http://www.w3.org/2001/XMLSchema#string", "value": "31995L0046" }},
+    { "base": { "type": "literal", "datatype": "http://www.w3.org/2001/XMLSchema#string", "value": "32005R0080" }	, "rel": { "type": "literal", "value": "repeals" }	, "target": { "type": "literal", "datatype": "http://www.w3.org/2001/XMLSchema#string", "value": "31977R1517" }} ] } }

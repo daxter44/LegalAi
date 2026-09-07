@@ -17,6 +17,9 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # US-2.12: rola+baza `umami` (izolacja od praworag) — wykonuje się TYLKO na świeżym wolumenie;
+      # istniejący klaster = ręczny SQL z docs/RUNBOOK-UMAMI.md.
+      - ./umami-init.sql:/docker-entrypoint-initdb.d/20-umami.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-praworag} -d ${POSTGRES_DB:-praworag}"]
       interval: 5s
@@ -28,7 +31,9 @@ services:
   # modelu wymaga re-embeddingu całego korpusu (zob. plan, „Lock modelu embeddingów").
   tei:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-    command: ["--model-id", "${EMBEDDING_MODEL_ID:-sdadas/mmlw-retrieval-roberta-large-v2}", "--port", "80", "--auto-truncate"]
+    # --max-client-batch-size 256: parytet z deployem GPU (RUNBOOK-3060) i klientem
+    # (Embeddings:MaxBatch=256) — pozwala wysyłać większe batche /embed i /tokenize (RÓWN-3).
+    command: ["--model-id", "${EMBEDDING_MODEL_ID:-sdadas/mmlw-retrieval-roberta-large-v2}", "--port", "80", "--auto-truncate", "--max-client-batch-size", "256"]
     environment:
       HUGGINGFACE_HUB_CACHE: /data
     ports:
@@ -41,12 +46,38 @@ services:
 
   # Reranker (opcjonalny, 5.4) — DRUGA instancja TEI z cross-encoderem (osobny model niż embeddingi).
   # Włącz przez Reranker:Enabled=true w API/Eval i Reranker:BaseUrl wskazujący na tę usługę.
+  # CPU (poniżej) = wariant lokalny/dev na maszynie bez GPU. Zmierzone 2026-08-23 na Apple M4:
+  # 15,3-35,3 s na batch 32 kandydatów realnej długości — 35-90% czasu odpowiedzi czatu
+  # (patrz PRAWORAG_LOG_TIMING, src/PrawoRAG.Domain/LatencyLog.cs). Na maszynie z GPU (patrz
+  # docs/RUNBOOK-3060-DOCKER.md §13) użyj obrazu `:86-latest` (Ampere/RTX 3060) + `deploy.resources.
+  # reservations.devices` jak w usłudze `tei` z tamtego runbooka — zmierzone tam ~23x szybciej.
   # tei-reranker:
   #   image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
   #   command: ["--model-id", "sdadas/polish-reranker-roberta-v3", "--port", "80", "--auto-truncate"]
   #   environment: { HUGGINGFACE_HUB_CACHE: /data }
   #   ports: ["8081:80"]
   #   volumes: ["tei-reranker-cache:/data"]
+
+  # Analityka bez cookies (US-2.12, docs/PLAN-US-2.12-UMAMI.md): self-hostowane Umami zamiast
+  # GA4/Clarity. OSOBNA baza `umami` (init wyżej) — rola umami nie ma CONNECT do praworag.
+  # Panel: http://localhost:${UMAMI_PORT:-3000} (pierwsze logowanie: admin/umami — ZMIENIĆ).
+  # Prod: bez publicznego portu — wystawienie przez reverse proxy (RUNBOOK-UMAMI.md, decyzja D-2).
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD:-umami}@db:5432/umami
+      APP_SECRET: ${UMAMI_APP_SECRET:-dev-only-secret-zmien-na-produkcji}
+    ports:
+      - "${UMAMI_PORT:-3000}:3000"
+    healthcheck:
+      # Obraz nie ma curla; node 18+ ma fetch.
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/api/heartbeat').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
   # --- dokładamy później ---
   # worker:

@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OmniaSI — zasoby marki</title>
+<style>
+  :root {
+    --page-bg: #F3F5F9; --page-surface: #FFFFFF; --page-border: #D2D6E2;
+    --page-text: #0A0A0A; --page-text-muted: #6B7280; --page-text-faint: #9CA3AF;
+    --page-accent: #2563EB; --om-navy: #142450;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --page-bg: #0E1220; --page-surface: #171C2E; --page-border: #2A3150; --page-text: #EDEFF8; --page-text-muted: #A8B0CC; --page-text-faint: #6E7690; --page-accent: #6E9BFF; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page-bg); color: var(--page-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    line-height: 1.5;
+  }
+  .shell { max-width: 1080px; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+  header { max-width: 62ch; margin-bottom: 3rem; }
+  .eyebrow { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--page-accent); font-weight: 700; margin: 0 0 .8rem; }
+  h1 { font-size: clamp(1.7rem, 3.4vw, 2.2rem); margin: 0 0 1rem; letter-spacing: -0.01em; }
+  header p { color: var(--page-text-muted); font-size: .95rem; margin: 0 0 .8rem; }
+
+  section { margin-bottom: 4rem; }
+  section h2 { font-size: 1.3rem; margin: 0 0 .3rem; }
+  section > p.lede { color: var(--page-text-muted); font-size: .9rem; max-width: 60ch; margin: 0 0 1.5rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem; }
+  .card {
+    background: var(--page-surface); border: 1px solid var(--page-border); border-radius: .9rem;
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .preview { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; padding: 1.2rem; }
+  .preview.wide { aspect-ratio: 900/220; }
+  .preview.on-check {
+    background-image: linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%),
+                       linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%);
+    background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+  }
+  .preview.on-navy { background: var(--om-navy); }
+  .preview img { max-width: 100%; max-height: 100%; }
+  .card-body { padding: 1rem 1.1rem 1.1rem; border-top: 1px solid var(--page-border); }
+  .card-body .name { font-weight: 600; font-size: .9rem; margin: 0 0 .5rem; }
+  .dl-row { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .dl-row a {
+    font-size: .76rem; color: var(--page-accent); text-decoration: none; border: 1px solid var(--page-border);
+    border-radius: .4rem; padding: .3rem .6rem; white-space: nowrap;
+  }
+  .dl-row a:hover { border-color: var(--page-accent); background: rgba(37,99,235,.06); }
+
+  footer { max-width: 62ch; font-size: .82rem; color: var(--page-text-faint); border-top: 1px solid var(--page-border); padding-top: 1.5rem; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <p class="eyebrow">Zasoby marki OmniaSI</p>
+    <h1>Znak firmowy — do pobrania w każdym potrzebnym formacie</h1>
+    <p>
+      Wszystko poniżej to realne pliki w <code>styles/brand/</code> — SVG jako źródło wektorowe
+      (skalowalne bez utraty jakości, do druku/dużych formatów) i gotowe PNG w typowych rozmiarach
+      pod social media. Kliknij, żeby pobrać.
+    </p>
+  </header>
+
+  <!-- ═══════════ SAM ZNAK ═══════════ -->
+  <section>
+    <h2>Sam znak</h2>
+    <p class="lede">Kwadrat 1:1 — pod zdjęcie profilowe na LinkedIn/X/Facebook. Wersja "na granacie" jest gotowa do wgrania wprost; dwie transparentne to do nakładania na własne tło.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="preview on-check"><img src="brand/png/mark-on-navy-512.png" alt="Znak na granatowym tle"></div>
+        <div class="card-body">
+          <p class="name">Na granacie — gotowy awatar</p>
+          <div class="dl-row">
+            <a href="brand/png/mark-on-navy-1024.png" download>PNG 1024</a>
+            <a href="brand/png/mark-on-navy-512.png" download>512</a>
+            <a href="brand/png/mark-on-navy-256.png" download>256</a>
+            <a href="brand/png/mark-on-navy-128.png" download>128</a>
+            <a href="brand/mark-on-navy.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="preview on-check"><img src="brand/png/mark-navy-512.png" alt="Znak granatowy, przezroczyste tło"></div>
+        <div class="card-body">
+          <p class="name">Granatowy, przezroczysty</p>
+          <p style="font-size:.76rem;color:var(--page-text-faint);margin:0 0 .6rem">Na jasne tła</p>
+          <div class="dl-row">
+            <a href="brand/png/mark-navy-1024.png" download>PNG 1024</a>
+            <a href="brand/png/mark-navy-512.png" download>512</a>
+            <a href="brand/png/mark-navy-256.png" download>256</a>
+            <a href="brand/png/mark-navy-128.png" download>128</a>
+            <a href="brand/mark-navy.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="preview on-navy"><img src="brand/png/mark-light-512.png" alt="Znak jasny, przezroczyste tło"></div>
+        <div class="card-body">
+          <p class="name">Jasny, przezroczysty</p>
+          <p style="font-size:.76rem;color:var(--page-text-faint);margin:0 0 .6rem">Na ciemne tła</p>
+          <div class="dl-row">
+            <a href="brand/png/mark-light-1024.png" download>PNG 1024</a>
+            <a href="brand/png/mark-light-512.png" download>512</a>
+            <a href="brand/png/mark-light-256.png" download>256</a>
+            <a href="brand/png/mark-light-128.png" download>128</a>
+            <a href="brand/mark-light.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ LOCKUP POZIOMY ═══════════ -->
+  <section>
+    <h2>Znak + nazwa, poziomo</h2>
+    <p class="lede">Nagłówki, banery, stopka e-maila, okładka na LinkedIn/X (przytnij pod dokładny wymiar platformy — plik ma spory margines).</p>
+    <div class="grid">
+      <div class="card">
+        <div class="preview wide" style="background:#fff"><img src="brand/png/lockup-poziomy-jasny-1000.png" alt="Lockup poziomy, jasne tło"></div>
+        <div class="card-body">
+          <p class="name">Na białym</p>
+          <div class="dl-row">
+            <a href="brand/png/lockup-poziomy-jasny-2000.png" download>PNG 2000px</a>
+            <a href="brand/png/lockup-poziomy-jasny-1000.png" download>1000px</a>
+            <a href="brand/lockup-poziomy-jasny.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="preview wide on-navy"><img src="brand/png/lockup-poziomy-ciemny-1000.png" alt="Lockup poziomy, ciemne tło"></div>
+        <div class="card-body">
+          <p class="name">Na granacie</p>
+          <div class="dl-row">
+            <a href="brand/png/lockup-poziomy-ciemny-2000.png" download>PNG 2000px</a>
+            <a href="brand/png/lockup-poziomy-ciemny-1000.png" download>1000px</a>
+            <a href="brand/lockup-poziomy-ciemny.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ BANERY POZIOME (wyrównanie) ═══════════ -->
+  <section>
+    <h2>Znak + nazwa, baner (do wyrównania w szerokim tle)</h2>
+    <p class="lede">Format 4:1 z dużym marginesem po bokach — do nakładania na okładki, banery i tła, gdzie znak musi trzymać się jednej krawędzi zamiast siedzieć na środku wąskiego lockupu.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="preview wide" style="background:#fff"><img src="brand/png/banner-poziomy-lewo-jasny-1600.png" alt="Baner, do lewej, jasne tło"></div>
+        <div class="card-body">
+          <p class="name">Do lewej — na białym</p>
+          <div class="dl-row">
+            <a href="brand/png/banner-poziomy-lewo-jasny-2400.png" download>PNG 2400px</a>
+            <a href="brand/png/banner-poziomy-lewo-jasny-1600.png" download>1600px</a>
+            <a href="brand/banner-poziomy-lewo-jasny.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="preview wide on-navy"><img src="brand/png/banner-poziomy-lewo-ciemny-1600.png" alt="Baner, do lewej, ciemne tło"></div>
+        <div class="card-body">
+          <p class="name">Do lewej — na granacie</p>
+          <div class="dl-row">
+            <a href="brand/png/banner-poziomy-lewo-ciemny-2400.png" download>PNG 2400px</a>
+            <a href="brand/png/banner-poziomy-lewo-ciemny-1600.png" download>1600px</a>
+            <a href="brand/banner-poziomy-lewo-ciemny.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="preview wide" style="background:#fff"><img src="brand/png/banner-poziomy-srodek-jasny-1600.png" alt="Baner, na środku, jasne tło"></div>
+        <div class="card-body">
+          <p class="name">Na środku — na białym</p>
+          <div class="dl-row">
+            <a href="brand/png/banner-poziomy-srodek-jasny-2400.png" download>PNG 2400px</a>
+            <a href="brand/png/banner-poziomy-srodek-jasny-1600.png" download>1600px</a>
+            <a href="brand/banner-poziomy-srodek-jasny.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="preview wide on-navy"><img src="brand/png/banner-poziomy-srodek-ciemny-1600.png" alt="Baner, na środku, ciemne tło"></div>
+        <div class="card-body">
+          <p class="name">Na środku — na granacie</p>
+          <div class="dl-row">
+            <a href="brand/png/banner-poziomy-srodek-ciemny-2400.png" download>PNG 2400px</a>
+            <a href="brand/png/banner-poziomy-srodek-ciemny-1600.png" download>1600px</a>
+            <a href="brand/banner-poziomy-srodek-ciemny.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="preview wide" style="background:#fff"><img src="brand/png/banner-poziomy-prawo-jasny-1600.png" alt="Baner, do prawej, jasne tło"></div>
+        <div class="card-body">
+          <p class="name">Do prawej — na białym</p>
+          <div class="dl-row">
+            <a href="brand/png/banner-poziomy-prawo-jasny-2400.png" download>PNG 2400px</a>
+            <a href="brand/png/banner-poziomy-prawo-jasny-1600.png" download>1600px</a>
+            <a href="brand/banner-poziomy-prawo-jasny.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="preview wide on-navy"><img src="brand/png/banner-poziomy-prawo-ciemny-1600.png" alt="Baner, do prawej, ciemne tło"></div>
+        <div class="card-body">
+          <p class="name">Do prawej — na granacie</p>
+          <div class="dl-row">
+            <a href="brand/png/banner-poziomy-prawo-ciemny-2400.png" download>PNG 2400px</a>
+            <a href="brand/png/banner-poziomy-prawo-ciemny-1600.png" download>1600px</a>
+            <a href="brand/banner-poziomy-prawo-ciemny.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ LOCKUP PIONOWY ═══════════ -->
+  <section>
+    <h2>Znak + nazwa, pionowo</h2>
+    <p class="lede">Kwadratowe formaty ze skoncentrowaną kompozycją — profil z podpisem, plakietka, slajd tytułowy.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="preview" style="background:#fff"><img src="brand/png/lockup-pionowy-jasny-512.png" alt="Lockup pionowy, jasne tło"></div>
+        <div class="card-body">
+          <p class="name">Na białym</p>
+          <div class="dl-row">
+            <a href="brand/png/lockup-pionowy-jasny-1024.png" download>PNG 1024</a>
+            <a href="brand/png/lockup-pionowy-jasny-512.png" download>512</a>
+            <a href="brand/lockup-pionowy-jasny.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="preview on-navy"><img src="brand/png/lockup-pionowy-ciemny-512.png" alt="Lockup pionowy, ciemne tło"></div>
+        <div class="card-body">
+          <p class="name">Na granacie</p>
+          <div class="dl-row">
+            <a href="brand/png/lockup-pionowy-ciemny-1024.png" download>PNG 1024</a>
+            <a href="brand/png/lockup-pionowy-ciemny-512.png" download>512</a>
+            <a href="brand/lockup-pionowy-ciemny.svg" download>SVG</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Kolory na sztywno (nie tokeny): granat <code>#142450</code>, błękit <code>#2563EB</code>,
+    miedź/złoto <code>#D97706</code> — te same co w aplikacji. Czcionka: Inter, osadzona w każdym
+    pliku SVG jako dana base64, więc otwiera się poprawnie wszędzie, nawet bez zainstalowanego fontu.
+    Pliki źródłowe: <code>styles/brand/*.svg</code> — jeśli trzeba innego rozmiaru niż tu wystawione,
+    to zwykłe <code>rsvg-convert -w N -h N plik.svg -o wynik.png</code>.
+  </footer>
+</div>
+</body>
+</html>

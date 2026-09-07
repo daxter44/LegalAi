@@ -63,9 +63,46 @@ public static class IngestionServiceCollectionExtensions
         });
         services.AddTransient<ISourceConnector>(sp => sp.GetRequiredService<EliSejmConnector>());
 
+        // EUR-Lex/CELLAR — Faza 1 planu prawa UE: samo ODKRYWANIE zakresu (SPARQL) i klasyfikacja aktów.
+        // Treść pobiera konektor z Fazy 2; dzięki temu wolumen i skład korpusu znamy przed pobieraniem.
+        services.Configure<EurLex.EurLexOptions>(config.GetSection(EurLex.EurLexOptions.SectionName));
+        services.AddHttpClient<EurLex.EurLexDiscovery>((sp, c) =>
+        {
+            var opt = sp.GetRequiredService<IOptions<EurLex.EurLexOptions>>().Value;
+            c.BaseAddress = new Uri(opt.BaseUrl.TrimEnd('/') + "/");
+            c.Timeout = Timeout.InfiniteTimeSpan;
+        }).AddStandardResilienceHandler(o =>
+        {
+            // Zapytania zakresowe do SPARQL-a liczą się w minutach (7 756 aktów w 3 stronach).
+            var attempt = TimeSpan.FromSeconds(
+                config.GetValue<int?>($"{EurLex.EurLexOptions.SectionName}:AttemptTimeoutSeconds") ?? 45);
+            o.AttemptTimeout.Timeout = attempt;
+            o.TotalRequestTimeout.Timeout = attempt * 2 + TimeSpan.FromSeconds(30);
+            o.CircuitBreaker.SamplingDuration = attempt * 2;
+        });
+
+        // Konektor treści (Faza 2) — dzieli klienta HTTP z odkrywaniem, bo to ten sam host i ta sama
+        // polityka uprzejmości. Pobiera tylko akty, które niosą własną treść i mają pełne metadane.
+        services.AddHttpClient<EurLex.EurLexConnector>((sp, c) =>
+        {
+            var opt = sp.GetRequiredService<IOptions<EurLex.EurLexOptions>>().Value;
+            c.BaseAddress = new Uri(opt.BaseUrl.TrimEnd('/') + "/");
+            c.Timeout = Timeout.InfiniteTimeSpan;
+        }).AddStandardResilienceHandler(o =>
+        {
+            var attempt = TimeSpan.FromSeconds(
+                config.GetValue<int?>($"{EurLex.EurLexOptions.SectionName}:AttemptTimeoutSeconds") ?? 45);
+            o.AttemptTimeout.Timeout = attempt;
+            o.TotalRequestTimeout.Timeout = attempt * 2 + TimeSpan.FromSeconds(30);
+            o.CircuitBreaker.SamplingDuration = attempt * 2;
+        });
+        services.AddTransient<ISourceConnector>(sp => sp.GetRequiredService<EurLex.EurLexConnector>());
+
         services.AddSingleton<Pdf.IPdfTextExtractor, Pdf.PdfPigTextExtractor>();
         services.AddSingleton<IDocumentNormalizer, JudgmentNormalizer>();
         services.AddSingleton<IDocumentNormalizer, ActNormalizer>();
+        services.AddSingleton<IDocumentNormalizer, Nsa.NsaNormalizer>(); // orzeczenia NSA/WSA (JuDDGES)
+        services.AddSingleton<IDocumentNormalizer, EurLex.EuActNormalizer>(); // akty UE (CELLAR)
         services.AddTransient<IChunker, TokenAwareChunker>();
         services.AddScoped<IngestionPipeline>();
         services.AddScoped<IIngestionPipeline>(sp => sp.GetRequiredService<IngestionPipeline>());
@@ -75,8 +112,11 @@ public static class IngestionServiceCollectionExtensions
         services.AddSingleton<IRawDocumentStore, FileSystemRawDocumentStore>();
         services.AddSingleton<RawFetchRunner>();
         services.AddSingleton<RawProcessRunner>();
+        services.AddSingleton<ReprocessFailedRunner>(); // celowany reprocessing dokumentów Failed
         services.AddSingleton<AmendmentRelinkRunner>(); // AKT-5.2: relink nowel w stanie ustalonym
         services.AddSingleton<QualityReportRunner>();
+        services.AddSingleton<NoiseBackfillRunner>(); // backfill jakości treści chunków (mojibake/przypisy/bullety)
+        services.AddSingleton<UstepReprocessRunner>(); // wymuszony reprocess ustaw pod podział na ustępy (unit_pass)
         return services;
     }
 }

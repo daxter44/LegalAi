@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using PrawoRAG.Domain.Documents;
+using PrawoRAG.Ingestion.Cleaning;
 
 namespace PrawoRAG.Ingestion.Eli;
 
@@ -87,7 +88,7 @@ public static class ActTextParser
         string? article, string? paragraph, string body, string shortTitle, string eliId,
         string? displayAddress, string? sourceUrl, List<DocumentSegment> segments, StringBuilder full)
     {
-        body = body.Trim();
+        body = AmendmentFootnoteCleaner.Clean(body).Trim();
         if (body.Length == 0 || UchylonyOnly.IsMatch(body)) return; // uchylona jednostka — bez pustego chunka
 
         var artLabel = article is not null
@@ -117,8 +118,11 @@ public static class ActTextParser
         });
     }
 
-    /// <summary>Usuwa nagłówki stron i skleja białe znaki — strumień z PDF ma nagłówki wstrzyknięte w środek treści.</summary>
-    private static string Clean(string raw) => Ws.Replace(HeaderNoise.Replace(raw, " "), " ").Trim();
+    /// <summary>Usuwa nagłówki stron i skleja białe znaki — strumień z PDF ma nagłówki wstrzyknięte w środek treści.
+    /// Najpierw naprawa mojibake (stare PDF-y Dz.U. z bajtami Mac-CE czytanymi jako MacRoman) — musi
+    /// poprzedzać parsowanie, bo uszkodzone znaki psują też dopasowania „Art."/„§" w dalszych krokach.</summary>
+    private static string Clean(string raw) =>
+        Ws.Replace(HeaderNoise.Replace(MojibakeTranscoder.FixIfAffected(raw), " "), " ").Trim();
 
     /// <summary>Odcina preambułę obwieszczenia: od „Załącznik do obwieszczenia" (gdy jest), potem od pierwszego
     /// znacznika „Art."/„§". Chroni przed złapaniem przepisów cytowanych w preambule jako treści aktu.</summary>

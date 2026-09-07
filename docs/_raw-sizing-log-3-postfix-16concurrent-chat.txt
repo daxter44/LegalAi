@@ -1,0 +1,746 @@
+/Users/marcin/development/codingnet/LegalAi/src/PrawoRAG.Api/PrawoRAG.Api.csproj : warning NU1902: Pakiet „AngleSharp” 0.17.1 ma znane umiarkowana luki w zabezpieczeniach o ważności, https://github.com/advisories/GHSA-pgww-w46g-26qg
+/Users/marcin/development/codingnet/LegalAi/src/PrawoRAG.Api/PrawoRAG.Api.csproj : warning NU1903: Pakiet „Microsoft.OpenApi” 2.0.0 ma znane wysoka luki w zabezpieczeniach o ważności, https://github.com/advisories/GHSA-v5pm-xwqc-g5wc
+/Users/marcin/development/codingnet/LegalAi/src/PrawoRAG.Api/PrawoRAG.Api.csproj : warning NU1902: Pakiet „AngleSharp” 0.17.1 ma znane umiarkowana luki w zabezpieczeniach o ważności, https://github.com/advisories/GHSA-pgww-w46g-26qg
+/Users/marcin/development/codingnet/LegalAi/src/PrawoRAG.Api/PrawoRAG.Api.csproj : warning NU1903: Pakiet „Microsoft.OpenApi” 2.0.0 ma znane wysoka luki w zabezpieczeniach o ważności, https://github.com/advisories/GHSA-v5pm-xwqc-g5wc
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5099
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /Users/marcin/development/codingnet/LegalAi/src/PrawoRAG.Api
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 90.0404ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 93.2517ms - 200
+[timing] embed = 99 ms
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 82.8694ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 82.9805ms - 200
+[timing] embed = 83 ms
+[timing] dense = 137 ms
+[timing] sparse = 807 ms
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 95.2585ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 95.386ms - 200
+[timing] embed = 96 ms
+[timing] dense = 56 ms
+[timing] sparse = 610 ms
+[timing] fetch_candidates = 70 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] rerank.main = 151 ms
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 50.3064ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 50.4133ms - 200
+[timing] embed = 50 ms
+[timing] dense = 134 ms
+[timing] sparse = 102 ms
+[timing] fetch_candidates = 12 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 238.0912ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 238.2424ms - 200
+[timing] rerank.main = 239 ms
+[timing] lane.signature = 1 ms
+[timing] lane.act_reference = 1 ms
+[timing] lane.structural = 4 ms
+[timing] citation_bridge = 4 ms
+[timing] retrieval.total = 557 ms
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 77.8535ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 77.9277ms - 200
+[timing] embed = 78 ms
+[timing] dense = 51 ms
+[timing] sparse = 73 ms
+[timing] fetch_candidates = 14 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 290.0047ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 290.1534ms - 200
+[timing] rerank.main = 290 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 511 ms
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8080/embed
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 93.8164ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 93.9078ms - 200
+[timing] embed = 94 ms
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 161.7507ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 161.8117ms - 200
+[timing] embed = 162 ms
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 308.8627ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 308.9657ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 310.174ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 310.1747ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 310.1215ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 310.2955ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 310.1812ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 310.3172ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 305.1809ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 305.2171ms - 200
+[timing] embed = 310 ms
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 310.5094ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 310.5326ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 310.7872ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 310.8504ms - 200
+[timing] embed = 310 ms
+[timing] embed = 310 ms
+[timing] embed = 311 ms
+[timing] embed = 312 ms
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 312.7211ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 312.7798ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 307.7337ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 307.7642ms - 200
+[timing] embed = 313 ms
+[timing] embed = 308 ms
+[timing] embed = 308 ms
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 308.0122ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 308.0534ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 308.1703ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 308.2057ms - 200
+[timing] embed = 308 ms
+[timing] embed = 308 ms
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 308.4292ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 308.4352ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 308.4713ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 308.4696ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.ClientHandler[101]
+      Received HTTP response headers after 313.6348ms - 200
+info: System.Net.Http.HttpClient.IEmbeddingProvider.LogicalHandler[101]
+      End processing HTTP request after 313.6894ms - 200
+[timing] embed = 308 ms
+[timing] embed = 308 ms
+[timing] embed = 314 ms
+[timing] embed = 315 ms
+[timing] dense = 841 ms
+[timing] dense = 714 ms
+[timing] sparse = 67 ms
+[timing] sparse = 190 ms
+[timing] fetch_candidates = 32 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] fetch_candidates = 30 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] dense = 886 ms
+[timing] sparse = 53 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 232.629ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 232.7943ms - 200
+[timing] fetch_candidates = 108 ms
+[timing] rerank.main = 233 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] lane.signature = 1 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] citation_bridge = 42 ms
+[timing] retrieval.total = 1404 ms
+[timing] retrieval.raw = 1404 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 269.1916ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 269.271ms - 200
+[timing] rerank.main = 269 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 1427 ms
+[timing] retrieval.raw = 1427 ms
+[timing] dense = 1121 ms
+[timing] dense = 1120 ms
+[timing] dense = 1121 ms
+[timing] dense = 1142 ms
+[timing] dense = 1241 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 248.3833ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 248.5109ms - 200
+[timing] rerank.main = 248 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 1609 ms
+[timing] retrieval.raw = 1609 ms
+[timing] sparse = 190 ms
+[timing] sparse = 133 ms
+[timing] fetch_candidates = 88 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] dense = 1591 ms
+[timing] sparse = 303 ms
+[timing] sparse = 324 ms
+[timing] sparse = 464 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 241.8111ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 241.8738ms - 200
+[timing] sparse = 202 ms
+[timing] rerank.main = 242 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 1 ms
+[timing] lane.structural = 0 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 1958 ms
+[timing] retrieval.raw = 1958 ms
+[timing] dense = 1677 ms
+[timing] dense = 1676 ms
+[timing] dense = 1681 ms
+[timing] fetch_candidates = 273 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] dense = 1734 ms
+[timing] fetch_candidates = 359 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] sparse = 162 ms
+[timing] fetch_candidates = 303 ms
+[timing] dense = 1889 ms
+[timing] sparse = 211 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] sparse = 161 ms
+[timing] fetch_candidates = 450 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] sparse = 219 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 163.5881ms - 200
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 180.6565ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 163.625ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 180.7177ms - 200
+[timing] rerank.main = 180 ms
+[timing] rerank.main = 163 ms
+[timing] lane.signature = 0 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 2216 ms
+[timing] retrieval.raw = 2216 ms
+[timing] fetch_candidates = 453 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] sparse = 219 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 284.4641ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 284.5764ms - 200
+[timing] acronym = 277 ms
+[timing] rerank.main = 284 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] dense = 2303 ms
+[timing] dense = 2303 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 203.4088ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 203.635ms - 200
+[timing] rerank.main = 204 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] fetch_candidates = 584 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] fetch_candidates = 669 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] lane.structural = 749 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 2959 ms
+[timing] retrieval.raw = 2959 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 757.5642ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 757.6042ms - 200
+[timing] rerank.main = 757 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] fetch_candidates = 850 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 276.877ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 277.024ms - 200
+[timing] rerank.main = 277 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] sparse = 518 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 309.4184ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 309.5337ms - 200
+[timing] rerank.main = 309 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] sparse = 525 ms
+[timing] fetch_candidates = 776 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] lane.structural = 712 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 3328 ms
+[timing] retrieval.raw = 3328 ms
+[timing] fetch_candidates = 331 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] fetch_candidates = 453 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+[timing] augment = 2241 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] citation_bridge = 1232 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 534.8117ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 534.8765ms - 200
+[timing] rerank.main = 535 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 3795 ms
+[timing] retrieval.raw = 3795 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 1107.4883ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 1107.5426ms - 200
+[timing] rerank.main = 1107 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 4168 ms
+[timing] retrieval.raw = 4168 ms
+[timing] augment = 0 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] lane.structural = 1138 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 4197 ms
+[timing] retrieval.raw = 4197 ms
+[timing] lane.structural = 1116 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 1073.782ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 1073.8569ms - 200
+[timing] rerank.main = 1073 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] augment = 2608 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] citation_bridge = 1667 ms
+[timing] augment = 3027 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 954.7058ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 954.7657ms - 200
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 1088.759ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 1088.804ms - 200
+[timing] rerank.main = 1088 ms
+[timing] rerank.bridge = 955 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 4676 ms
+[timing] retrieval.raw = 4676 ms
+[timing] retrieval.total = 4676 ms
+[timing] retrieval.raw = 4676 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 119.2325ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 119.2769ms - 200
+[timing] rerank.bridge = 119 ms
+[timing] retrieval.total = 4756 ms
+[timing] retrieval.raw = 4756 ms
+[timing] augment = 3648 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] citation_bridge = 1413 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 519.8142ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 519.872ms - 200
+[timing] augment = 1980 ms
+[timing] rerank.bridge = 520 ms
+[timing] retrieval.total = 6179 ms
+[timing] retrieval.raw = 6179 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] citation_bridge = 2297 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+fail: Microsoft.EntityFrameworkCore.Database.Command[20102]
+      Failed executing DbCommand (4,549ms) [Parameters=[@acronym='?', @query_MinChunkTokens='?' (DbType = Int32), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='3']
+      SELECT c."Id", ts_rank(c."SearchVector", websearch_to_tsquery('simple', @acronym)) AS "Rank"
+      FROM chunks AS c
+      INNER JOIN documents AS d ON c."DocumentId" = d."Id"
+      WHERE c."TokenCount" >= @query_MinChunkTokens AND (d."DocType" <> 'judgment' OR d."TypedMetadata" IS NULL OR d."TypedMetadata" ->> 'judgmentType' <> 'REGULATION' OR d."TypedMetadata" ->> 'judgmentType' IS NULL) AND c."SearchVector" @@ websearch_to_tsquery('simple', @acronym)
+      ORDER BY ts_rank(c."SearchVector", websearch_to_tsquery('simple', @acronym)) DESC
+      LIMIT @p
+fail: Microsoft.EntityFrameworkCore.Query[10100]
+      An exception occurred while iterating over the results of a query for context type 'PrawoRAG.Storage.PrawoRagDbContext'.
+      System.InvalidOperationException: An exception has been raised that is likely due to a transient failure.
+       ---> Npgsql.NpgsqlException (0x80004005): Exception while reading from stream
+       ---> System.TimeoutException: Timeout during reading attempt
+         at Npgsql.Internal.NpgsqlConnector.ReadMessageLong(Boolean async, DataRowLoadingMode dataRowLoadingMode, Boolean readingNotifications, Boolean isReadingPrependedMessage)
+         at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource<TResult>.GetResult(Int16 token)
+         at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)
+         at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)
+         at Npgsql.NpgsqlCommand.ExecuteReader(Boolean async, CommandBehavior behavior, CancellationToken cancellationToken)
+         at Npgsql.NpgsqlCommand.ExecuteReader(Boolean async, CommandBehavior behavior, CancellationToken cancellationToken)
+         at Npgsql.NpgsqlCommand.ExecuteDbDataReaderAsync(CommandBehavior behavior, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteReaderAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteReaderAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.InitializeReaderAsync(AsyncEnumerator enumerator, CancellationToken cancellationToken)
+         at Npgsql.EntityFrameworkCore.PostgreSQL.Storage.Internal.NpgsqlExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)
+         --- End of inner exception stack trace ---
+         at Npgsql.EntityFrameworkCore.PostgreSQL.Storage.Internal.NpgsqlExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.MoveNextAsync()
+      System.InvalidOperationException: An exception has been raised that is likely due to a transient failure.
+       ---> Npgsql.NpgsqlException (0x80004005): Exception while reading from stream
+       ---> System.TimeoutException: Timeout during reading attempt
+         at Npgsql.Internal.NpgsqlConnector.ReadMessageLong(Boolean async, DataRowLoadingMode dataRowLoadingMode, Boolean readingNotifications, Boolean isReadingPrependedMessage)
+         at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource<TResult>.GetResult(Int16 token)
+         at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)
+         at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)
+         at Npgsql.NpgsqlCommand.ExecuteReader(Boolean async, CommandBehavior behavior, CancellationToken cancellationToken)
+         at Npgsql.NpgsqlCommand.ExecuteReader(Boolean async, CommandBehavior behavior, CancellationToken cancellationToken)
+         at Npgsql.NpgsqlCommand.ExecuteDbDataReaderAsync(CommandBehavior behavior, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteReaderAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteReaderAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.InitializeReaderAsync(AsyncEnumerator enumerator, CancellationToken cancellationToken)
+         at Npgsql.EntityFrameworkCore.PostgreSQL.Storage.Internal.NpgsqlExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)
+         --- End of inner exception stack trace ---
+         at Npgsql.EntityFrameworkCore.PostgreSQL.Storage.Internal.NpgsqlExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)
+         at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.MoveNextAsync()
+[timing] acronym = 4685 ms
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 274.7536ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 302.9277ms - 200
+[timing] rerank.bridge = 365 ms
+[timing] retrieval.total = 7238 ms
+[timing] retrieval.raw = 7238 ms
+[timing] fetch_candidates = 219 ms
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[100]
+      Start processing HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[100]
+      Sending HTTP request POST http://192.168.100.11:8081/rerank
+info: System.Net.Http.HttpClient.IReranker.ClientHandler[101]
+      Received HTTP response headers after 532.0032ms - 200
+info: System.Net.Http.HttpClient.IReranker.LogicalHandler[101]
+      End processing HTTP request after 533.1729ms - 200
+[timing] rerank.main = 533 ms
+[timing] lane.signature = 0 ms
+[timing] lane.act_reference = 0 ms
+[timing] lane.structural = 0 ms
+[timing] citation_bridge = 0 ms
+[timing] retrieval.total = 7864 ms
+[timing] retrieval.raw = 7864 ms
+[timing] augment = 4945 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] augment = 5746 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] augment = 7218 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] augment = 5072 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] augment = 6952 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] augment = 5261 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] augment = 3922 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] augment = 5687 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] augment = 2575 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+[timing] augment = 3394 ms
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[100]
+      Sending HTTP request POST http://localhost:11434/v1/chat/completions
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[101]
+      Received HTTP response headers after 16463.1839ms - 200
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[101]
+      End processing HTTP request after 16463.2655ms - 200
+[timing] llm.first_token = -1 ms
+[timing] llm.total = 17023 ms
+[timing] chat.total = 22100 ms
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[101]
+      Received HTTP response headers after 24674.8044ms - 200
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[101]
+      End processing HTTP request after 24674.8426ms - 200
+[timing] llm.first_token = -1 ms
+[timing] llm.total = 25063 ms
+[timing] chat.total = 29634 ms
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[101]
+      Received HTTP response headers after 30278.9676ms - 200
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[101]
+      End processing HTTP request after 30279.0172ms - 200
+[timing] llm.first_token = -1 ms
+[timing] llm.total = 30695 ms
+[timing] chat.total = 34372 ms
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[101]
+      Received HTTP response headers after 30226.8444ms - 200
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[101]
+      End processing HTTP request after 30226.8876ms - 200
+[timing] llm.first_token = -1 ms
+[timing] llm.total = 30623 ms
+[timing] chat.total = 40377 ms
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[101]
+      Received HTTP response headers after 41347.7877ms - 200
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[101]
+      End processing HTTP request after 41347.97ms - 200
+[timing] llm.first_token = -1 ms
+[timing] llm.total = 41874 ms
+[timing] chat.total = 48056 ms
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[101]
+      Received HTTP response headers after 41864.2746ms - 200
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[101]
+      End processing HTTP request after 41864.4127ms - 200
+[timing] llm.first_token = -1 ms
+[timing] llm.total = 42248 ms
+[timing] chat.total = 52161 ms
+info: System.Net.Http.HttpClient.ILlmProvider.ClientHandler[101]
+      Received HTTP response headers after 53584.692ms - 200
+info: System.Net.Http.HttpClient.ILlmProvider.LogicalHandler[101]
+      End processing HTTP request after 53584.7296ms - 200
+[timing] llm.first_token = -1 ms
+[timing] llm.total = 53968 ms
+[timing] chat.total = 58611 ms
+info: Microsoft.Hosting.Lifetime[0]
+      Application is shutting down...

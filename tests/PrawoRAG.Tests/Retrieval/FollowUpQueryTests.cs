@@ -1,3 +1,4 @@
+using PrawoRAG.Domain.Llm;
 using PrawoRAG.Domain.Retrieval;
 
 namespace PrawoRAG.Tests.Retrieval;
@@ -10,7 +11,7 @@ public class FollowUpQueryTests
 {
     [Fact]
     public void Empty_history_returns_question_unchanged()
-        => Assert.Equal("a co z § 2?", FollowUpQuery.Contextualize([], "a co z § 2?"));
+        => Assert.Equal("a co z § 2?", FollowUpQuery.Contextualize(Array.Empty<string>(), "a co z § 2?"));
 
     [Fact]
     public void Joins_previous_questions_chronologically_before_current()
@@ -56,5 +57,171 @@ public class FollowUpQueryTests
     {
         Assert.False(FollowUpQuery.PickContextual(0.70, 0.65, margin: 0.02)); // 0.05 > 0.02 → surowe
         Assert.True(FollowUpQuery.PickContextual(0.70, 0.65, margin: 0.10));  // 0.05 ≤ 0.10 → kontekstowe
+    }
+
+    // --- Overload ChatTurn: fold ostatniej realnej odpowiedzi (cytat wyłuskany + fragment tekstu) ---
+
+    private const string LasAnswer =
+        "Grzywna może wynikać z art. 157 § 1 kodeksu wykroczeń, jeżeli osoba nie opuści lasu na żądanie osoby uprawnionej.";
+
+    [Fact]
+    public void Folds_last_answer_citation_and_nouns_into_query()
+    {
+        // Zgłoszony przypadek: most („art. 157", „las") był tylko w odpowiedzi asystenta, nie w pytaniach.
+        var history = new[] { new ChatTurn("jakie są konsekwencje nocowania w lesie?", LasAnswer) };
+        var result = FollowUpQuery.Contextualize(history, "a kim jest osoba uprawniona z powyższej odpowiedzi?");
+
+        Assert.Contains("a kim jest osoba uprawniona", result); // bieżące pytanie obecne
+        Assert.Contains("art. 157", result);                    // cytat wyłuskany (tor strukturalny)
+        Assert.Contains("las", result);                         // rzeczownik z odpowiedzi (dense/BM25)
+    }
+
+    [Fact]
+    public void Skips_refusal_turn_and_reaches_last_nonnull_answer()
+    {
+        // Q1 z realną odpowiedzią, Q2 = odmowa (Answer=null) → fold sięga wstecz do Q1 (zgłoszone Q2→Q3).
+        var history = new[]
+        {
+            new ChatTurn("jakie są konsekwencje nocowania w lesie?", LasAnswer),
+            new ChatTurn("a kim jest osoba uprawniona?", null),
+        };
+        var result = FollowUpQuery.Contextualize(history, "a kim jest osoba uprawniona z powyższej odpowiedzi?");
+
+        Assert.Contains("art. 157", result); // kotwica z Q1 mimo odmowy w Q2
+    }
+
+    [Fact]
+    public void All_answers_null_falls_back_to_question_only_context()
+    {
+        var history = new[] { new ChatTurn("pierwsze pytanie", null) };
+        Assert.Equal("pierwsze pytanie drugie", FollowUpQuery.Contextualize(history, "drugie"));
+    }
+
+    [Fact]
+    public void Empty_history_overload_returns_question_unchanged()
+        => Assert.Equal("dopytanie", FollowUpQuery.Contextualize(Array.Empty<ChatTurn>(), "dopytanie"));
+
+    [Fact]
+    public void Strips_citation_markers_from_folded_snippet()
+    {
+        var history = new[] { new ChatTurn("q", "Zgodnie z art. 157 [1] chodzi o las [2].") };
+        var result = FollowUpQuery.Contextualize(history, "dopytanie");
+
+        Assert.DoesNotContain("[1]", result);
+        Assert.DoesNotContain("[2]", result);
+    }
+
+    [Fact]
+    public void Citation_survives_even_when_snippet_is_truncated_before_it()
+    {
+        // Cytat leży ZA budżetem fragmentu, ale jest wyłuskiwany z całej odpowiedzi i doklejany osobno.
+        var answer = new string('x', FollowUpQuery.MaxFoldedAnswerChars + 100) + " art. 157 kodeksu wykroczeń";
+        var history = new[] { new ChatTurn("q", answer) };
+        var result = FollowUpQuery.Contextualize(history, "dopytanie");
+
+        Assert.Contains("art. 157", result); // cytat przetrwał
+        Assert.Contains("…", result);          // fragment przycięty do budżetu
+    }
+
+    [Fact]
+    public void Question_context_leads_before_folded_answer()
+    {
+        var history = new[] { new ChatTurn("pierwsze", "odpowiedź z art. 5 KC") };
+        var result = FollowUpQuery.Contextualize(history, "drugie");
+
+        Assert.StartsWith("pierwsze drugie", result); // rdzeń (pytania) prowadzi, fold za nim
+    }
+
+    // --- ContextualizeForExactMatch: tekst dla torów DOKŁADNYCH = TYLKO pytania usera, bez foldu ---
+
+    [Fact] // rdzeń bugu: treść z ODPOWIEDZI systemu (fragment) nie może zasilać exact-match
+    public void ExactMatch_text_excludes_answer_derived_content()
+    {
+        var history = new[]
+        {
+            new ChatTurn(
+                "jak kwalifikować obiekty do podatku od nieruchomości?",
+                "Zgodnie z orzecznictwem [2] art. 1a decyduje przeznaczenie."),
+        };
+        var q = "a Art. 1a USTAWA O PODATKACH I OPŁATACH LOKALNYCH ?";
+
+        var exact = FollowUpQuery.ContextualizeForExactMatch(history, q);
+        var semantic = FollowUpQuery.Contextualize(history, q);
+
+        // Exact-match NIE widzi fragmentu odpowiedzi (tylko pytania) — bug naprawiony.
+        Assert.DoesNotContain("decyduje przeznaczenie", exact);
+        // ...ale wariant semantyczny DALEJ go niesie (fold fragmentu, recall pod anaforę bez zmian).
+        Assert.Contains("decyduje przeznaczenie", semantic);
+        // Bieżące pytanie usera (z jego cytatem) jest w tekście exact-match — tor strukturalny odpali.
+        Assert.Contains("Art. 1a", exact);
+    }
+
+    [Fact] // sygnatura/cytat, który user SAM wpisał w poprzednim pytaniu, ZOSTAJE (follow-up dalej działa)
+    public void ExactMatch_text_keeps_signature_from_user_question()
+    {
+        var history = new[] { new ChatTurn("streść wyrok I SA/Po 594/17", "To orzeczenie dotyczy...") };
+        var exact = FollowUpQuery.ContextualizeForExactMatch(history, "a co z kosztami?");
+
+        Assert.Contains("I SA/Po 594/17", exact); // z PYTANIA usera, nie z odpowiedzi → zostaje
+        Assert.Contains("a co z kosztami?", exact);
+    }
+
+    [Fact]
+    public void ExactMatch_text_empty_history_is_question_only()
+        => Assert.Equal("dopytanie", FollowUpQuery.ContextualizeForExactMatch(Array.Empty<ChatTurn>(), "dopytanie"));
+
+    // --- PickContextual na WYNIKACH: gdy jest cross-encoder, decyduje on, nie cosine ---
+
+    private static RetrievalResult Res(double cosine, double? rerank = null) =>
+        new([], cosine, rerank);
+
+    [Fact] // Zmierzone 2026-08-11: fold ma WYŻSZY cosine (0.8576 vs 0.8431) i ZERO trafnych źródeł.
+    public void Rerank_signal_overrides_misleading_cosine()
+    {
+        var raw = Res(cosine: 0.8431, rerank: 0.8842);   // uodo art. 60 na wierzchu
+        var ctx = Res(cosine: 0.8576, rerank: 0.0503);   // definicje z ustawy o systemie informacji
+        Assert.False(FollowUpQuery.PickContextual(raw, ctx,
+            cosineMargin: FollowUpQuery.DefaultSignalMargin,
+            rerankMargin: FollowUpQuery.DefaultRerankSignalMargin));
+    }
+
+    [Fact] // Anafora („a co z § 2?") — wariant kontekstowy MUSI dalej wygrywać, gdy realnie trafia lepiej.
+    public void Anaphoric_followup_still_picks_contextual_on_rerank()
+    {
+        var raw = Res(cosine: 0.879, rerank: 0.12);      // przypadkowe fragmenty
+        var ctx = Res(cosine: 0.879, rerank: 0.55);      // właściwy artykuł z poprzedniej tury
+        Assert.True(FollowUpQuery.PickContextual(raw, ctx,
+            cosineMargin: FollowUpQuery.DefaultSignalMargin,
+            rerankMargin: FollowUpQuery.DefaultRerankSignalMargin));
+    }
+
+    [Fact] // Asymetria zostaje na skali rerankera: surowy musi pobić kontekstowy o margines.
+    public void Raw_within_rerank_margin_still_loses()
+    {
+        var raw = Res(cosine: 0.80, rerank: 0.60);
+        var ctx = Res(cosine: 0.80, rerank: 0.58);       // różnica 0.02 < margines 0.05
+        Assert.True(FollowUpQuery.PickContextual(raw, ctx,
+            cosineMargin: FollowUpQuery.DefaultSignalMargin,
+            rerankMargin: FollowUpQuery.DefaultRerankSignalMargin));
+    }
+
+    [Fact] // Reranker wyłączony (Reranker:Enabled=false) → oba RerankTopScore null → spadamy na cosine.
+    public void Without_rerank_signal_falls_back_to_cosine()
+    {
+        var raw = Res(cosine: 0.85);
+        var ctx = Res(cosine: 0.60);
+        Assert.False(FollowUpQuery.PickContextual(raw, ctx,
+            cosineMargin: FollowUpQuery.DefaultSignalMargin,
+            rerankMargin: FollowUpQuery.DefaultRerankSignalMargin));
+    }
+
+    [Fact] // Sygnał rerankera TYLKO na jednym wariancie = nieporównywalny → cosine, nie zgadywanie.
+    public void One_sided_rerank_signal_falls_back_to_cosine()
+    {
+        var raw = Res(cosine: 0.85, rerank: 0.99);
+        var ctx = Res(cosine: 0.60);
+        Assert.False(FollowUpQuery.PickContextual(raw, ctx,
+            cosineMargin: FollowUpQuery.DefaultSignalMargin,
+            rerankMargin: FollowUpQuery.DefaultRerankSignalMargin));
     }
 }

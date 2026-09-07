@@ -25,4 +25,23 @@ public sealed class ProcessOptions
 
     /// <summary>Katalog raportów porażek JSONL (plik tworzony leniwie przy pierwszej porażce).</summary>
     public string FailureLogDir { get; set; } = "logs";
+
+    /// <summary>
+    /// Ile dokumentów przetwarzać RÓWNOLEGLE w fazie process (RÓWN-1). Domyślnie 1 = zachowanie
+    /// sekwencyjne jak dotąd (zero zmian semantyki, w tym uporządkowanego bezpiecznika ODP-2).
+    /// Podniesienie amortyzuje latencję LAN (M4↔Dell: gdy jeden dokument czeka na TEI/DB, inne liczą)
+    /// i zapełnia kolejkę GPU — przy masowym korpusie to główna dźwignia przepustowości. Rozsądny
+    /// start dla M4: 8. Uwaga: przy >1 „porażki z rzędu" bezpiecznika stają się przybliżeniem
+    /// (współbieżne wątki), ale intencja (seria = awaria infrastruktury → przerwij) zostaje zachowana.
+    /// </summary>
+    public int ProcessParallelism { get; set; } = 1;
+
+    /// <summary>
+    /// Dolny próg daty źródła (<c>RawDocument.SourceModificationDate</c>) — dokumenty starsze są
+    /// pomijane BEZ przetwarzania (żaden roundtrip do TEI/DB, liczy się jako Skipped). Null (domyślnie)
+    /// = brak filtra, zachowanie jak dotąd. Dokument bez znanej daty (null) NIE jest filtrowany —
+    /// brak informacji to nie powód do odrzucenia. Pomiar 2026-07-23 (próbka 3000 z NSA): ~27%
+    /// korpusu &lt;=2010 — filtr proporcjonalnie skraca run, nie dotyka już zaindeksowanych dokumentów.
+    /// </summary>
+    public DateOnly? MinSourceDate { get; set; }
 }

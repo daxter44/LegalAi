@@ -19,4 +19,10 @@ public sealed class LocalLlmOptions
     public string? ApiKey { get; set; }
 
     public int MaxTokens { get; set; } = 1024;
+
+    /// <summary>Parametr OpenAI-compat <c>reasoning_effort</c> — patrz <see cref="AuxLlmOptions.ReasoningEffort"/>
+    /// dla pełnego uzasadnienia (ten sam mechanizm, ta sama klasa providera). Domyślnie <c>null</c> —
+    /// dla modelu GŁÓWNEGO myślenie jest pożądane (jakość odpowiedzi), więc świadomie NIE wyłączamy go
+    /// tu domyślnie; ustaw jawnie, jeśli chcesz to wymusić.</summary>
+    public string? ReasoningEffort { get; set; }
 }

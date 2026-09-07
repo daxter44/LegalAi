@@ -1,0 +1,302 @@
+using System.Text;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using PrawoRAG.Domain;
+using PrawoRAG.Domain.Llm;
+using PrawoRAG.Domain.Retrieval;
+using PrawoRAG.Llm.Grounding;
+using PrawoRAG.Storage;
+
+namespace PrawoRAG.Eval;
+
+/// <summary>
+/// Eval odmów (`--refusals`): metryka nadrzędna fazy jakości pełnego korpusu. Bierze REALNE pytania
+/// użytkowników z tabeli messages (z historią rozmowy — follow-upy odtwarzane wiernie), przepuszcza
+/// przez AKTUALNY pipeline czatu (podwójny retrieval z marginesem, augmenter, OrderForGrounding,
+/// GroundedPrompt, LLM) i raportuje per pytanie: BYŁO→JEST (odmowa progu / odmowa treściowa / OK)
+/// + skład źródeł (akty/orzeczenia/nowele). Każda zmiana retrievalu/promptu dostaje odtąd liczbę,
+/// nie wrażenie.
+///
+/// Zastrzeżenie: pytania zadane Z ZAŁĄCZNIKIEM odtwarzają się BEZ niego (fragmenty dokumentu nie są
+/// persystowane — decyzja prywatności DOC #1); ich wynik interpretować ostrożnie.
+/// Konfiguracja: Eval:RefusalsLimit (0 = wszystkie), Eval:RefusalsGenerate (false = tylko retrieval,
+/// szybka diagnostyka składu źródeł bez kosztu LLM ~1 min/pytanie na Gemmie).
+/// </summary>
+public static class RefusalEvalRunner
+{
+    private sealed record ReplayItem(
+        string Question, IReadOnlyList<ChatTurn> History, string Baseline, DateTimeOffset AskedAt);
+
+    private sealed record ReplayResult(
+        string Question, string Baseline, string Outcome, double Signal, double? RerankTop, bool GatePassed,
+        int Acts, int Judgments, int Amendments, IReadOnlyList<string> TopSources, bool? CitationsClean);
+
+    /// <summary>Ścieżka zamrożonego zestawu (wersjonowany w repo jak golden-set) — próba per CWD
+    /// repo i katalog binarny.</summary>
+    private static string SetPath(IConfiguration cfg) =>
+        cfg["Eval:RefusalsSetPath"] ?? Path.Combine("src", "PrawoRAG.Eval", "refusal-set.json");
+
+    public static async Task RunAsync(IServiceProvider services, IConfiguration cfg, string[] args, CancellationToken ct)
+    {
+        var limit = cfg.GetValue<int?>("Eval:RefusalsLimit") ?? 0;
+        var generate = cfg.GetValue<bool?>("Eval:RefusalsGenerate") ?? true;
+        var topK = cfg.GetValue<int?>("Retrieval:TopK") ?? 8;
+        var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
+        // Osobny od `threshold` (odmowy) — patrz doc parametru gapClosingThreshold w
+        // GapClosingRetrieval.RetrieveAsync. Parytet z produkcją: to samo wejście, ta sama para progów.
+        var gapClosingThreshold = cfg.GetValue<double?>("Retrieval:GapClosingTriggerThreshold")
+                                   ?? AbstentionPolicy.DefaultThreshold;
+        var minChunkTokens = cfg.GetValue<int?>("Retrieval:MinChunkTokens") ?? 20;
+        var margin = cfg.GetValue<double?>("Retrieval:FollowUpSignalMargin") ?? FollowUpQuery.DefaultSignalMargin;
+        var rerankMargin = cfg.GetValue<double?>("Retrieval:RerankSignalMargin")
+                           ?? FollowUpQuery.DefaultRerankSignalMargin;
+        var setPath = SetPath(cfg);
+
+        // ZAMROŻONY ZESTAW (metryka musi być porównywalna między biegami — feedback właściciela:
+        // zestaw czytany na żywo z bazy zmienia się z każdym nowym pytaniem na czacie, więc różnice
+        // % między biegami mieszałyby efekt zmian kodu z efektem zmiany zestawu):
+        //   --freeze  → pobierz pytania z bazy i ZAPISZ zestaw do repo (świadoma zmiana = commit);
+        //   (bez)     → czytaj zestaw z pliku; brak pliku = fallback na bazę z ostrzeżeniem.
+        if (args.Contains("--freeze"))
+        {
+            var fresh = await LoadReplayItemsAsync(services, limit, ct);
+            Directory.CreateDirectory(Path.GetDirectoryName(setPath)!);
+            await File.WriteAllTextAsync(setPath,
+                JsonSerializer.Serialize(fresh, new JsonSerializerOptions { WriteIndented = true }), ct);
+            Console.WriteLine($"Zamrożono {fresh.Count} pytań → {setPath} (zacommituj; kolejne biegi czytają ten plik).");
+            return;
+        }
+
+        List<ReplayItem> items;
+        if (File.Exists(setPath))
+        {
+            items = JsonSerializer.Deserialize<List<ReplayItem>>(await File.ReadAllTextAsync(setPath, ct)) ?? [];
+            Console.WriteLine($"Zestaw ZAMROŻONY: {setPath} ({items.Count} pytań, odcisk {Fingerprint(items)}).");
+        }
+        else
+        {
+            items = await LoadReplayItemsAsync(services, limit, ct);
+            Console.WriteLine($"UWAGA: brak {setPath} — czytam NA ŻYWO z bazy ({items.Count} pytań, " +
+                              $"odcisk {Fingerprint(items)}). Wyniki między biegami porównywalne TYLKO przy tym samym " +
+                              $"odcisku; zamroź zestaw: --refusals --freeze.");
+        }
+        if (items.Count == 0)
+        {
+            Console.WriteLine("Brak pytań — ani w zamrożonym zestawie, ani w tabeli messages.");
+            return;
+        }
+        Console.WriteLine($"Eval odmów: {items.Count} pytań (generacja: {generate}, próg: {threshold:F2}, TopK: {topK}).\n");
+
+        Directory.CreateDirectory("logs");
+        var reportPath = Path.Combine("logs", $"refusals-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jsonl");
+        await using var report = new StreamWriter(reportPath) { AutoFlush = true };
+
+        var results = new List<ReplayResult>();
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            using var scope = services.CreateScope();
+            var r = await ReplayAsync(scope.ServiceProvider, item, generate, topK, threshold, gapClosingThreshold, minChunkTokens, margin, rerankMargin, ct);
+            results.Add(r);
+
+            Console.WriteLine($"[{i + 1,3}/{items.Count}] BYŁO={r.Baseline,-16} JEST={r.Outcome,-16} " +
+                              $"sim={r.Signal:F3} rr={(r.RerankTop is { } rt ? rt.ToString("F3") : "  -  ")} " +
+                              $"akty={r.Acts} orzecz={r.Judgments} now={r.Amendments} | {Trim(r.Question, 62)}");
+            await report.WriteLineAsync(JsonSerializer.Serialize(r));
+        }
+
+        PrintSummary(results, generate);
+        Console.WriteLine($"\nSurowe wyniki: {reportPath}");
+    }
+
+    /// <summary>Realne pytania z bazy: pary user→assistant per rozmowa (kolejność CreatedAt), historia
+    /// wcześniejszych tur odtwarzana jak w UI (odpowiedź=null przy odmowie — nie kontynuujemy po odmowie).
+    /// Dedup po znormalizowanym tekście (powtórki „jeszcze raz" liczą się raz — najnowsze wystąpienie).</summary>
+    private static async Task<List<ReplayItem>> LoadReplayItemsAsync(IServiceProvider services, int limit, CancellationToken ct)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PrawoRagDbContext>();
+
+        var messages = await db.Messages.AsNoTracking()
+            .OrderBy(m => m.ConversationId).ThenBy(m => m.CreatedAt)
+            .Select(m => new { m.ConversationId, m.Role, m.Content, m.CreatedAt, m.Abstained })
+            .ToListAsync(ct);
+
+        var items = new List<ReplayItem>();
+        foreach (var convo in messages.GroupBy(m => m.ConversationId))
+        {
+            var history = new List<ChatTurn>();
+            string? pendingQuestion = null;
+            DateTimeOffset pendingAt = default;
+            foreach (var m in convo)
+            {
+                if (m.Role == "user") { pendingQuestion = m.Content; pendingAt = m.CreatedAt; continue; }
+                if (pendingQuestion is null) continue;
+
+                var baseline = Classify(m.Abstained, m.Content);
+                items.Add(new ReplayItem(pendingQuestion, history.ToList(), baseline, pendingAt));
+                history.Add(new ChatTurn(pendingQuestion, baseline == "OK" ? m.Content : null));
+                pendingQuestion = null;
+            }
+        }
+
+        var deduped = items
+            .GroupBy(i => Normalize(i.Question))
+            .Select(g => g.OrderByDescending(i => i.AskedAt).First())
+            .OrderByDescending(i => i.AskedAt)
+            .ToList();
+        return limit > 0 ? deduped.Take(limit).ToList() : deduped;
+    }
+
+    /// <summary>Odtworzenie logiki ChatService (FollowUpSelector → bramka → augmenter → OrderForGrounding
+    /// → prompt → LLM). Wybór wariantu follow-upu jest WSPÓŁDZIELONY z produkcją (FollowUpSelector) —
+    /// wcześniej ten runner miał własną, uboższą kopię (bez foldu i bez ExactMatchText), więc metryka
+    /// mierzyła inny pipeline niż czat.</summary>
+    private static async Task<ReplayResult> ReplayAsync(
+        IServiceProvider sp, ReplayItem item, bool generate,
+        int topK, double threshold, double gapClosingThreshold, int minChunkTokens, double margin,
+        double rerankMargin, CancellationToken ct)
+    {
+        var retriever = sp.GetRequiredService<IRetriever>();
+        RetrievalQuery Query(string text) => new() { Text = text, TopK = topK, MinChunkTokens = minChunkTokens };
+
+        // TO SAMO wejście retrievalu co czat (Zadanie 12 planu ROU) — inaczej metryka odmów mierzyłaby
+        // pipeline, którego produkcja nie używa. Blizna: commit 1de510b, „rozjazd kopii = rozjazd
+        // metryki". Reformulator brany z kontenera; gdy go nie ma (brak modelu pomocniczego), pętla
+        // domykająca jest wyłączona i eval mierzy dokładnie to, co dotąd. `gapClosingThreshold` ≠
+        // `threshold` (odmowy) — patrz GapClosingRetrieval.RetrieveAsync, param gapClosingThreshold.
+        var retrieval = await GapClosingRetrieval.RetrieveAsync(
+            retriever, Query, item.Question, item.History, margin, rerankMargin, gapClosingThreshold,
+            sp.GetService<IQueryReformulator>(), maxExtraRounds: 1, ct);
+        var (query, result) = (retrieval.Query, retrieval.Result);
+
+        if (AbstentionPolicy.ShouldAbstain(result, threshold))
+            return new ReplayResult(item.Question, item.Baseline, "odmowa-progu", result.MaxSimilarity,
+                result.RerankTopScore, GatePassed: false, 0, 0, 0, [], null);
+
+        var chunks = result.Chunks;
+        var augmenter = sp.GetRequiredService<ITemporalAugmenter>();
+        try { chunks = await augmenter.AugmentAsync(query, result.Chunks, ct); } catch { /* best-effort */ }
+        chunks = GroundedPrompt.OrderForGrounding(chunks);
+
+        var acts = chunks.Count(c => c.DocType == DocTypes.Act && c.AmendmentEffectiveDate is null);
+        var amendments = chunks.Count(c => c.AmendmentEffectiveDate is not null);
+        var judgments = chunks.Count - acts - amendments;
+        var topSources = chunks.Take(5).Select(GroundedPrompt.LocatorLabel).ToList();
+
+        if (!generate)
+            return new ReplayResult(item.Question, item.Baseline, "(bez generacji)", result.MaxSimilarity,
+                result.RerankTopScore, GatePassed: true, acts, judgments, amendments, topSources, null);
+
+        var llm = sp.GetRequiredService<ILlmProvider>();
+        var (req, sources) = GroundedPrompt.Build(item.Question, chunks, item.History);
+        var sb = new StringBuilder();
+        string outcome;
+        bool? citationsClean = null;
+        try
+        {
+            await foreach (var d in llm.StreamCompletionAsync(req, ct)) sb.Append(d);
+            var answer = sb.ToString();
+            if (string.IsNullOrWhiteSpace(answer)) outcome = "pusta";
+            else if (GroundedPrompt.IsContentRefusal(answer)) outcome = "odmowa-treściowa"; // ODM-4: fraza BEZ cytowań [n]
+            else
+            {
+                outcome = "OK";
+                var ctx = chunks.Select((c, k) => $"[{k + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
+                citationsClean = CitationValidator.Validate(answer, ctx, sources.Count).IsClean;
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            outcome = $"błąd: {e.GetType().Name}"; // Case 3 próba 1 — błędy generacji też są wynikiem, nie crashem evalu
+        }
+
+        return new ReplayResult(item.Question, item.Baseline, outcome, result.MaxSimilarity,
+            result.RerankTopScore, GatePassed: true, acts, judgments, amendments, topSources, citationsClean);
+    }
+
+    private static void PrintSummary(List<ReplayResult> results, bool generate)
+    {
+        Console.WriteLine("\n=== PODSUMOWANIE ===");
+        var n = results.Count;
+        // Uczciwość statystyczna: przy małym n różnice rzędu 1-2 pytań to szum, nie sygnał.
+        Console.WriteLine($"(n={n}: jedno pytanie = {100.0 / n:F1} pp — różnice mniejsze niż ~2 pytania traktuj jako szum)");
+        var wasRefusal = results.Count(r => r.Baseline is "odmowa-progu" or "odmowa-treściowa" or "pusta");
+        Console.WriteLine($"BYŁO:  odmowy {wasRefusal}/{n} ({Pct(wasRefusal, n)}) — [{ByKind(results.Select(r => r.Baseline))}]");
+
+        if (generate)
+        {
+            var isRefusal = results.Count(r => r.Outcome is "odmowa-progu" or "odmowa-treściowa" or "pusta" || r.Outcome.StartsWith("błąd"));
+            Console.WriteLine($"JEST:  odmowy {isRefusal}/{n} ({Pct(isRefusal, n)}) — [{ByKind(results.Select(r => r.Outcome))}]");
+
+            var fixedCount = results.Count(r => IsRefusalKind(r.Baseline) && r.Outcome == "OK");
+            var regressed = results.Count(r => r.Baseline == "OK" && IsRefusalKind(r.Outcome));
+            var dirty = results.Count(r => r.CitationsClean == false);
+            Console.WriteLine($"Przejścia: naprawione {fixedCount}, regresje {regressed}; odpowiedzi z nieczystymi cytatami: {dirty}.");
+        }
+
+        Console.WriteLine($"Skład źródeł (średnio, gdy bramka przeszła): " +
+            $"akty {Avg(results, r => r.Acts):F1}, orzeczenia {Avg(results, r => r.Judgments):F1}, nowele {Avg(results, r => r.Amendments):F1}.");
+
+        // KALIBRACJA BRAMKI: rozkłady OBU sygnałów per wynik. Szukamy progu rozdzielającego
+        // „OK" od odmów treściowych — sygnał, którego zakresy się nie nakładają (albo nakładają
+        // najmniej), nadaje się na bramkę; próg = między max(odmowy) a min(OK), z marginesem.
+        if (generate)
+        {
+            Console.WriteLine("\n=== KALIBRACJA: rozkład sygnałów per wynik (min / śr / max) ===");
+            foreach (var g in results.GroupBy(r => r.Outcome == "OK" ? "OK" : "odmowa/błąd").OrderBy(g => g.Key))
+            {
+                var sims = g.Select(r => r.Signal).ToList();
+                var rrs = g.Where(r => r.RerankTop is not null).Select(r => r.RerankTop!.Value).ToList();
+                Console.WriteLine($"  {g.Key,-12} (n={g.Count(),2})  " +
+                    $"sim: {sims.Min():F3} / {sims.Average():F3} / {sims.Max():F3}   " +
+                    (rrs.Count > 0 ? $"rr: {rrs.Min():F3} / {rrs.Average():F3} / {rrs.Max():F3}" : "rr: -"));
+            }
+            Console.WriteLine("  → próg bramki: między max(odmowa) a min(OK) wybranego sygnału; nakładanie się" +
+                              " zakresów = bramka progowa nie rozdzieli tych przypadków (zostaje odmowa treściowa LLM).");
+        }
+
+        // Cel z planu pilotażu: 10-25% odmów. Powyżej = dziury/retrieval; podejrzanie nisko = ryzyko halucynacji.
+        static string Pct(int a, int b) => b == 0 ? "-" : $"{100.0 * a / b:F0}%";
+        static double Avg(List<ReplayResult> rs, Func<ReplayResult, int> f)
+            => rs.Where(r => r.GatePassed) is var g && g.Any() ? g.Average(f) : 0;
+        static bool IsRefusalKind(string s) => s is "odmowa-progu" or "odmowa-treściowa" or "pusta" || s.StartsWith("błąd");
+        static string ByKind(IEnumerable<string> outcomes) => string.Join(", ",
+            outcomes.GroupBy(o => o).OrderByDescending(g => g.Count()).Select(g => $"{g.Key}={g.Count()}"));
+    }
+
+    private static string Classify(bool abstained, string content) =>
+        abstained ? "odmowa-progu"
+        : string.IsNullOrWhiteSpace(content) ? "pusta"
+        : GroundedPrompt.IsContentRefusal(content) ? "odmowa-treściowa" // ODM-4: fraza BEZ cytowań [n]
+        : "OK";
+
+    /// <summary>Normalizacja do dedupu: białe znaki + spacja przed interpunkcją traktowane jak jej brak
+    /// (bez tego „interes?" i „interes ?" to różne klucze — realny false-negative znaleziony 2026-07-19,
+    /// dwie kopie tego samego pytania B2B w evalu z różnym wynikiem).</summary>
+    /// <summary>Odcisk zestawu (liczba + skrót SHA znormalizowanych pytań) — wyniki dwóch biegów
+    /// są porównywalne TYLKO przy identycznym odcisku.</summary>
+    private static string Fingerprint(List<ReplayItem> items)
+    {
+        var joined = string.Join("\n", items.Select(i => Normalize(i.Question)).OrderBy(q => q, StringComparer.Ordinal));
+        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(joined));
+        return $"{items.Count}q-{Convert.ToHexString(hash)[..8].ToLowerInvariant()}";
+    }
+
+    private static string Normalize(string s)
+    {
+        var flat = string.Join(' ', s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return PunctuationSpaceRe.Replace(flat, "$1").ToLowerInvariant();
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex PunctuationSpaceRe =
+        new(@"\s+([?!.,;:])", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string Trim(string s, int max)
+    {
+        var flat = Normalize(s);
+        return flat.Length <= max ? flat : flat[..max] + "…";
+    }
+}

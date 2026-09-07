@@ -45,6 +45,54 @@ if (args.Contains("--exam") || (cfg.GetValue<bool?>("Eval:Exam") ?? false))
     return;
 }
 
+// Sonda act-lane (diagnoza „statut nieretrievalny", sesja 2026-07-17): --probe-akty [własne pytanie].
+// Tylko odczyt bazy + TEI; bez LLM. Wynik decyduje o projekcie naprawy retrievalu aktów.
+if (args.Contains("--probe-akty"))
+{
+    await ActLaneProbe.RunAsync(host.Services, args, default);
+    return;
+}
+
+// Eval odmów (metryka nadrzędna fazy pełnego korpusu): --refusals — realne pytania z tabeli messages
+// przez aktualny pipeline; raport BYŁO→JEST + skład źródeł. Eval:RefusalsGenerate=false = bez LLM.
+if (args.Contains("--refusals"))
+{
+    await RefusalEvalRunner.RunAsync(host.Services, cfg, args, default);
+    return;
+}
+
+// AJ-1b: eval analizy dokumentów — golden set analysis-set.json przez fazę map (ten sam prompt
+// i retrieval co produkcja); recall wbudowanych ryzyk, fałszywe RYZYKO, trafienie normy, czas.
+// --no-generate (lub Eval:AnalysisGenerate=false) = tylko retrieval; Eval:AnalysisDocs=id1,id2 = podzbiór.
+if (args.Contains("--analysis"))
+{
+    await AnalysisEvalRunner.RunAsync(host.Services, cfg, args, default);
+    return;
+}
+
+// Raport z żywego ruchu (Zadanie 16 planu ROU): metryka odmów i zachowanie bramek policzone na
+// historii tabeli messages — także wstecz. Zero wywołań LLM, więc darmowy i powtarzalny.
+if (args.Contains("--live-report"))
+{
+    await LiveReportRunner.RunAsync(host.Services, default);
+    return;
+}
+
+// JAK-0/1: pomiar + neutralizacja chunków zdegenerowanych (placeholdery, szum anonimizacyjny).
+// Dry-run domyślnie; --apply zeruje embeddingi zakwalifikowanych.
+if (args.Contains("--sanitize-chunks"))
+{
+    await SanitizeChunksRunner.RunAsync(host.Services, cfg, args, default);
+    return;
+}
+
+// JAK-3: „gdzie ginie mój chunk" — exact fp32/fp16 vs HNSW vs BM25 vs fuzja (Case 5).
+if (args.Contains("--probe-chunk"))
+{
+    await ChunkProbe.RunAsync(host.Services, cfg, args, default);
+    return;
+}
+
 var topK = cfg.GetValue<int?>("Retrieval:TopK") ?? 8;
 var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
 var minChunkTokens = cfg.GetValue<int?>("Retrieval:MinChunkTokens") ?? 20;
@@ -85,19 +133,23 @@ foreach (var item in items)
         else
         {
             var llm = scope.ServiceProvider.GetRequiredService<ILlmProvider>();
+            chunks = GroundedPrompt.OrderForGrounding(chunks); // parytet z /api/chat i ChatService
             var (req, sources) = GroundedPrompt.Build(item.Question, chunks);
             var sb = new StringBuilder();
             await foreach (var d in llm.StreamCompletionAsync(req, default)) sb.Append(d);
             var answer = sb.ToString();
 
             // Realna bramka: czy LLM SAM odmówił (fraza z GroundedPrompt), gdy źródła nie odpowiadają.
-            if (answer.Contains("Nie mam wystarczających źródeł", StringComparison.OrdinalIgnoreCase))
+            if (answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase))
             {
                 abstained = true;
             }
             else
             {
-                var ctx = res.Chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
+                // Kontekst walidatora z TYCH SAMYCH chunków co prompt (augmentowane + uporządkowane) —
+                // wcześniej szedł z res.Chunks: cytat źródła DOŁOŻONEGO przez augmenter wypadał poza
+                // zakres, a numeracja [n] mogła wskazywać inny chunk niż w prompcie (parytet z /api/chat).
+                var ctx = chunks.Select((c, i) => $"[{i + 1}] {GroundedPrompt.LocatorLabel(c)}\n{c.Text}").ToList();
                 citationsClean = CitationValidator.Validate(answer, ctx, sources.Count).IsClean;
                 abstained = false;
             }

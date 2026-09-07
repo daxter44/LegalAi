@@ -17,6 +17,10 @@ public interface IRawDocumentStore
     /// <summary>Strumieniuje leniwie wszystkie surowe dokumenty danego źródła. Działa offline.</summary>
     IAsyncEnumerable<RawDocument> EnumerateAsync(string source, CancellationToken ct);
 
+    /// <summary>Odczyt POJEDYNCZEGO surowego dokumentu po kluczu naturalnym (bez enumeracji całego
+    /// magazynu) — pod celowany reprocessing dokumentów Failed. Null, gdy dokumentu nie ma w magazynie.</summary>
+    Task<RawDocument?> ReadAsync(string source, string externalId, CancellationToken ct);
+
     /// <summary>Liczba surowych dokumentów danego źródła w magazynie.</summary>
     Task<int> CountAsync(string source, CancellationToken ct);
 }

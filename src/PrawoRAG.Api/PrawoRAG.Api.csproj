@@ -8,8 +8,18 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.6" />
+    <!-- Płatności (E3): oficjalna biblioteka Stripe — używana też do WERYFIKACJI PODPISU webhooka,
+         więc nie jest wygodą tylko elementem bezpieczeństwa. -->
+    <PackageReference Include="Stripe.net" Version="52.4.0" />
     <PackageReference Include="Markdig" Version="0.37.0" />
     <PackageReference Include="HtmlSanitizer" Version="9.0.892" />
+    <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
+    <!-- Wymagane przez `dotnet ef` gdy Api jest projektem startowym (design-time tooling, nie runtime). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -17,6 +27,12 @@
     <ProjectReference Include="..\PrawoRAG.Storage\PrawoRAG.Storage.csproj" />
     <ProjectReference Include="..\PrawoRAG.Embeddings\PrawoRAG.Embeddings.csproj" />
     <ProjectReference Include="..\PrawoRAG.Llm\PrawoRAG.Llm.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Dokumenty prawne (regulamin, polityka prywatności, cookies) jako zasoby wbudowane:
+         renderuje je Services/Legal/LegalPages.cs. Jedno źródło prawdy dla prawnika i użytkownika. -->
+    <EmbeddedResource Include="Legal\*.md" />
   </ItemGroup>
 
 </Project>

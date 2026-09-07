@@ -6,12 +6,18 @@
     <base href="/" />
     <link rel="stylesheet" href="css/tokens.css" />
     <link rel="stylesheet" href="css/app.css" />
-    <link rel="stylesheet" href="PrawoRAG.Api.styles.css" />
-    <title>PrawoRAG — asystent prawny</title>
+    @* Bez linku do PrawoRAG.Api.styles.css: projekt nie ma scoped CSS (*.razor.css), więc bundel
+       nie powstaje i odnośnik kończył się 404 przy każdym wejściu. *@
+    <title>OmniaSI — asystent researchu prawnego</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <HeadOutlet />
 </head>
 <body>
     <Routes @rendermode="InteractiveServer" />
     <script src="_framework/blazor.web.js"></script>
+    <script src="js/cite.js"></script>
+    @* Analityka bez cookies (US-2.12): self-hostowane Umami — pomiar zagregowany, bez zapisu na
+       urządzeniu, więc bez banera zgody. Pusty string, gdy Analytics nieskonfigurowane (dev). *@
+    @((MarkupString)PrawoRAG.Api.Services.AnalyticsSnippet.Html)
 </body>
 </html>

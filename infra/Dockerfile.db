@@ -1,0 +1,36 @@
+# Postgres + pgvector + POLSKI slownik do wyszukiwania pelnotekstowego (hunspell).
+#
+# Po co: kolumna/indeks tsvector liczone konfiguracja `simple` nie robia stemmingu ani nie usuwaja
+# stopwordow, a `websearch_to_tsquery` AND-uje wszystkie tokeny — w efekcie tor rzadki nie dopasowuje
+# nawet chunka, ktory jest doslowna odpowiedzia na pytanie (zmierzone, patrz
+# docs/RUNBOOK-SLOWNIK-POLSKI-FTS.md). Polskiego nie ma w snowballu, wiec robi sie go plikami
+# ispell/hunspell — a te musza byc W OBRAZIE, bo Postgres czyta je z $SHAREDIR/tsearch_data.
+#
+# UWAGA: swiadomie NIE ma tu `USER postgres` na koncu. Oficjalny entrypoint Postgresa startuje jako
+# root (ustawia wlasciciela katalogu danych) i sam zrzuca uprawnienia — przelaczenie uzytkownika
+# w obrazie psuje inicjalizacje.
+FROM pgvector/pgvector:pg17
+
+# hunspell-pl daje /usr/share/hunspell/pl_PL.{dic,aff}. Instalacja odpala tez `pg_updatedicts`
+# z postgresql-common, ktore tworzy symlinki w tsearch_data — ale NIE konwertuje kodowania
+# (zweryfikowane: .affix zostaje z naglowkiem "SET ISO8859-2"), dlatego nadpisujemy je nizej.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends hunspell-pl \
+ && rm -rf /var/lib/apt/lists/*
+
+# Postgres wymaga slownikow w kodowaniu bazy (u nas UTF-8). Debianowy pl_PL jest w ISO-8859-2,
+# wiec konwertujemy OBA pliki i podmieniamy deklaracje kodowania w naglowku .affix.
+# Symlinki po pg_updatedicts usuwamy, zeby zapisac wlasne, przekonwertowane pliki.
+RUN set -eux; \
+    TS="$(pg_config --sharedir)/tsearch_data"; \
+    rm -f "$TS/pl_pl.dict" "$TS/pl_pl.affix"; \
+    iconv -f ISO-8859-2 -t UTF-8 /usr/share/hunspell/pl_PL.dic > "$TS/pl_pl.dict"; \
+    iconv -f ISO-8859-2 -t UTF-8 /usr/share/hunspell/pl_PL.aff \
+      | sed 's/^SET ISO8859-2/SET UTF-8/' > "$TS/pl_pl.affix"; \
+    head -1 "$TS/pl_pl.affix" | grep -qx 'SET UTF-8'; \
+    test -s "$TS/pl_pl.dict"
+
+# Stoplista. KRYTYCZNE: dla slownikow ispell Postgres sprawdza stopliste PO lematyzacji, wiec plik
+# musi zawierac LEMATY, nie formy powierzchniowe (np. "czy" lematyzuje sie do "cza", "bez" do "beza").
+# Szczegoly i dowod w runbooku — nie "porzadkowac" tego pliku usuwajac dziwne wyrazy.
+COPY tsearch/polish.stop /usr/share/postgresql/17/tsearch_data/polish.stop

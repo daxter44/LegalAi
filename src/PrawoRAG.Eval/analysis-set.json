@@ -1,0 +1,111 @@
+[
+  {
+    "id": "najem-mieszkanie",
+    "kind": "umowa",
+    "prompt": "Oceń ryzyka dla najemcy i wskaż postanowienia niezgodne z prawem.",
+    "note": "Z TEST-ZALACZNIK-UMOWA-NAJMU.md: 5 wbudowanych wad (kaucja 25x, podwyzka natychmiastowa, wylaczenie rekojmi, kara umowna za wypowiedzenie, zwrot kaucji 6 mies.). uopl = ustawa o ochronie praw lokatorow (DU/2001/733), KC = DU/1964/93.",
+    "pages": [
+      "UMOWA NAJMU LOKALU MIESZKALNEGO\nzawarta w dniu 1 sierpnia 2026 r. w Poznaniu pomiędzy: Janem Kowalskim, zamieszkałym w Poznaniu (Wynajmujący) a Anną Nowak, zamieszkałą w Gnieźnie (Najemca), o następującej treści:\n§1. Przedmiot najmu. Wynajmujący oddaje Najemcy do używania lokal mieszkalny nr 4 przy ul. Kwiatowej 15 w Poznaniu, o powierzchni 48 m², wraz z wyposażeniem opisanym w załączniku nr 1 do umowy.\n§2. Cel najmu. Lokal będzie wykorzystywany wyłącznie na cele mieszkaniowe Najemcy. Najemca nie może podnajmować lokalu ani oddawać go do bezpłatnego używania osobom trzecim bez pisemnej zgody Wynajmującego.\n§3. Czas trwania. Umowa zostaje zawarta na czas oznaczony 24 miesięcy, od 1 września 2026 r. do 31 sierpnia 2028 r.\n§4. Czynsz. Czynsz najmu wynosi 3 200 zł miesięcznie, płatny z góry do 10. dnia każdego miesiąca na rachunek bankowy Wynajmującego. Oprócz czynszu Najemca ponosi opłaty za media (energia elektryczna, gaz, woda) według wskazań liczników oraz opłaty za wywóz odpadów według stawek gminnych.\n§5. Kaucja. Najemca wpłaca kaucję zabezpieczającą w wysokości 80 000 zł (dwudziestopięciokrotność miesięcznego czynszu), płatną przed wydaniem lokalu. Kaucja nie podlega oprocentowaniu.\n§6. Wydanie lokalu. Wydanie lokalu nastąpi protokołem zdawczo-odbiorczym w dniu 1 września 2026 r. Protokół określa stan techniczny lokalu, stan liczników oraz wykaz wyposażenia.\n§7. Podwyższanie czynszu. Wynajmujący może podwyższyć czynsz w każdym czasie, ze skutkiem natychmiastowym, zawiadamiając Najemcę e-mailem. Nowa stawka czynszu obowiązuje od dnia zawiadomienia.\n§8. Obowiązki Najemcy. Najemca zobowiązuje się do utrzymywania lokalu w należytym stanie, dokonywania drobnych napraw oraz niedokonywania zmian konstrukcyjnych bez zgody Wynajmującego.\n§9. Odpowiedzialność za wady. Strony zgodnie wyłączają odpowiedzialność Wynajmującego za wszelkie wady lokalu, w tym wady ukryte, zawilgocenie i niesprawność instalacji, niezależnie od chwili ich powstania.\n§10. Kara umowna. W przypadku wypowiedzenia umowy przez Najemcę przed upływem okresu, na jaki została zawarta, Najemca zapłaci Wynajmującemu karę umowną w wysokości 15 000 zł.\n§11. Zwrot lokalu. Po zakończeniu najmu Najemca zwróci lokal w stanie niepogorszonym ponad normalne zużycie. Kaucja podlega zwrotowi w terminie 6 miesięcy od opróżnienia lokalu, po potrąceniu należności Wynajmującego.\n§12. Postanowienia końcowe. W sprawach nieuregulowanych stosuje się przepisy Kodeksu cywilnego. Zmiany umowy wymagają formy pisemnej pod rygorem nieważności. Umowę sporządzono w dwóch jednobrzmiących egzemplarzach."
+    ],
+    "units": [
+      { "heading": "wstęp", "expectedVerdict": "NoLegalContent" },
+      { "heading": "§ 1", "expectedVerdict": "NoLegalContent" },
+      { "heading": "§ 2", "expectedVerdict": "Ok" },
+      { "heading": "§ 3", "expectedVerdict": "Ok" },
+      { "heading": "§ 4", "expectedVerdict": "Ok" },
+      { "heading": "§ 5", "expectedVerdict": "Risk", "expectedEli": "DU/2001/733", "expectedArticle": "6", "plantedRisk": "kaucja 25x czynszu; uopl art. 6 ust. 1 - maksymalnie 12-krotnosc" },
+      { "heading": "§ 6", "expectedVerdict": "Ok" },
+      { "heading": "§ 7", "expectedVerdict": "Risk", "expectedEli": "DU/2001/733", "expectedArticle": "8a", "plantedRisk": "podwyzka w kazdym czasie ze skutkiem natychmiastowym; uopl art. 8a - wypowiedzenie stawki na pismie, 3 miesiace naprzod" },
+      { "heading": "§ 8", "expectedVerdict": "Ok" },
+      { "heading": "§ 9", "expectedVerdict": "Risk", "expectedEli": "DU/1964/93", "expectedArticle": "664", "plantedRisk": "wylaczenie odpowiedzialnosci za wady lokalu; KC art. 664 (rekojmia najmu), art. 58 par. 1" },
+      { "heading": "§ 10", "expectedVerdict": "Risk", "expectedEli": "DU/1964/93", "expectedArticle": "483", "plantedRisk": "kara umowna za wypowiedzenie umowy najmu; KC art. 483 par. 1 - kara umowna tylko dla zobowiazan niepienieznych" },
+      { "heading": "§ 11", "expectedVerdict": "Risk", "expectedEli": "DU/2001/733", "expectedArticle": "6", "plantedRisk": "zwrot kaucji w 6 miesiecy; uopl art. 6 ust. 4 - 1 miesiac od oproznienia lokalu" },
+      { "heading": "§ 12", "expectedVerdict": "Ok" }
+    ]
+  },
+  {
+    "id": "kurs-konsument",
+    "kind": "umowa",
+    "prompt": "Sprawdź, które postanowienia naruszają prawa konsumenta.",
+    "note": "Umowa B2C na kurs online zawarta na odlegosc. upk = ustawa o prawach konsumenta (DU/2014/827). Klauzule abuzywne (KC art. 385^3) bez scoringu normy - numer artykulu z indeksem gornym nie ma pewnej reprezentacji w lokalizatorze.",
+    "pages": [
+      "UMOWA O ŚWIADCZENIE USŁUG SZKOLENIOWYCH\nzawarta drogą elektroniczną w dniu 15 lipca 2026 r. pomiędzy: Akademia Rozwoju sp. z o.o. z siedzibą w Warszawie, ul. Prosta 1, KRS 0000123456 (Organizator) a Panem Piotrem Wiśniewskim, konsumentem, zamieszkałym w Łodzi (Uczestnik).\n§1. Przedmiot umowy. Organizator zobowiązuje się przeprowadzić dla Uczestnika kurs online „Analityk danych od podstaw” obejmujący 40 godzin zajęć na żywo prowadzonych przez platformę wideo oraz dostęp do nagrań przez 12 miesięcy od zakończenia kursu.\n§2. Termin i organizacja. Kurs rozpoczyna się 1 września 2026 r. i trwa 10 tygodni, zajęcia odbywają się we wtorki i czwartki w godzinach 18:00–20:00. Organizator może zmienić termin pojedynczych zajęć z ważnych powodów, zawiadamiając Uczestnika co najmniej 48 godzin wcześniej i proponując termin zastępczy.\n§3. Cena i płatność. Cena kursu wynosi 4 900 zł brutto i jest płatna w całości przed rozpoczęciem kursu. Organizator może jednostronnie zmienić cenę kursu w trakcie jego trwania, jeżeli wzrosną koszty jego organizacji; Uczestnik zobowiązany jest dopłacić różnicę w terminie 7 dni od zawiadomienia.\n§4. Odstąpienie od umowy. Uczestnikowi nie przysługuje prawo odstąpienia od umowy zawartej na odległość. Umowę uważa się za zawartą z chwilą dokonania płatności i od tej chwili jest ona wiążąca dla obu stron bez możliwości rezygnacji.\n§5. Rezygnacja z kursu. W razie rezygnacji Uczestnika z kursu po jego rozpoczęciu cała wpłacona kwota przepada na rzecz Organizatora tytułem kary umownej, niezależnie od liczby odbytych zajęć i przyczyny rezygnacji.\n§6. Obowiązki Organizatora. Organizator zapewnia prowadzenie zajęć przez wykładowców z co najmniej trzyletnim doświadczeniem zawodowym, materiały szkoleniowe w formie elektronicznej oraz certyfikat ukończenia kursu po zaliczeniu projektu końcowego.\n§7. Reklamacje. Reklamacje dotyczące jakości kursu Uczestnik składa e-mailem na adres Organizatora. Organizator rozpatruje reklamację w terminie 60 dni od jej otrzymania. Brak odpowiedzi w tym terminie oznacza odrzucenie reklamacji.\n§8. Dane osobowe. Administratorem danych osobowych Uczestnika jest Organizator. Dane przetwarzane są w celu wykonania umowy oraz wypełnienia obowiązków prawnych Organizatora, na zasadach określonych w rozporządzeniu Parlamentu Europejskiego i Rady (UE) 2016/679. Uczestnikowi przysługuje prawo dostępu do danych, ich sprostowania, usunięcia oraz wniesienia skargi do Prezesa Urzędu Ochrony Danych Osobowych.\n§9. Sąd właściwy. Wszelkie spory wynikające z umowy strony poddają rozstrzygnięciu sądu właściwego dla siedziby Organizatora.\n§10. Postanowienia końcowe. W sprawach nieuregulowanych stosuje się przepisy prawa polskiego. Umowa została zawarta w formie elektronicznej, a jej treść Organizator przesłał Uczestnikowi na trwałym nośniku w dniu zawarcia."
+    ],
+    "units": [
+      { "heading": "wstęp", "expectedVerdict": "NoLegalContent" },
+      { "heading": "§ 1", "expectedVerdict": "NoLegalContent" },
+      { "heading": "§ 2", "expectedVerdict": "Ok" },
+      { "heading": "§ 3", "expectedVerdict": "Risk", "plantedRisk": "jednostronna zmiana ceny w trakcie umowy z konsumentem; KC art. 385^3 pkt 20 (klauzula abuzywna)" },
+      { "heading": "§ 4", "expectedVerdict": "Risk", "expectedEli": "DU/2014/827", "expectedArticle": "27", "plantedRisk": "wylaczenie prawa odstapienia od umowy zawartej na odleglosc; upk art. 27 - 14 dni" },
+      { "heading": "§ 5", "expectedVerdict": "Risk", "expectedEli": "DU/1964/93", "expectedArticle": "483", "plantedRisk": "przepadek calej wplaty jako kara umowna za rezygnacje; KC art. 483 (zobowiazanie pieniezne) + art. 385^3 pkt 17" },
+      { "heading": "§ 6", "expectedVerdict": "Ok" },
+      { "heading": "§ 7", "expectedVerdict": "Risk", "expectedEli": "DU/2014/827", "expectedArticle": "7a", "plantedRisk": "60 dni na reklamacje i milczenie = odrzucenie; upk art. 7a - 14 dni, brak odpowiedzi = uznanie reklamacji" },
+      { "heading": "§ 8", "expectedVerdict": "Ok" },
+      { "heading": "§ 9", "expectedVerdict": "Risk", "plantedRisk": "sad siedziby przedsiebiorcy narzucony konsumentowi; KC art. 385^3 pkt 23" },
+      { "heading": "§ 10", "expectedVerdict": "Ok" }
+    ]
+  },
+  {
+    "id": "regulamin-sklep",
+    "kind": "regulamin",
+    "prompt": "Oceń zgodność regulaminu z prawami konsumenta.",
+    "note": "Regulamin sklepu internetowego. Wady: odstapienie 7 dni, warunek oryginalnego opakowania, potracenie 20% przy zwrocie, odpowiedzialnosc za niezgodnosc towaru tylko 6 miesiecy.",
+    "pages": [
+      "REGULAMIN SKLEPU INTERNETOWEGO DOMOWE-AKCESORIA.PL\nobowiązujący od 1 czerwca 2026 r.\n§ 1. Postanowienia ogólne. Sklep internetowy dostępny pod adresem domowe-akcesoria.pl prowadzi Domowe Akcesoria sp. z o.o. z siedzibą w Krakowie, ul. Długa 5, NIP 6761234567, KRS 0000654321 (Sprzedawca). Regulamin określa zasady składania zamówień, zawierania umów sprzedaży, dostawy, odstąpienia od umowy oraz reklamacji.\n§ 2. Składanie zamówień. Zamówienia można składać przez formularz na stronie sklepu przez całą dobę. Umowa sprzedaży zostaje zawarta z chwilą otrzymania przez Klienta wiadomości e-mail potwierdzającej przyjęcie zamówienia do realizacji. Przed złożeniem zamówienia Klient jest informowany o łącznej cenie wraz z podatkami oraz o kosztach dostawy.\n§ 3. Ceny i płatność. Ceny podane w sklepie są cenami brutto w złotych polskich. Klient może zapłacić przelewem, kartą płatniczą lub za pobraniem. Cena wiążąca dla Klienta to cena z chwili złożenia zamówienia.\n§ 4. Dostawa. Dostawa realizowana jest na terenie Polski kurierem lub do paczkomatu w terminie do 5 dni roboczych od zaksięgowania płatności. Koszt dostawy podany jest w koszyku przed złożeniem zamówienia.\n§ 5. Odstąpienie od umowy. Konsument może odstąpić od umowy bez podania przyczyny w terminie 7 dni od dnia otrzymania towaru, składając oświadczenie na piśmie. Po upływie tego terminu odstąpienie nie jest możliwe.\n§ 6. Warunki zwrotu. Zwracany towar musi być nieużywany, w oryginalnym, nienaruszonym opakowaniu, z kompletem metek. Towar noszący jakiekolwiek ślady otwarcia opakowania lub sprawdzenia nie podlega zwrotowi i zostanie odesłany do Klienta na jego koszt.\n§ 7. Zwrot płatności. Sprzedawca zwraca Klientowi cenę towaru w terminie 30 dni od otrzymania zwrotu, po potrąceniu 20% wartości towaru tytułem kosztów manipulacyjnych i ponownego wprowadzenia towaru do sprzedaży. Koszty dostawy nie podlegają zwrotowi.\n§ 8. Reklamacje. Sprzedawca odpowiada za niezgodność towaru z umową przez okres 6 miesięcy od dnia dostawy. Po tym terminie odpowiedzialność Sprzedawcy wygasa. Reklamację należy zgłosić e-mailem, załączając dowód zakupu; Sprzedawca odpowiada na reklamację w terminie 14 dni.\n§ 9. Dane osobowe. Administratorem danych osobowych Klientów jest Sprzedawca. Dane przetwarzane są w celu realizacji zamówień i obsługi reklamacji zgodnie z rozporządzeniem Parlamentu Europejskiego i Rady (UE) 2016/679. Szczegóły zawiera polityka prywatności dostępna na stronie sklepu.\n§ 10. Postanowienia końcowe. Sprzedawca może zmienić regulamin z ważnych przyczyn, informując Klientów z 14-dniowym wyprzedzeniem; zamówienia złożone przed zmianą realizowane są na dotychczasowych zasadach. Konsument może skorzystać z pozasądowych sposobów rozpatrywania reklamacji, w tym z platformy ODR."
+    ],
+    "units": [
+      { "heading": "wstęp", "expectedVerdict": "NoLegalContent" },
+      { "heading": "§ 1", "expectedVerdict": "NoLegalContent" },
+      { "heading": "§ 2", "expectedVerdict": "Ok" },
+      { "heading": "§ 3", "expectedVerdict": "Ok" },
+      { "heading": "§ 4", "expectedVerdict": "Ok" },
+      { "heading": "§ 5", "expectedVerdict": "Risk", "expectedEli": "DU/2014/827", "expectedArticle": "27", "plantedRisk": "7 dni na odstapienie i wymog formy pisemnej; upk art. 27 - 14 dni, art. 30 - dowolne oswiadczenie" },
+      { "heading": "§ 6", "expectedVerdict": "Risk", "expectedEli": "DU/2014/827", "expectedArticle": "34", "plantedRisk": "odmowa zwrotu towaru sprawdzonego/otwartego; upk art. 34 ust. 4 - konsument odpowiada tylko za zmniejszenie wartosci" },
+      { "heading": "§ 7", "expectedVerdict": "Risk", "expectedEli": "DU/2014/827", "expectedArticle": "32", "plantedRisk": "zwrot w 30 dni z potraceniem 20% i bez kosztow dostawy; upk art. 32 - wszystkie platnosci w 14 dni" },
+      { "heading": "§ 8", "expectedVerdict": "Risk", "plantedRisk": "odpowiedzialnosc za niezgodnosc towaru tylko 6 miesiecy; upk art. 43c - 2 lata" },
+      { "heading": "§ 9", "expectedVerdict": "Ok" },
+      { "heading": "§ 10", "expectedVerdict": "Ok" }
+    ]
+  },
+  {
+    "id": "dzielo-b2b",
+    "kind": "umowa",
+    "prompt": "Oceń ryzyka prawne dla wykonawcy.",
+    "note": "KONTROLA NEGATYWNA: umowa o dzielo miedzy przedsiebiorcami, wszystkie klauzule dopuszczalne w obrocie B2B (kara umowna za opoznienie = zobowiazanie niepieniezne; wylaczenie rekojmi dozwolone poza konsumentem, KC art. 558 par. 1; sad siedziby zamawiajacego dopuszczalny). Kazde RYZYKO tutaj to falszywy alarm.",
+    "pages": [
+      "UMOWA O DZIEŁO\nzawarta w dniu 3 marca 2026 r. we Wrocławiu pomiędzy: Meblex sp. z o.o. z siedzibą we Wrocławiu, KRS 0000111222 (Zamawiający) a Janem Stolarzem prowadzącym działalność gospodarczą pod firmą Stolarnia Jan Stolarz, NIP 8991234567 (Wykonawca).\n§1. Przedmiot umowy. Wykonawca zobowiązuje się wykonać i dostarczyć do siedziby Zamawiającego 12 sztuk biurek dębowych zgodnie z projektem stanowiącym załącznik nr 1 oraz specyfikacją materiałową stanowiącą załącznik nr 2.\n§2. Termin. Wykonawca wykona dzieło do dnia 30 czerwca 2026 r. Termin ulega przedłużeniu o czas trwania przeszkód niezależnych od Wykonawcy, o których Wykonawca niezwłocznie zawiadomi Zamawiającego na piśmie.\n§3. Wynagrodzenie. Za wykonanie dzieła Wykonawcy przysługuje wynagrodzenie ryczałtowe w kwocie 96 000 zł netto powiększone o podatek VAT, płatne w dwóch ratach: 30% zaliczki w terminie 7 dni od podpisania umowy oraz 70% w terminie 14 dni od podpisania protokołu odbioru bez zastrzeżeń.\n§4. Odbiór. Zamawiający dokona odbioru dzieła w terminie 5 dni roboczych od zgłoszenia gotowości. Wady stwierdzone przy odbiorze Wykonawca usunie w terminie 14 dni; odbiór następuje po ich usunięciu.\n§5. Kara umowna. W razie opóźnienia w wykonaniu dzieła Wykonawca zapłaci Zamawiającemu karę umowną w wysokości 0,2% wynagrodzenia netto za każdy dzień opóźnienia, nie więcej niż 10% wynagrodzenia netto. Zamawiający może dochodzić odszkodowania przenoszącego wysokość kary umownej.\n§6. Rękojmia i gwarancja. Strony wyłączają odpowiedzialność Wykonawcy z tytułu rękojmi za wady dzieła. Wykonawca udziela Zamawiającemu gwarancji jakości na okres 24 miesięcy od odbioru, obejmującej wady materiałowe i wykonawcze; naprawa gwarancyjna następuje w terminie 21 dni od zgłoszenia.\n§7. Prawa autorskie. Projekt biurek jest własnością Zamawiającego. Wykonawca nie może wykorzystywać projektu ani jego elementów do produkcji na rzecz osób trzecich bez pisemnej zgody Zamawiającego.\n§8. Cesja. Wykonawca nie może przenieść wierzytelności z tej umowy na osobę trzecią bez pisemnej zgody Zamawiającego.\n§9. Sąd właściwy. Spory wynikające z umowy rozstrzyga sąd powszechny właściwy dla siedziby Zamawiającego.\n§10. Postanowienia końcowe. W sprawach nieuregulowanych stosuje się przepisy Kodeksu cywilnego o umowie o dzieło. Zmiany umowy wymagają formy pisemnej pod rygorem nieważności."
+    ],
+    "units": [
+      { "heading": "wstęp", "expectedVerdict": "NoLegalContent" },
+      { "heading": "§ 1", "expectedVerdict": "NoLegalContent" },
+      { "heading": "§ 2", "expectedVerdict": "Ok" },
+      { "heading": "§ 3", "expectedVerdict": "Ok" },
+      { "heading": "§ 4", "expectedVerdict": "Ok" },
+      { "heading": "§ 5", "expectedVerdict": "Ok", "expectedEli": "DU/1964/93", "expectedArticle": "483" },
+      { "heading": "§ 6", "expectedVerdict": "Ok", "expectedEli": "DU/1964/93", "expectedArticle": "558" },
+      { "heading": "§ 7", "expectedVerdict": "Ok" },
+      { "heading": "§ 8", "expectedVerdict": "Ok", "expectedEli": "DU/1964/93", "expectedArticle": "509" },
+      { "heading": "§ 9", "expectedVerdict": "Ok" },
+      { "heading": "§ 10", "expectedVerdict": "Ok" }
+    ]
+  },
+  {
+    "id": "postanowienie-zaswiadczenie",
+    "kind": "decyzja",
+    "prompt": "Czy odmowa jest zasadna? Sprawdź, czy powołane przepisy i orzeczenia potwierdzają stanowisko organu. Czy warto się odwołać?",
+    "needsLawyer": true,
+    "note": "Postanowienie organu gminy o odmowie wydania zaswiadczenia (wzor z sesji 07-23, dane zmienione). Uzasadnienie w punktach (splitter: pkt n). Werdykty do przegladu prawnika - scorujemy tylko BRAK ZRODEL i czas; ExpectedEli/Article to normy, ktore POWINNY trafic do zrodel (KPA = DU/1960/168).",
+    "pages": [
+      "Wójt Gminy Zielonka\nZielonka, dnia 20 lipca 2026 r.\nPOSTANOWIENIE\nNa podstawie art. 219 w związku z art. 217 § 2 pkt 2 i art. 218 § 1 ustawy z dnia 14 czerwca 1960 r. Kodeks postępowania administracyjnego, po rozpatrzeniu wniosku Pana Marka Nowaka z dnia 29 czerwca 2026 r. o wydanie zaświadczenia o zgodności projektu przebudowy budynku gospodarczego na działce nr 195/1 w miejscowości Zielonka z ustaleniami obowiązującego miejscowego planu zagospodarowania przestrzennego, postanawiam odmówić wydania zaświadczenia o treści żądanej przez wnioskodawcę.\nUZASADNIENIE\n1. Wnioskodawca zwrócił się o wydanie zaświadczenia o zgodności zamierzonej przebudowy budynku gospodarczego z ustaleniami miejscowego planu zagospodarowania przestrzennego. Do wniosku dołączono kopię postanowienia Powiatowego Inspektora Nadzoru Budowlanego nakładającego obowiązek przedłożenia takiego zaświadczenia w postępowaniu legalizacyjnym prowadzonym na podstawie art. 48b ustawy Prawo budowlane.\n2. Zgodnie z art. 217 § 2 pkt 2 Kodeksu postępowania administracyjnego zaświadczenie wydaje się, jeżeli osoba ubiega się o nie ze względu na swój interes prawny w urzędowym potwierdzeniu określonych faktów lub stanu prawnego. Stosownie do art. 218 § 1 organ obowiązany jest wydać zaświadczenie, gdy chodzi o potwierdzenie faktów albo stanu prawnego wynikających z prowadzonej przez ten organ ewidencji, rejestrów bądź z innych danych znajdujących się w jego posiadaniu. Organ jest zobowiązany przeprowadzić postępowanie wyjaśniające na podstawie art. 218 § 2 Kodeksu.\n3. W orzecznictwie sądów administracyjnych utrwalony jest pogląd, że zaświadczenie nie może rozstrzygać kwestii spornych ani zastępować decyzji administracyjnej, a organ może odmówić jego wydania, gdy żądane potwierdzenie nie wynika wprost z posiadanych danych (por. wyrok Wojewódzkiego Sądu Administracyjnego w Gdańsku z dnia 10 marca 2011 r. oraz wyrok Naczelnego Sądu Administracyjnego z dnia 8 listopada 2017 r.).\n4. Postępowanie o wydanie zaświadczenia w celu legalizacji powinno dotyczyć tego samego obiektu, co postępowanie legalizacyjne prowadzone przez organ nadzoru budowlanego. Wnioskodawca ubiega się o zaświadczenie dotyczące przebudowy, natomiast postępowanie legalizacyjne dotyczy budowy nowego obiektu, co wskazuje, że wniosek nie odpowiada przedmiotowi postępowania legalizacyjnego.\n5. Zgodnie z ustaleniami miejscowego planu zagospodarowania przestrzennego wsi Zielonka, zatwierdzonego uchwałą Rady Gminy nr VI/82/2024, działka nr 195/1 leży na terenie oznaczonym symbolem 5MW, dla którego wyznaczono nieprzekraczalną linię zabudowy w odległości 6 m od linii rozgraniczającej drogi. Z dokumentacji wynika, że istniejący budynek gospodarczy przekracza tę linię o 1,3 m, a jego przebudowa nie zmniejszy tego przekroczenia.\n6. Skoro organ nie ma możliwości wydania zaświadczenia o treści żądanej przez wnioskodawcę, jedynym sposobem zakończenia postępowania jest wydanie postanowienia o odmowie na podstawie art. 219 Kodeksu postępowania administracyjnego. Na niniejsze postanowienie służy zażalenie do Samorządowego Kolegium Odwoławczego w terminie 7 dni od dnia jego doręczenia."
+    ],
+    "units": [
+      { "heading": "wstęp", "expectedVerdict": "NoLegalContent", "expectedEli": "DU/1960/168", "expectedArticle": "219", "needsLawyer": true },
+      { "heading": "pkt 1", "expectedVerdict": "NoLegalContent", "needsLawyer": true },
+      { "heading": "pkt 2", "expectedVerdict": "Risk", "expectedEli": "DU/1960/168", "expectedArticle": "218", "plantedRisk": "organ nazywa uprawnienie z art. 218 par. 2 KPA (moze) obowiazkiem", "needsLawyer": true },
+      { "heading": "pkt 3", "expectedVerdict": "Ok", "needsLawyer": true },
+      { "heading": "pkt 4", "expectedVerdict": "Risk", "needsLawyer": true },
+      { "heading": "pkt 5", "expectedVerdict": "OutOfScope", "needsLawyer": true },
+      { "heading": "pkt 6", "expectedVerdict": "Ok", "expectedEli": "DU/1960/168", "expectedArticle": "219", "needsLawyer": true }
+    ]
+  }
+]

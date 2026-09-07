@@ -31,11 +31,17 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
 
         // AKT-4b: globalny słownik ExternalId→EffectiveDate dla WSZYSTKICH niewchłoniętych nowel w korpusie
         // (nie tylko tych, których akt bazowy jest akurat w retrieved) — do oznaczenia źródeł-nowel, które
-        // trafiły do wyników zwykłym retrievalem. Koszt: skan metadanych aktów (tanie przy dzisiejszej
-        // skali korpusu ~40 aktów; przy „pełnym korpusie" v1 wymagałoby indeksu/cache — poza zakresem teraz).
+        // trafiły do wyników zwykłym retrievalem.
         var unabsorbedDates = await BuildUnabsorbedDatesAsync(ct);
-        var extIdByDocId = await db.Documents.Where(d => actDocIds.Contains(d.Id))
-            .Select(d => new { d.Id, d.ExternalId }).ToDictionaryAsync(x => x.Id, x => x.ExternalId, ct);
+
+        // JEDNO zapytanie o dokumenty-akty z wyników: `ExternalId` (do oznaczania nowel) i `TypedMetadata`
+        // (do wyłuskania ich nowel niżej). Wcześniej te same wiersze pobierano DWA razy, przy czym drugi
+        // raz jako pełne, ŚLEDZONE encje — z całym jsonb metadanych i resztą kolumn.
+        var actDocs = await db.Documents
+            .Where(d => actDocIds.Contains(d.Id))
+            .Select(d => new { d.Id, d.ExternalId, d.TypedMetadata })
+            .ToListAsync(ct);
+        var extIdByDocId = actDocs.ToDictionary(x => x.Id, x => x.ExternalId);
 
         var tagged = retrieved.Select(c =>
             c.AmendmentEffectiveDate is null && extIdByDocId.TryGetValue(c.DocumentId, out var extId)
@@ -50,11 +56,16 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
             .ToDictionary(g => g.Key, g => g.Select(c => c.Locator!.Article!).ToHashSet(StringComparer.OrdinalIgnoreCase));
         var citedArticles = CitationParser.Parse(query.Text).Select(x => x.Article).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var docs = await db.Documents.Where(d => actDocIds.Contains(d.Id)).ToListAsync(ct);
         var seen = new HashSet<Guid>(tagged.Select(c => c.ChunkId));
 
-        foreach (var d in docs)
+        // Capy (raport odmów 2026-07-18): augmentacja działa NA finalnej liście TopK, więc bez limitu
+        // potrafiła dołożyć 8+ fragmentów jednej szerokiej ustawy zmieniającej (11 i 17 źródeł przy
+        // TopK=8), rozcieńczając trafną normę i prowadząc do odmowy treściowej modelu.
+        var totalAdded = 0;
+
+        foreach (var d in actDocs)
         {
+            if (totalAdded >= MaxFragmentsTotal) break;
             var amendments = ParseUnabsorbed(d.TypedMetadata);
             if (amendments.Count == 0) continue;
 
@@ -64,22 +75,64 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
 
             foreach (var am in amendments)
             {
-                var amChunks = await db.Chunks.Include(c => c.Document)
-                    .Where(c => c.Document!.ExternalId == am.EliId).ToListAsync(ct);
+                if (totalAdded >= MaxFragmentsTotal) break;
+                // Projekcja, nie encje: `ChunkEntity` niesie `Embedding` (1024×fp32 ≈ 4 KB/chunk)
+                // i `SearchVector` — tu nieużywane. Świadomie BEZ `Take`: dopasowanie po treści diffu
+                // (niżej) może trafić dowolny chunk noweli, więc obcięcie listy zmieniałoby WYNIKI,
+                // a nie tylko koszt. Ograniczamy szerokość wiersza, nie liczbę wierszy.
+                var amChunks = await db.Chunks
+                    .Where(c => c.Document!.ExternalId == am.EliId)
+                    .OrderBy(c => c.ChunkIndex)
+                    .Select(c => new AmendmentChunkRow(
+                        c.Id, c.DocumentId, c.Text, c.Section, c.Locator,
+                        c.Document!.Source, c.Document.DocType, c.Document.Title, c.Document.SourceUrl))
+                    .ToListAsync(ct);
+                var perAmendment = 0;
                 foreach (var ch in amChunks)
                 {
-                    if (!articles.Any(a => MentionsArticle(ch.Text, a))) continue;
+                    if (perAmendment >= MaxFragmentsPerAmendment || totalAdded >= MaxFragmentsTotal) break;
+                    // Zaostrzone dopasowanie: fragment musi ZMIENIAĆ artykuł (język diffu), nie tylko
+                    // go wzmiankować — patrz AmendmentDiffMatcher (mechanizm „atraktora" z raportu).
+                    if (!articles.Any(a => AmendmentDiffMatcher.MentionsArticleChange(ch.Text, a))) continue;
                     if (!seen.Add(ch.Id)) continue;
                     tagged.Add(ToAmendmentChunk(ch, am));
+                    perAmendment++;
+                    totalAdded++;
                 }
             }
         }
         return tagged;
     }
 
+    /// <summary>Ile fragmentów jednej noweli może dołożyć augmentacja (nowela zmieniająca jeden artykuł
+    /// to zwykle 1-2 chunki diffu).</summary>
+    private const int MaxFragmentsPerAmendment = 2;
+
+    /// <summary>Twardy sufit dołożeń łącznie — augmentacja dokłada POZA TopK, więc bez sufitu rozsadza
+    /// budżet promptu i grzebie trafną normę wśród fragmentów nowel.</summary>
+    private const int MaxFragmentsTotal = 4;
+
+    /// <summary>
+    /// Słownik ExternalId→EffectiveDate wszystkich niewchłoniętych nowel w korpusie.
+    ///
+    /// Filtr `JsonExists` (operator jsonb `?`) zawęża skan do aktów, które FAKTYCZNIE mają klucz
+    /// `unabsorbedAmendments` — a to garstka. Wcześniej zapytanie ściągało `TypedMetadata` KAŻDEGO aktu
+    /// przy każdej turze czatu, która zwróciła choć jeden chunk aktu; komentarz w klasie mówił wprost, że
+    /// jest to „tanie przy dzisiejszej skali korpusu ~40 aktów" i „przy pełnym korpusie wymagałoby
+    /// indeksu/cache". Pełny ISAP jest już zembedowany, więc ten dług stał się aktywny — metadane aktów
+    /// (słowa kluczowe, podstawy prawne, nowele) to duże jsonb i przesyłaliśmy je wszystkie, żeby
+    /// zwykle nie znaleźć nic.
+    ///
+    /// Co ZOSTAJE do zrobienia i dlaczego nie tutaj: to nadal skan tabeli `documents` (brak indeksu na
+    /// `DocType`, brak GIN na `TypedMetadata`). Cache procesowy albo indeks częściowy zdjąłby resztę, ale
+    /// jedno wymaga unieważniania po ingeście, a drugie migracji na 523k dokumentów — do zrobienia
+    /// z pomiarem na pełnym korpusie, nie na wyczucie.
+    /// </summary>
     private async Task<Dictionary<string, string?>> BuildUnabsorbedDatesAsync(CancellationToken ct)
     {
-        var metas = await db.Documents.Where(d => d.DocType == DocTypes.Act)
+        var metas = await db.Documents
+            .Where(d => d.DocType == DocTypes.Act && d.TypedMetadata != null
+                        && EF.Functions.JsonExists(d.TypedMetadata, "unabsorbedAmendments"))
             .Select(d => d.TypedMetadata).ToListAsync(ct);
         var map = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (var meta in metas)
@@ -87,6 +140,36 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
                 map[am.EliId] = am.EffectiveDate;
         return map;
     }
+
+    /// <summary>Wiersz chunka noweli W PROJEKCJI — bez `Embedding` i `SearchVector` (tu nieużywanych).</summary>
+    /// <summary>
+    /// Buduje marker noweli — KLUCZOWE: rozstrzyga w KODZIE (nie zostawia LLM-owi), czy data wejścia
+    /// w życie już minęła. Diagnoza 2026-08-22 (pytanie o zastępstwo aplikanta adwokackiego): model bez
+    /// tej informacji dostawał samą datę ("obowiązuje od 2026-06-18") bez punktu odniesienia „dziś" —
+    /// nie ma jak wywnioskować, że ta data już minęła, więc zgadywał (i zgadł źle: opisał JUŻ
+    /// obowiązującą zmianę jako przyszłą, „od 18 czerwca zasady się zmienią"). LLM nie zna dzisiejszej
+    /// daty z kontekstu treningu — musi dostać gotowy werdykt, nie surowe dane do policzenia samemu.
+    /// </summary>
+    private static string BuildMarker(string? effectiveDateRaw)
+    {
+        if (string.IsNullOrWhiteSpace(effectiveDateRaw))
+            return "[NOWELIZACJA — data wejścia w życie nieznana, jeszcze niewchłonięta do tekstu jednolitego]\n";
+
+        if (!DateOnly.TryParse(effectiveDateRaw, out var effectiveDate))
+            // Data w metadanych nieparsowalna — nie zgaduj status, zostaw neutralny opis jak dotąd
+            // (bez rozstrzygnięcia JUŻ/JESZCZE NIE), reguła 6 promptu i tak każe zestawić oba źródła.
+            return $"[NOWELIZACJA — obowiązuje od {effectiveDateRaw}, jeszcze niewchłonięta do tekstu jednolitego]\n";
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var status = effectiveDate <= today
+            ? $"JUŻ OBOWIĄZUJE od {effectiveDateRaw} — to jest AKTUALNY, dziś obowiązujący stan prawny"
+            : $"WEJDZIE W ŻYCIE {effectiveDateRaw} — jeszcze NIE obowiązuje, do tej daty obowiązuje tekst jednolity";
+        return $"[NOWELIZACJA — {status}, jeszcze niewchłonięta do tekstu jednolitego]\n";
+    }
+
+    private sealed record AmendmentChunkRow(
+        Guid Id, Guid DocumentId, string Text, string? Section, JsonDocument? Locator,
+        string Source, string DocType, string Title, string? SourceUrl);
 
     private static List<AmendmentRef> ParseUnabsorbed(JsonDocument? meta)
     {
@@ -98,24 +181,19 @@ public sealed class TemporalAugmenter(PrawoRagDbContext db) : ITemporalAugmenter
         catch { return []; }
     }
 
-    private static bool MentionsArticle(string text, string article) =>
-        Regex.IsMatch(text, @"\bart\.?\s*" + Regex.Escape(article) + @"\b",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-    private static RetrievedChunk ToAmendmentChunk(ChunkEntity ch, AmendmentRef am)
+    private static RetrievedChunk ToAmendmentChunk(AmendmentChunkRow ch, AmendmentRef am)
     {
-        var date = string.IsNullOrWhiteSpace(am.EffectiveDate) ? "" : $" obowiązuje od {am.EffectiveDate},";
-        var marker = $"[NOWELIZACJA —{date} jeszcze niewchłonięta do tekstu jednolitego]\n";
+        var marker = BuildMarker(am.EffectiveDate);
         return new RetrievedChunk
         {
             ChunkId = ch.Id,
             DocumentId = ch.DocumentId,
             Text = marker + ch.Text,
             Section = ch.Section,
-            Source = ch.Document!.Source,
-            DocType = ch.Document.DocType,
-            Title = ch.Document.Title,
-            SourceUrl = ch.Document.SourceUrl,
+            Source = ch.Source,
+            DocType = ch.DocType,
+            Title = ch.Title,
+            SourceUrl = ch.SourceUrl,
             Locator = ch.Locator is null ? null : ch.Locator.Deserialize<CitationLocator>(),
             Score = double.MaxValue, // świeża nowela — prominentnie
             Similarity = null,

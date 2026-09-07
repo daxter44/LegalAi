@@ -1,0 +1,307 @@
+using PrawoRAG.Llm.Analysis;
+using PrawoRAG.Llm.Grounding;
+
+namespace PrawoRAG.Api.Services;
+
+/// <summary>Przełączniki trybu „Analiza dokumentów" (spike SPK). <see cref="Enabled"/>=false (domyślnie)
+/// chowa stronę /analiza. <see cref="MaxParallelism"/> — limit RÓWNOCZESNYCH wywołań LLM w fazie map:
+/// lokalny Bielik na jednej karcie i tak generuje sekwencyjnie, więcej równoległości = dłuższy łączny
+/// czas i wysycenie VRAM; dla API cloud można podnieść.</summary>
+public sealed class AnalysisOptions
+{
+    public const string SectionName = "Analysis";
+
+    public bool Enabled { get; set; }
+    public int MaxParallelism { get; set; } = 2;
+    public int SessionTtlMinutes { get; set; } = 60;
+
+    /// <summary>Twardy limit jednostek analizy na dokument (koszt: każda jednostka = wywołanie LLM).
+    /// Nadmiar jest ucinany z jawną flagą <see cref="AnalysisSession.UnitsTruncated"/> — nigdy po cichu.
+    /// Plany mogą ten limit dodatkowo ZANIŻAĆ (PlanLimits.MaxUnitsPerAnalysis), nigdy podnosić.</summary>
+    public int MaxUnits { get; set; } = 40;
+
+    /// <summary>Bramka intencji na wejściu (model Aux): dokument prawny vs proza/artykuł — chroni
+    /// pulę analiz przed spaleniem na treści, na której analiza nie ma sensu. Fail-open.</summary>
+    public bool IntentGateEnabled { get; set; } = true;
+
+    /// <summary>Profil dokumentu przed fazą map (AJ-3): jedno wywołanie LLM per dokument, fakty z całości
+    /// doklejane do promptu każdej jednostki. Wyłącznik awaryjny (i dla testów liczących wywołania).</summary>
+    public bool ProfileEnabled { get; set; } = true;
+}
+
+/// <summary><see cref="Interrupted"/> = anulowana przez użytkownika ALBO ucięta restartem procesu —
+/// częściowy raport pozostaje czytelny (w odróżnieniu od <see cref="Failed"/> = awaria całości).</summary>
+public enum AnalysisStatus { Preparing, Analyzing, Summarizing, Done, Failed, Interrupted }
+
+/// <summary>Stan „na żywo" jednostki BEZ wyniku (tylko sygnał dla UI, nie persystowany):
+/// w kolejce / w analizie / ponawiana po błędzie przejściowym. Bez tego jednostka w obróbce
+/// przez kilkadziesiąt sekund wygląda identycznie jak czekająca w kolejce.</summary>
+public enum UnitLiveState { Queued, Running, Retrying }
+
+/// <summary>DLACZEGO analiza wylądowała w statusie Interrupted (naprawa 2026-09-02: jeden status
+/// zlepiał trzy nieporównywalne przyczyny — 45% „przerwanych" w historii było niemierzalne).
+/// Persystowany jako string w rekordzie analizy.</summary>
+public enum InterruptReason
+{
+    /// <summary>Restart/deploy procesu — sesja in-memory zginęła (zero-persistence, decyzja DOC #1).</summary>
+    ProcessRestart,
+    /// <summary>Jawne anulowanie przez użytkownika (przycisk „⏹ Anuluj" / usunięcie sesji).</summary>
+    UserCancelled,
+    /// <summary>Wygaśnięcie TTL sesji (bezczynność) — sweep magazynu anulował runnera w locie.</summary>
+    TtlExpired,
+}
+
+/// <summary>Wynik analizy JEDNEJ jednostki dokumentu (faza map). <see cref="Sources"/> przeniesione
+/// strukturalnie z retrievalu tej jednostki — cytaty [n] w <see cref="Answer"/> odnoszą się do NICH
+/// (numeracja per jednostka, nie per dokument).</summary>
+public sealed record UnitAnalysis(
+    int Index,
+    string Heading,
+    UnitVerdict Verdict,
+    string? Answer,
+    IReadOnlyList<ChatSource> Sources,
+    CitationCheck? Check = null,
+    string? Error = null,
+    string? FinishReason = null,
+    // AJ-5: akcjonowalne RYZYKO — przepis, którego fragment nie respektuje, i co zmienić w treści.
+    string? Violates = null,
+    string? Suggestion = null);
+
+/// <summary>
+/// Stan jednej długiej analizy dokumentu (SPK-2) — żyje WYŁĄCZNIE w pamięci procesu
+/// (<see cref="AnalysisSessionStore"/>): treść załącznika nigdy nie dotyka dysku ani bazy (tajemnica
+/// zawodowa — decyzja #1 planu DOC). Id sesji jest biletem do podglądu postępu i do dopytań; restart
+/// procesu lub TTL = sesja znika (komunikowane w UI, spójne z filozofią zero-persistence).
+/// Thread-safe: mutacje pod lockiem, odczyt przez niemutowalny <see cref="Snapshot"/>.
+/// </summary>
+public sealed class AnalysisSession
+{
+    private readonly object _lock = new();
+    private readonly UnitAnalysis?[] _results;
+    private readonly int[] _thinkingChars;
+    private readonly UnitLiveState[] _live;
+    private readonly CancellationTokenSource _cts = new();
+    private AnalysisStatus _status = AnalysisStatus.Preparing;
+    private int _completed;
+    private string? _summary;
+    private string? _error;
+
+    /// <summary>Embeddingi jednostek (routing dopytań, SPK-6) — ustawiane raz w fazie przygotowania;
+    /// null = embedding się nie powiódł (dopytania degradują się do trybu przekrojowego).</summary>
+    private IReadOnlyList<float[]>? _unitEmbeddings;
+
+    private readonly TimeProvider _time;
+
+    public AnalysisSession(string userId, string fileName, int pageCount, string prompt, IReadOnlyList<DocUnit> units, bool unitsTruncated, TimeProvider time)
+    {
+        _time = time;
+        UserId = userId;
+        FileName = fileName;
+        PageCount = pageCount;
+        Prompt = prompt;
+        Units = units;
+        UnitsTruncated = unitsTruncated;
+        CreatedAt = time.GetUtcNow();
+        LastTouched = CreatedAt;
+        _results = new UnitAnalysis?[units.Count];
+        _thinkingChars = new int[units.Count];
+        _live = new UnitLiveState[units.Count];
+    }
+
+    public Guid Id { get; } = Guid.CreateVersion7();
+
+    /// <summary>Właściciel sesji — <see cref="AnalysisSessionStore.TryGet"/> odmawia dostępu przy
+    /// niezgodności (id sesji NIE jest sekretem: pokazujemy go w UI, więc sam Guid nie może być
+    /// biletem do cudzego dokumentu).</summary>
+    public string UserId { get; }
+
+    /// <summary>Token anulowania analizy — przekazywany do runnera; <see cref="Cancel"/> z UI
+    /// (albo sweep TTL store'a) przerywa jednostki w locie. Ukończone wyniki zostają.</summary>
+    public CancellationToken Token => _cts.Token;
+
+    /// <summary>Powód anulowania — czytany przez runnera przy łapaniu OperationCanceledException,
+    /// żeby status Interrupted niósł przyczynę. Null = nikt nie anulował (nie powinno się zdarzyć
+    /// przy złapanym OCE, ale fallback w runnerze to UserCancelled).</summary>
+    public InterruptReason? CancelReason { get; private set; }
+
+    public void Cancel(InterruptReason reason = InterruptReason.UserCancelled)
+    {
+        CancelReason ??= reason; // pierwszy powód wygrywa (wyścig anuluj-vs-sweep)
+        try { _cts.Cancel(); } catch (ObjectDisposedException) { /* wyścig ze sweepem — nieistotny */ }
+    }
+
+    public DateTimeOffset CreatedAt { get; }
+    public DateTimeOffset LastTouched { get; private set; }
+    public string FileName { get; }
+    public int PageCount { get; }
+
+    /// <summary>Intencja użytkownika (prompt) — doklejana do map-prompta każdej jednostki.</summary>
+    public string Prompt { get; }
+
+    public IReadOnlyList<DocUnit> Units { get; }
+    public bool UnitsTruncated { get; }
+
+    /// <summary>Sygnał zmiany stanu (postęp/wynik) — UI podpina odświeżenie. Wywoływany POZA lockiem.</summary>
+    public event Action? Changed;
+
+    public void Touch(DateTimeOffset now)
+    {
+        lock (_lock) LastTouched = now;
+    }
+
+    public bool IsExpired(DateTimeOffset now, TimeSpan ttl)
+    {
+        lock (_lock) return now - LastTouched > ttl;
+    }
+
+    public void SetStatus(AnalysisStatus status)
+    {
+        lock (_lock) _status = status;
+        Changed?.Invoke();
+    }
+
+    public void SetUnitEmbeddings(IReadOnlyList<float[]> embeddings)
+    {
+        lock (_lock) _unitEmbeddings = embeddings;
+    }
+
+    public IReadOnlyList<float[]>? UnitEmbeddings
+    {
+        get { lock (_lock) return _unitEmbeddings; }
+    }
+
+    /// <summary>Profil dokumentu (AJ-3): fakty z całości, ustalane raz przed fazą map; null = nie
+    /// udało się / odrzucony przez strażnik (analiza działa jak bez profilu). NIE persystowany (D1) —
+    /// żyje w sesji jak treść §.</summary>
+    private DocumentProfile? _profile;
+
+    public void SetProfile(DocumentProfile? profile)
+    {
+        lock (_lock) _profile = profile;
+        Changed?.Invoke();
+    }
+
+    public DocumentProfile? Profile
+    {
+        get { lock (_lock) return _profile; }
+    }
+
+    /// <summary>Zapis wyniku jednostki (faza map, wołane współbieżnie). Index = DocUnit.Index (1-based).
+    /// Odświeża też <see cref="LastTouched"/> — analiza W TOKU sama przedłuża sobie TTL (bez tego
+    /// sweep store'a mógłby ubić długą analizę, której nikt nie ogląda).</summary>
+    public void SetUnitResult(UnitAnalysis result)
+    {
+        lock (_lock)
+        {
+            if (_results[result.Index - 1] is null) _completed++;
+            _results[result.Index - 1] = result;
+            _thinkingChars[result.Index - 1] = 0; // wynik jest — licznik myślenia zaczyna od zera przy ew. retry
+            _live[result.Index - 1] = UnitLiveState.Queued;
+            LastTouched = _time.GetUtcNow();
+        }
+        Changed?.Invoke();
+    }
+
+    /// <summary>Stan „na żywo" jednostki bez wyniku (w kolejce / analizuję / ponawiam) — sygnał
+    /// dla UI. Zmiana stanu odpala <see cref="Changed"/> (to pojedyncze przejścia, nie strumień).</summary>
+    public void MarkUnitLive(int index, UnitLiveState state)
+    {
+        lock (_lock)
+        {
+            if (_live[index - 1] == state) return;
+            _live[index - 1] = state;
+        }
+        Changed?.Invoke();
+    }
+
+    /// <summary>Postęp myślenia jednostki W TOKU (delty rozumowania z LLM, w znakach) — wyłącznie
+    /// sygnał życia dla UI („🧠 myśli… (N zn.)" zamiast martwego „⏳ w kolejce…" przez kilkadziesiąt
+    /// sekund). <see cref="Changed"/> odpalane co ~500 znaków, nie per delta: rozumowanie to setki
+    /// delt, a Changed = re-render całej strony analizy.</summary>
+    public void ReportUnitThinking(int index, int chars)
+    {
+        if (chars <= 0) return;
+        bool notify;
+        lock (_lock)
+        {
+            var before = _thinkingChars[index - 1];
+            _thinkingChars[index - 1] = before + chars;
+            notify = (before + chars) / 500 != before / 500;
+        }
+        if (notify) Changed?.Invoke();
+    }
+
+    /// <summary>Indeksy jednostek z werdyktem BŁĄD lub „?" (pusta/niesparsowana odpowiedź, AJ-5) —
+    /// kandydaci do ponowienia (AN-4).</summary>
+    public IReadOnlyList<int> ErrorUnitIndexes()
+    {
+        lock (_lock)
+            return _results
+                .Where(r => r is { Verdict: UnitVerdict.Error or UnitVerdict.Unknown })
+                .Select(r => r!.Index)
+                .ToList();
+    }
+
+    /// <summary>Cofa jednostkę do stanu „w kolejce" przed ponowieniem: wynik znika, licznik spada,
+    /// status wraca do Analyzing (UI pokazuje postęp jak przy pierwszym przebiegu).</summary>
+    public void MarkUnitPending(int index)
+    {
+        lock (_lock)
+        {
+            if (_results[index - 1] is null) return;
+            _results[index - 1] = null;
+            _thinkingChars[index - 1] = 0;
+            _live[index - 1] = UnitLiveState.Queued;
+            _completed--;
+            _status = AnalysisStatus.Analyzing;
+        }
+        Changed?.Invoke();
+    }
+
+    public void Complete(string? summary)
+    {
+        lock (_lock) { _summary = summary; _status = AnalysisStatus.Done; }
+        Changed?.Invoke();
+    }
+
+    public void Fail(string error)
+    {
+        lock (_lock) { _error = error; _status = AnalysisStatus.Failed; }
+        Changed?.Invoke();
+    }
+
+    /// <summary>Spójny, niemutowalny obraz stanu do renderu (wyniki w kolejności dokumentu; null =
+    /// jednostka jeszcze w toku).</summary>
+    public AnalysisSnapshot Snapshot()
+    {
+        lock (_lock)
+            return new AnalysisSnapshot(
+                Id, FileName, PageCount, Prompt, _status, Units, UnitsTruncated,
+                [.. _results], _completed, _summary, _error, [.. _thinkingChars], [.. _live], CancelReason, _profile);
+    }
+}
+
+public sealed record AnalysisSnapshot(
+    Guid Id,
+    string FileName,
+    int PageCount,
+    string Prompt,
+    AnalysisStatus Status,
+    IReadOnlyList<DocUnit> Units,
+    bool UnitsTruncated,
+    IReadOnlyList<UnitAnalysis?> Results,
+    int Completed,
+    string? Summary,
+    string? Error,
+    // Znaki rozumowania jednostek W TOKU (sygnał życia dla UI); null = snapshot z DB (tryb
+    // zdegradowany), gdzie postęp na żywo z definicji nie istnieje.
+    IReadOnlyList<int>? ThinkingChars = null,
+    // Stan „na żywo" jednostek bez wyniku (w kolejce / analizuję / ponawiam); null = snapshot z DB.
+    IReadOnlyList<UnitLiveState>? LiveStates = null,
+    // Przyczyna statusu Interrupted (żywa sesja: powód anulowania; snapshot z DB: zapisana kolumna).
+    InterruptReason? InterruptReason = null,
+    // Profil dokumentu (AJ-3) — tylko żywa sesja; snapshot z DB zawsze null (D1: nie persystujemy).
+    DocumentProfile? Profile = null)
+{
+    public int Total => Units.Count;
+}

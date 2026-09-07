@@ -78,6 +78,37 @@ Koszt: +1 embedding +1 zapytanie SQL na turę follow-up (~200-400 ms); pierwsza 
 3. Zmiana tematu po turach o KPC („jaka kara grozi za zabójstwo?") → źródła KK, bez skażenia KPC.
 4. Regresja jednoturowa: pierwsze pytanie → zachowanie identyczne jak dotąd.
 
+## Krok 1.5 — fold odpowiedzi + metadanych źródeł do wariantu kontekstowego (2026-07-21)
+
+**Problem wykryty na produkcji.** Anafora odnosząca się do TREŚCI poprzedniej odpowiedzi, nie do
+wcześniejszych pytań: po odpowiedzi „grzywna z art. 157 kw, jeśli nie opuścisz lasu na żądanie osoby
+uprawnionej" dopytanie „a kim jest osoba uprawniona z powyższej odpowiedzi?" gubiło most (art. 157 kw,
+„las") — `Contextualize` sklejał tylko pytania użytkownika, więc retrieval zdominowała ogólna fraza
+„osoba uprawniona" → nietrafne akty (KPC, ordynacja, alimenty). To samo jako samodzielne pytanie w nowym
+czacie trafiało poprawnie (nadleśniczy, ustawa o lasach) — dowód, że brakowało kotwic z odpowiedzi.
+
+**Rozwiązanie (deterministyczne, bez LLM — świadomie NIE Krok 2).** Nowy overload
+`FollowUpQuery.Contextualize(IReadOnlyList<ChatTurn>, string)` wzbogaca wariant kontekstowy o kotwice
+ostatniej NIEPUSTEJ odpowiedzi (tury z odmową `Answer=null` pomijane, sięgamy wstecz):
+1. **metadane źródeł** tamtej tury (`ChatTurn.SourceAnchors` = etykieta lokalizatora + tytuł aktu;
+   wypełniane w `Chat.razor` z `Exchange.Sources`, opcjonalne w SSE `HistoryTurnDto`),
+2. **cytaty** wyłuskane z tekstu odpowiedzi (`CitationParser` — ten sam, którego używa tor strukturalny;
+   doklejane osobno, więc przeżywają przycięcie fragmentu),
+3. **krótki fragment** odpowiedzi (`MaxFoldedAnswerChars=400`, markery `[n]` zdjęte) — niesie rzeczowniki
+   („opuszczenie lasu") docierające dense/BM25 do aktu z definicją, nawet gdy nie był źródłem tamtej tury.
+
+Kolejność: rdzeń pytań (intencja prowadzi) → źródła → cytaty → fragment. Bez dodatkowego retrievalu
+(nadal 2 warianty, asymetryczny `PickContextual` z marginesem bez zmian). Ryzyko: fold podnosi
+`MaxSimilarity` wariantu kontekstowego → przechył ku kontekstowemu; kryte testem zmiany tematu, do
+re-pomiaru `FollowUpSignalMargin` na M4.
+
+**Gdzie:** `ChatTurn.cs` (pole `SourceAnchors`), `FollowUpQuery.cs` (overload + `ExtractCitationTokens`
++ `TrimForRetrieval`), `ChatService.cs` / `Program.cs` (`/api/chat` — oba wejścia razem, parytet),
+`Chat.razor` (`SourceAnchors(Exchange)`). Testy: `FollowUpQueryTests` (fold, pominięcie odmowy, fallback,
+trim-vs-cytat, źródła) + `ChatServiceFollowUpTests` (ratunek z kotwicy, sięgnięcie za odmowę). **Zielone
+lokalnie** (30/30 follow-up/history). **Weryfikacja e2e na M4 PENDING** (scenariusz las/nocowanie +
+re-pomiar marginesu — infra 3060/M4).
+
 ## Poza zakresem (jawnie odłożone)
 
 - **Krok 2 — kondensacja zapytania LLM-em** (trudne anafory: „a ten drugi wyrok?"): tani call LLM

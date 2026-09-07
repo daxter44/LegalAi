@@ -16,18 +16,36 @@ public sealed class TokenAwareChunker(IEmbeddingProvider embedder, IOptions<Chun
 
     public async Task<IReadOnlyList<DocumentChunk>> ChunkAsync(NormalizedDocument document, CancellationToken ct)
     {
+        var segments = document.Segments;
+
+        // RÓWN-2: liczenie tokenów w JEDNYM batchowanym przejściu na CAŁY dokument (a nie osobno per
+        // segment) — mniej round-tripów /tokenize przez LAN. Jednostki tagowane numerem segmentu; sam
+        // packing zostaje PER SEGMENT (chunki nie przekraczają granic segmentu → lokalizator i offsety
+        // bez zmian). Wynik identyczny z wariantem per-segment: te same liczby, to samo dzielenie,
+        // ta sama numeracja w kolejności segmentów.
+        var units = new List<Unit>();
+        for (var s = 0; s < segments.Count; s++)
+            units.AddRange(SplitUnits(s, segments[s].Text));
+        if (units.Count == 0) return [];
+
+        var counts = await CountAsync(units, ct);
+        (units, counts) = await EnsureWithinMaxAsync(units, counts, ct);
+
         var chunks = new List<DocumentChunk>();
         var index = 0;
-
-        foreach (var segment in document.Segments)
+        // Jednostki tego samego segmentu są CIĄGŁE (flatten w kolejności segmentów, dzielenie wstawia
+        // sąsiednio) — pakujemy kolejne przebiegi po Seg.
+        var i = 0;
+        while (i < units.Count)
         {
-            var units = SplitUnits(segment.Text);
-            if (units.Count == 0) continue;
+            var seg = units[i].Seg;
+            var start = i;
+            while (i < units.Count && units[i].Seg == seg) i++;
+            var groupUnits = units.GetRange(start, i - start);
+            var groupCounts = counts[start..i];
+            var segment = segments[seg];
 
-            var counts = await CountAsync(units, ct);
-            (units, counts) = await EnsureWithinMaxAsync(units, counts, ct);
-
-            foreach (var packed in Pack(units, counts))
+            foreach (var packed in Pack(groupUnits, groupCounts))
             {
                 // Odrzuć zdegenerowane fragmenty (checkboxy formularza, „⚫", pojedyncze linie, urwane słowa) —
                 // mają anomalnie wysokie cosine do KAŻDEGO zapytania i wypychają realne przepisy z top-K.
@@ -48,7 +66,7 @@ public sealed class TokenAwareChunker(IEmbeddingProvider embedder, IOptions<Chun
         return chunks;
     }
 
-    private readonly record struct Unit(string Text, int Start);
+    private readonly record struct Unit(int Seg, string Text, int Start);
     private readonly record struct Packed(string Text, int LocalStart, int Tokens);
 
     private static readonly System.Text.RegularExpressions.Regex SubstantiveWord =
@@ -58,8 +76,8 @@ public sealed class TokenAwareChunker(IEmbeddingProvider embedder, IOptions<Chun
     /// (odsiew scaffoldingu formularzy SAOS i artefaktów HTML→tekst).</summary>
     private static int CountSubstantiveWords(string text) => SubstantiveWord.Matches(text).Count;
 
-    /// <summary>Akapity (linie) jako jednostki, z offsetem w tekście segmentu.</summary>
-    private static List<Unit> SplitUnits(string text)
+    /// <summary>Akapity (linie) jako jednostki, z offsetem LOKALNYM w tekście segmentu i tagiem segmentu.</summary>
+    private static List<Unit> SplitUnits(int seg, string text)
     {
         var units = new List<Unit>();
         var pos = 0;
@@ -69,7 +87,7 @@ public sealed class TokenAwareChunker(IEmbeddingProvider embedder, IOptions<Chun
             if (trimmed.Length > 0)
             {
                 var start = text.IndexOf(trimmed, Math.Min(pos, text.Length), StringComparison.Ordinal);
-                units.Add(new Unit(trimmed, start < 0 ? pos : start));
+                units.Add(new Unit(seg, trimmed, start < 0 ? pos : start));
             }
             pos += line.Length + 1; // +1 za '\n'
         }
@@ -111,7 +129,8 @@ public sealed class TokenAwareChunker(IEmbeddingProvider embedder, IOptions<Chun
         var left = u.Text[..sp];
         var right = u.Text[sp..].TrimStart();
         var rightOffset = sp + (u.Text[sp..].Length - right.Length);
-        return (new Unit(left.TrimEnd(), u.Start), new Unit(right, u.Start + rightOffset));
+        // Obie połówki dziedziczą segment (offset lokalny w obrębie tego samego segmentu).
+        return (new Unit(u.Seg, left.TrimEnd(), u.Start), new Unit(u.Seg, right, u.Start + rightOffset));
     }
 
     /// <summary>Greedy: pakuj jednostki do TargetTokens, następny chunk z zakładką OverlapTokens.</summary>

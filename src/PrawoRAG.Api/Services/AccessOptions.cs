@@ -20,7 +20,9 @@ public sealed class AccessOptions
     /// <summary>Twardy cap zapytań LLM na dzień per tester.</summary>
     public int MaxUserRequestsPerDay { get; set; } = 50;
 
-    /// <summary>Twardy cap zapytań LLM na dzień łącznie (wszyscy testerzy).</summary>
+    /// <summary>Twardy cap zapytań LLM na dzień łącznie (wszyscy użytkownicy). UWAGA: capy
+    /// pojemności (ten i <see cref="MaxGlobalOutputCharsPerDay"/>) obowiązują także przy
+    /// <see cref="Enabled"/>=false, o ile działają konta z planami — patrz CostGuard.</summary>
     public int MaxGlobalRequestsPerDay { get; set; } = 300;
 
     /// <summary>Twardy globalny dzienny budżet znaków WYJŚCIA LLM (proxy kosztu tokenów —

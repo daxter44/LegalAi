@@ -29,4 +29,25 @@ public static class Consolidation
         var t = Key(consolidatedTextEli);
         return a is not null && t is not null && a.Value.CompareTo(t.Value) > 0;
     }
+
+    /// <summary>
+    /// Pełny warunek „nierozstrzygnięta w t.j." (diagnoza działalności nierejestrowanej, 2026-09-01):
+    /// samo „ogłoszona po t.j." przegapia całą klasę VACATIO LEGIS — nowelę ogłoszoną PRZED t.j.,
+    /// ale wchodzącą w życie PO jego dacie odcięcia. ISAP drukuje ją wtedy w t.j. jako PODWÓJNE
+    /// brzmienie z przypisem („wejdzie w życie…"), więc tekst nie rozstrzyga, a model bez markera
+    /// [NOWELIZACJA] dostaje dwie wersje przepisu naraz (zmierzone: DU/2025/1168 poz. 1168 &lt; t.j.
+    /// poz. 1480, wejście w życie 2026-01-01 — wypadała z listy i art. 5 Prawa przedsiębiorców
+    /// kończył się odmową). Dlatego nowela zostaje na liście też wtedy, gdy jej data wejścia
+    /// w życie jest późniejsza niż data OBWIESZCZENIA t.j. Brak którejś daty → zachowanie stare
+    /// (sam klucz ELI) — bezpieczna degradacja dla ścieżek bez sieci (ingest w ActNormalizer).
+    /// </summary>
+    public static bool IsUnabsorbed(
+        string? amendmentEli, string? consolidatedTextEli, string? effectiveDate, DateOnly? tjAnnouncedDate)
+    {
+        if (IsUnabsorbed(amendmentEli, consolidatedTextEli)) return true;
+        return Key(amendmentEli) is not null && Key(consolidatedTextEli) is not null
+            && tjAnnouncedDate is { } tj
+            && DateOnly.TryParse(effectiveDate, out var effective)
+            && effective > tj;
+    }
 }

@@ -20,9 +20,37 @@ public static class ActAliases
         ["KSH"] = "Kodeks spółek handlowych",
         ["KRO"] = "Kodeks rodzinny i opiekuńczy",
         ["KPA"] = "Kodeks postępowania administracyjnego",
+
+        // Prawo UE — nazwy zwyczajowe mapujemy na OZNACZENIE aktu („2016/679"), bo to ono stoi w tytule
+        // dokumentu z CELLAR-a („ROZPORZĄDZENIE … (UE) 2016/679 …"). Dzięki temu rozpoznanie idzie tą samą
+        // ścieżką (dopasowanie do tytułu w bazie) co kodeksy — bez nowego toru w retrievalu.
+        ["RODO"] = "2016/679",
+        ["GDPR"] = "2016/679",
+        ["AI Act"] = "2024/1689",
+        ["AIA"] = "2024/1689",
+        ["DSA"] = "2022/2065",
+        ["DMA"] = "2022/1925",
+        ["DORA"] = "2022/2554",
+        ["MiCA"] = "2023/1114",
+        ["NIS2"] = "2022/2555",
+        ["MDR"] = "2017/745",
+        ["REACH"] = "1907/2006",
     };
 
-    /// <summary>Kanoniczny fragment tytułu dla skrótu (np. „KW" → „Kodeks wykroczeń") albo null, gdy to nie skrót.</summary>
-    public static string? Canonical(string? hint) =>
-        hint is not null && Map.TryGetValue(hint.Trim(), out var v) ? v : null;
+    /// <summary>Oznaczenie aktu UE („2016/679", „95/46/WE") — jest już kanonicznym fragmentem tytułu,
+    /// więc przechodzi bez mapowania.</summary>
+    private static readonly System.Text.RegularExpressions.Regex EuDesignator =
+        new(@"^\d{1,4}/\d{1,4}(?:/(?:WE|EWG|UE|Euratom|EWWiS))?$",
+            System.Text.RegularExpressions.RegexOptions.Compiled
+            | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>Kanoniczny fragment tytułu dla skrótu („KW" → „Kodeks wykroczeń", „RODO" → „2016/679")
+    /// albo null, gdy to ani skrót, ani oznaczenie aktu UE.</summary>
+    public static string? Canonical(string? hint)
+    {
+        if (hint is null) return null;
+        var trimmed = hint.Trim();
+        if (Map.TryGetValue(trimmed, out var v)) return v;
+        return EuDesignator.IsMatch(trimmed) ? trimmed : null;
+    }
 }

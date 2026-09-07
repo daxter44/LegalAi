@@ -29,6 +29,14 @@ public static class ExamRunner
         var topK = cfg.GetValue<int?>("Retrieval:TopK") ?? 8;
         var threshold = cfg.GetValue<double?>("Retrieval:AbstentionThreshold") ?? 0.55;
         var minChunkTokens = cfg.GetValue<int?>("Retrieval:MinChunkTokens") ?? 20;
+        // Throttle między wywołaniami LLM (zmierzone 2026-08-26: darmowy tier Gemma ma limit
+        // generate_content_free_tier_input_token_count=16000/okno, a rag/oracle niosą kontekst
+        // TopK chunków (kilka tysięcy tokenów) — bez przerwy między wywołaniami pytanie #43/446
+        // już dostało 429 (retry-after ~40s w treści błędu). Brak retry w AskAsync (patrz niżej) —
+        // 429 dziś ląduje jako trwałe Correct=false, nie neutralne pominięcie, więc throttling
+        // ma zapobiegać, nie leczyć. Wartość domyślna to punkt startowy z jednego pomiaru, NIE
+        // kalibracja — dostrajać przez Eval:ExamDelayMs bez redeployu, jeśli nadal łapie 429.
+        var delayMs = cfg.GetValue<int?>("Eval:ExamDelayMs") ?? 3000;
 
         var set = JsonSerializer.Deserialize<ExamSet>(await File.ReadAllTextAsync(path, ct),
             new JsonSerializerOptions(JsonSerializerDefaults.Web))
@@ -55,43 +63,57 @@ public static class ExamRunner
             foreach (var mode in modes)
             {
                 ExamItemResult r;
-                switch (mode)
+                try
                 {
-                    case "solo":
-                        r = await AskAsync(llm, ExamPrompt.Solo(item), item, "solo", ct);
-                        break;
-
-                    case "rag":
+                    switch (mode)
                     {
-                        var retriever = scope.ServiceProvider.GetRequiredService<IRetriever>();
-                        // Zapytanie = trzon + opcje: opcje niosą tekst właściwego przepisu (tor gęsty),
-                        // trzon niesie ewentualny cytat „art. N" (tor strukturalny).
-                        var query = new RetrievalQuery
-                        {
-                            Text = ExamPrompt.QuestionBlock(item),
-                            TopK = topK, MinChunkTokens = minChunkTokens,
-                        };
-                        var res = await retriever.RetrieveAsync(query, ct);
-                        var (hit, leg, resolved) = await BasisHitAsync(db, actCache, basis, res.Chunks, ct);
-                        r = await AskAsync(llm, ExamPrompt.Rag(item, res.Chunks), item, "rag", ct) with
-                        {
-                            WouldAbstain = AbstentionPolicy.ShouldAbstain(res, threshold),
-                            BasisHit = hit, BasisHitLeg = leg, BasisResolved = resolved,
-                        };
-                        break;
-                    }
+                        case "solo":
+                            r = await AskAsync(llm, ExamPrompt.Solo(item), item, "solo", ct);
+                            break;
 
-                    case "oracle":
-                    {
-                        var chunks = await OracleChunksAsync(db, actCache, basis, ct);
-                        if (chunks.Count == 0) { r = new ExamItemResult(item.Nr, "oracle", null, false, BasisResolved: false); break; }
-                        r = await AskAsync(llm, ExamPrompt.Rag(item, chunks), item, "oracle", ct) with { BasisResolved = true };
-                        break;
-                    }
+                        case "rag":
+                        {
+                            var retriever = scope.ServiceProvider.GetRequiredService<IRetriever>();
+                            // Zapytanie = trzon + opcje: opcje niosą tekst właściwego przepisu (tor gęsty),
+                            // trzon niesie ewentualny cytat „art. N" (tor strukturalny).
+                            var query = new RetrievalQuery
+                            {
+                                Text = ExamPrompt.QuestionBlock(item),
+                                TopK = topK, MinChunkTokens = minChunkTokens,
+                            };
+                            var res = await retriever.RetrieveAsync(query, ct);
+                            var (hit, leg, resolved) = await BasisHitAsync(db, actCache, basis, res.Chunks, ct);
+                            r = await AskAsync(llm, ExamPrompt.Rag(item, res.Chunks), item, "rag", ct) with
+                            {
+                                WouldAbstain = AbstentionPolicy.ShouldAbstain(res, threshold),
+                                BasisHit = hit, BasisHitLeg = leg, BasisResolved = resolved,
+                            };
+                            break;
+                        }
 
-                    default:
-                        throw new InvalidOperationException($"Nieznany tryb egzaminu '{mode}' (dozwolone: solo, rag, oracle).");
+                        case "oracle":
+                        {
+                            var chunks = await OracleChunksAsync(db, actCache, basis, ct);
+                            if (chunks.Count == 0) { r = new ExamItemResult(item.Nr, "oracle", null, false, BasisResolved: false); break; }
+                            r = await AskAsync(llm, ExamPrompt.Rag(item, chunks), item, "oracle", ct) with { BasisResolved = true };
+                            break;
+                        }
+
+                        default:
+                            throw new InvalidOperationException($"Nieznany tryb egzaminu '{mode}' (dozwolone: solo, rag, oracle).");
+                    }
                 }
+                // Parasol NA CAŁE pytanie (nie tylko na wywołanie LLM w AskAsync) — awarie poza LLM
+                // (np. przejściowy błąd sieci/DB w BasisHitAsync/OracleChunksAsync, zaobserwowane
+                // 2026-08-26: SocketException przy długim, wielogodzinnym przebiegu przez tunel SSH)
+                // wcześniej wywalały CAŁY 446-pytaniowy przebieg zamiast jednego wiersza w raporcie.
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Console.WriteLine($"  ! Błąd pytania #{item.Nr} ({mode}): {ex.GetBaseException().Message}");
+                    r = new ExamItemResult(item.Nr, mode, null, false, RawAnswer: $"(błąd: {ex.GetBaseException().Message})");
+                }
+
+                if (delayMs > 0) await Task.Delay(delayMs, ct);
 
                 results.Add(r);
                 await report.WriteLineAsync(JsonSerializer.Serialize(new

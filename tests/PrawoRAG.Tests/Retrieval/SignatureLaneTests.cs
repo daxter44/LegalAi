@@ -1,0 +1,117 @@
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Pgvector;
+using PrawoRAG.Domain;
+using PrawoRAG.Domain.Retrieval;
+using PrawoRAG.Storage;
+using PrawoRAG.Storage.Entities;
+using PrawoRAG.Storage.Retrieval;
+using PrawoRAG.Tests.Fakes;
+
+namespace PrawoRAG.Tests.Retrieval;
+
+/// <summary>
+/// T-SIG-LANE — lane sygnatury na żywym Postgresie. Dowód: orzeczenie, którego TREŚĆ nie zawiera
+/// własnej sygnatury, jest znajdowane po sygnaturze w pytaniu (exact-match po
+/// <c>documents.CaseNumber</c>) — semantyka/BM25 by go nie zwróciły. Sygnatura SYNTETYCZNA
+/// („IX ZZ 99999/99"), której nie ma w realnym korpusie, żeby test nie kolidował z prawdziwymi danymi.
+/// </summary>
+[Collection("LiveDb")]
+public class SignatureLaneTests
+{
+    private const string Src = "TEST-SIG";
+    private const string TargetText = "Sąd oddalił skargę na decyzję o warunkach zabudowy. Organ prawidłowo ustalił stan faktyczny.";
+
+    private static readonly string Conn =
+        Environment.GetEnvironmentVariable("PRAWORAG_DB")
+        ?? "Host=localhost;Port=5432;Database=praworag;Username=praworag;Password=praworag";
+
+    private static PrawoRagDbContext NewDb() =>
+        new(new DbContextOptionsBuilder<PrawoRagDbContext>().UseNpgsql(Conn, o => o.UseVector()).Options);
+
+    private static readonly FakeEmbeddingProvider Emb = new();
+
+    private static async Task CleanAsync()
+    {
+        await using var db = NewDb();
+        // Sprząta też pozostałości po wcześniejszych wariantach testu (gdyby przerwał przed czyszczeniem).
+        await db.Documents.Where(d => d.Source == Src || d.Source == "TEST-SIG-1" || d.Source == "TEST-SIG-2").ExecuteDeleteAsync();
+    }
+
+    private static async Task SeedJudgmentAsync(string extId, string caseNumberNormalized, string text, string? legalBasisText = null)
+    {
+        var vec = (await Emb.EmbedPassagesAsync([text], default))[0];
+        await using var db = NewDb();
+        var meta = legalBasisText is null ? null
+            : JsonSerializer.SerializeToDocument(new { referencedRegulations = new[] { new { text = legalBasisText } } });
+        var doc = new DocumentEntity
+        {
+            Id = Guid.CreateVersion7(), Source = Src, ExternalId = extId, DocType = DocTypes.Judgment,
+            Title = $"{Src}/{extId}", ContentHash = $"{Src}:{extId}", Status = DocumentStatus.Indexed,
+            CaseNumber = caseNumberNormalized, TypedMetadata = meta,
+            IngestedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        db.Documents.Add(doc);
+        db.Chunks.Add(new ChunkEntity
+        {
+            Id = Guid.CreateVersion7(), DocumentId = doc.Id, ChunkIndex = 0, Text = text,
+            TokenCount = 30, CharStart = 0, CharEnd = text.Length,
+            Embedding = new Vector(vec), EmbeddedWith = Emb.ModelId,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Finds_judgment_by_signature_even_when_text_lacks_it()
+    {
+        await CleanAsync();
+        try
+        {
+            // Treść BEZ własnej sygnatury (jak realny full_text NSA) + podstawa prawna w metadanych.
+            await SeedJudgmentAsync("target", "IX ZZ 99999/99", TargetText,
+                legalBasisText: "Ustawa o planowaniu i zagospodarowaniu przestrzennym (Dz.U. 2023 poz 977), art. 28 ust. 1");
+            await SeedJudgmentAsync("distractor", "IX ZZ 11111/11",
+                "Zupełnie inna sprawa dotycząca zezwolenia na usunięcie drzew i kar administracyjnych.");
+
+            await using var db = NewDb();
+            // Pytanie z sygnaturą w NATURALNYM formacie (małe litery, zwykłe spacje) — normalizacja klucza
+            // dopasowuje do znormalizowanego CaseNumber mimo różnicy w zapisie.
+            var res = await new HybridRetriever(db, Emb).RetrieveAsync(
+                new RetrievalQuery { Text = "Co orzeczono w sprawie ix zz 99999/99?", MinChunkTokens = 0 }, default);
+
+            // Trafienie dokładne (Score=MaxValue) na wierzchu — WŁAŚCIWE orzeczenie, mimo że jego treść
+            // nie zawiera własnej sygnatury (semantyka/BM25 by go nie zwróciły).
+            Assert.Equal(TargetText, res.Chunks[0].Text);
+            // Podstawy prawne przenoszą się z metadanych do wyniku (łańcuch DB → RetrievedChunk).
+            Assert.NotNull(res.Chunks[0].LegalBases);
+            Assert.Contains(res.Chunks[0].LegalBases!, b => b.Contains("Dz.U. 2023 poz 977"));
+
+            // Retriever RAPORTUJE trafienie dokładne osobnym sygnałem — bez tego bramka abstynencji
+            // odmawiała, trzymając w kontekście orzeczenie wprost wskazane przez użytkownika (cosine
+            // gołej sygnatury jest niski, bo to identyfikator, nie zapytanie semantyczne).
+            Assert.True(res.ExactMatchHits > 0);
+            Assert.False(AbstentionPolicy.ShouldAbstain(res, AbstentionPolicy.DefaultThreshold));
+        }
+        finally { await CleanAsync(); }
+    }
+
+    [Fact] // Kontrola negatywna: pytanie BEZ sygnatury nie podnosi sygnału exact-match
+    public async Task Question_without_signature_reports_no_exact_match()
+    {
+        await CleanAsync();
+        try
+        {
+            await SeedJudgmentAsync("target", "IX ZZ 99999/99", TargetText);
+
+            await using var db = NewDb();
+            var res = await new HybridRetriever(db, Emb).RetrieveAsync(
+                new RetrievalQuery { Text = "Jakie są przesłanki wznowienia postępowania?", MinChunkTokens = 0 },
+                default);
+
+            // Brak sygnatury/Dz.U./cytatu w pytaniu → zero trafień dokładnych → bramka dalej stoi
+            // wyłącznie na cosine (żadnego rozluźnienia dla pytań opisowych).
+            Assert.Equal(0, res.ExactMatchHits);
+        }
+        finally { await CleanAsync(); }
+    }
+}

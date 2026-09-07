@@ -1,0 +1,10 @@
+# Pliki, które MUSZĄ mieć końcówki LF niezależnie od systemu deweloperskiego.
+#
+# polish.stop: stoplista czytana przez Postgres (słownik ispell). Przy `core.autocrlf=true` checkout
+# na Windows dałby CRLF, a Postgres wziąłby "\r" za część wyrazu — stopwordy przestałyby pasować do
+# lematów i tor rzadki po cichu by się zepsuł (żadnego błędu, tylko gorsze wyniki). Plik jest
+# kopiowany do obrazu bazy przez infra/Dockerfile.db, więc trafiłby tam uszkodzony.
+infra/tsearch/*.stop text eol=lf
+
+# Dockerfile: kontynuacje linii (\) i heredoc w RUN są wrażliwe na CRLF.
+infra/Dockerfile*    text eol=lf

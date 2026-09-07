@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #2563EB; text-decoration: none; } a:hover { color: #1D4ED8; }
+  </style>
+</helmet>
+<div style="width: 1440px; height: 900px; background: #F3F5F9; color: #0A0A0A; display: flex; flex-direction: column; overflow: hidden">
+
+  <!-- Górny pasek aplikacji -->
+  <div style="display: flex; align-items: center; gap: 24px; padding: 14px 40px; background: #FFFFFF; border-bottom: 1px solid #D2D6E2">
+    <div style="display: flex; align-items: center; gap: 9px">
+      <div style="width: 22px; height: 22px; border-radius: 8px; background: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)"></div>
+      <div style="font-family: 'Palatino Linotype', Palatino, Georgia, serif; font-size: 20px; font-weight: 700">OmniaSI</div>
+    </div>
+    <div style="display: flex; gap: 22px; margin-left: 24px">
+      <a href="#" style="font-size: 14.5px; font-weight: 500; color: #6B7280">Czat</a>
+      <a href="#" style="font-size: 14.5px; font-weight: 500; color: #6B7280">Analiza</a>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; margin-left: auto">
+      <div style="font-size: 14px; font-weight: 600; color: #2563EB">Konto</div>
+      <div style="width: 30px; height: 30px; border-radius: 9999px; background: #E0E3EC; display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 700; color: #6B7280">MK</div>
+    </div>
+  </div>
+
+  <!-- Treść -->
+  <div style="flex-grow: 1; display: flex; justify-content: center; padding: 44px 40px; overflow: hidden">
+    <div style="width: 100%; max-width: 760px; display: flex; flex-direction: column; gap: 22px">
+      <div style="font-family: 'Palatino Linotype', Palatino, Georgia, serif; font-size: 30px; font-weight: 700; letter-spacing: -0.01em">Twoje konto</div>
+
+      <!-- Karta: plan i zużycie -->
+      <div style="background: #FFFFFF; border-radius: 16px; box-shadow: 0 1px 4px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.07); padding: 28px 32px; display: flex; flex-direction: column; gap: 18px">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <div style="font-size: 17px; font-weight: 700">Plan</div>
+          <div style="display: inline-flex; align-items: center; padding: 3px 12px; border-radius: 9999px; background: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%); color: #FFFFFF; font-size: 12.5px; font-weight: 700; letter-spacing: 0.03em">PRO</div>
+          <div style="display: inline-flex; align-items: center; padding: 3px 12px; border-radius: 9999px; background: #F0FDF4; color: #16A34A; font-size: 12.5px; font-weight: 700">Aktywny</div>
+          <div style="margin-left: auto; font-size: 13.5px; color: #9CA3AF">odnowienie: [DATA ODNOWIENIA]</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <div style="font-size: 14px; color: #6B7280">Zużycie w tym okresie</div>
+            <div style="margin-left: auto; font-size: 14px; font-weight: 700">212 <span style="color: #9CA3AF; font-weight: 500">/ 300 zapytań</span></div>
+          </div>
+          <div style="height: 10px; border-radius: 9999px; background: #EAECF3; overflow: hidden">
+            <div style="width: 70%; height: 10px; border-radius: 9999px; background: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%)"></div>
+          </div>
+          <div style="font-size: 12.5px; color: #9CA3AF">Licznik odnawia się z początkiem każdego okresu rozliczeniowego.</div>
+        </div>
+        <div style="display: flex; gap: 12px; padding-top: 4px">
+          <div style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 12px; font-size: 15px; font-weight: 700; color: #FFFFFF; background: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%); box-shadow: 0 8px 18px -8px rgb(37 99 235 / 0.55)">Zarządzaj płatnościami</div>
+          <div style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 12px; font-size: 15px; font-weight: 600; color: #0A0A0A; background: #FFFFFF; border: 1px solid #D2D6E2">Zmień plan</div>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: #9CA3AF">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"></rect><path d="M1 10h22"></path></svg>
+          <span>Płatnościami i fakturami zarządzasz w bezpiecznym panelu Stripe — nie przechowujemy danych karty.</span>
+        </div>
+      </div>
+
+      <!-- Karta: dane konta -->
+      <div style="background: #FFFFFF; border-radius: 16px; box-shadow: 0 1px 4px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.07); padding: 28px 32px; display: flex; flex-direction: column; gap: 16px">
+        <div style="font-size: 17px; font-weight: 700">Dane konta</div>
+        <div style="display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid #D2D6E2">
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <div style="font-size: 13px; color: #9CA3AF">Adres e-mail</div>
+            <div style="font-size: 15px; font-weight: 600">m.kowalska@kancelaria.pl</div>
+          </div>
+          <div style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #16A34A; font-weight: 600">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+            <span>potwierdzony</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; padding: 4px 0">
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <div style="font-size: 13px; color: #9CA3AF">Hasło</div>
+            <div style="font-size: 15px; letter-spacing: 0.2em">••••••••••</div>
+          </div>
+          <div style="margin-left: auto; display: inline-flex; align-items: center; min-height: 38px; padding: 0 16px; border-radius: 12px; font-size: 14px; font-weight: 600; color: #0A0A0A; border: 1px solid #D2D6E2">Zmień hasło</div>
+        </div>
+      </div>
+
+      <!-- Karta: prywatność + wylogowanie -->
+      <div style="background: #FFFFFF; border-radius: 16px; box-shadow: 0 1px 4px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.07); padding: 28px 32px; display: flex; flex-direction: column; gap: 14px">
+        <div style="font-size: 17px; font-weight: 700">Prywatność i dane</div>
+        <div style="display: flex; gap: 10px; padding: 12px 16px; background: #EFF6FF; border-radius: 12px; font-size: 14px; line-height: 1.6; color: #6B7280; align-items: flex-start">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M9 12l2 2 4-4"></path></svg>
+          <span>Twoje pytania i dokumenty nie trenują żadnego modelu. Historia rozmów jest przechowywana 6 miesięcy. Konto możesz usunąć, pisząc na adres wskazany w polityce prywatności.</span>
+        </div>
+        <div style="display: flex; gap: 16px; align-items: center">
+          <a href="#" style="font-size: 14px; font-weight: 600">Polityka prywatności</a>
+          <a href="#" style="font-size: 14px; font-weight: 600">Regulamin</a>
+          <div style="margin-left: auto; display: inline-flex; align-items: center; min-height: 38px; padding: 0 16px; border-radius: 12px; font-size: 14px; font-weight: 600; color: #DC2626; border: 1px solid #FECACA">Wyloguj się</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

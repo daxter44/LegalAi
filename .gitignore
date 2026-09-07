@@ -14,6 +14,10 @@ obj/
 # Lokalne pliki tymczasowe / robocze
 tmp/
 *.log
+# Logi runnerow zapisuja sie jako .jsonl (exam-*, process-failures-*), wiec `*.log` ich NIE lapal —
+# 51 plikow / ~9 MB czekalo nieszledzonych na przypadkowe `git add -A`. `**/` bo Ingestion pisze
+# do wlasnego logs/ wzgledem CWD `dotnet run`.
+**/logs/
 
 # Magazyn surowych dokumentów (dev-cache wycinka korpusu — NIE wersjonować;
 # uwaga licencyjna: nie magazynujemy hurtowo całej bazy SAOS w repo).
@@ -33,3 +37,7 @@ Thumbs.db
 # Lokalne narzędzia deweloperskie (natywny TEI cache na Apple Silicon, Claude Code)
 .local/
 .claude/
+
+# Venv narzędzi pomocniczych (np. tools/nsa-ingest) — lokalny, nie wersjonować
+.venv*/
+.superpowers/

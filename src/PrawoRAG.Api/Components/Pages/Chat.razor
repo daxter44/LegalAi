@@ -1,32 +1,87 @@
-@page "/"
+@page "/czat"
 @rendermode InteractiveServer
 @using PrawoRAG.Llm.Grounding
 @using PrawoRAG.Domain.Llm
+@using PrawoRAG.Domain.Privacy
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IChatService ChatService
+@inject PrawoRAG.Domain.Embeddings.IEmbeddingProvider Embedder
 @inject IConversationStore Store
 @inject ICurrentUser CurrentUser
 @inject RateGuard RateGuard
 @inject CostGuard CostGuard
 @inject AuthenticationStateProvider AuthState
 @inject Microsoft.Extensions.Options.IOptions<DiagnosticsOptions> Diagnostics
+@inject Microsoft.Extensions.Options.IOptions<DocumentsOptions> Documents
+@inject Microsoft.Extensions.Options.IOptions<AnalysisOptions> Analysis
+@inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.Billing.BillingOptions> Billing
+@inject PrawoRAG.Api.Services.Plans.IEntitlements Entitlements
 @implements IDisposable
 
 <h1 class="sr-only">Czat z asystentem prawnym</h1>
 
+<button class="btn-sidebar-toggle" @onclick="() => _mobileSidebarOpen = true" aria-label="Historia rozmów">
+    ☰ Historia
+</button>
+
 <div class="chat-layout">
-<aside class="chat-sidebar">
-    <button class="btn btn-new-chat" @onclick="NewConversation" disabled="@_busy">➕ Nowa rozmowa</button>
+@if (_mobileSidebarOpen)
+{
+    <div class="sidebar-backdrop" @onclick="() => _mobileSidebarOpen = false"></div>
+}
+<aside class="chat-sidebar @(_mobileSidebarOpen ? "open" : "")">
+    @* Przełącznik trybów w sidebarze (RED-2.1). Marka zniknęła stąd 2026-09-01 — globalny header
+       (MainLayout) renderuje się teraz też na tym ekranie i niósłby ją podwójnie. *@
+    <nav class="side-tabs" aria-label="Tryb pracy">
+        <span class="side-tab active">Czat</span>
+        @if (Analysis.Value.Enabled)
+        {
+            <a class="side-tab" href="/analiza">Analiza</a>
+        }
+    </nav>
+    <button class="btn btn-new-chat" @onclick="NewConversation" disabled="@_busy">＋ Nowa rozmowa</button>
     <nav class="conv-list" aria-label="Historia rozmów">
         @foreach (var c in _conversations)
         {
             <button class="conv-item @(c.Id == _conversationId ? "active" : "")"
-                    @onclick="() => LoadConversation(c.Id)" disabled="@_busy" title="@c.Title">
-                <span class="conv-title">@c.Title</span>
+                    @onclick="() => LoadConversation(c.Id)" disabled="@_busy"
+                    title="@(_busy ? "Poczekaj na zakończenie bieżącej odpowiedzi" : c.Title)">
+                <span class="conv-title">
+                    @* Spinner przy rozmowie, która właśnie generuje odpowiedź; ✓ przez chwilę po
+                       zakończeniu (przeklikanie 2026-08-31). Przełączanie W TRAKCIE generowania jest
+                       świadomie zablokowane — strumień żyje w stanie tego widoku (follow-up w planie RED). *@
+                    @if (_busy && c.Id == _conversationId)
+                    {
+                        <span class="conv-spinner" aria-label="generuję odpowiedź"></span>
+                    }
+                    else if (c.Id == _finishedConvId)
+                    {
+                        <span class="conv-done" aria-label="odpowiedź gotowa">✓</span>
+                    }
+                    @c.Title
+                </span>
                 <span class="conv-date">@c.UpdatedAt.ToLocalTime().ToString("dd.MM HH:mm")</span>
             </button>
         }
     </nav>
+    <div class="side-user">
+        <span class="side-avatar" aria-hidden="true">@Initials</span>
+        <span class="side-user-meta">
+            <span class="side-user-name" title="@CurrentUser.DisplayName">@(_givenName ?? CurrentUser.DisplayName)</span>
+            @if (_planLabel is not null)
+            {
+                <span class="side-user-plan">@_planLabel</span>
+            }
+            @if (_usageLabel is not null)
+            {
+                <span class="side-user-usage" title="Zużycie w bieżącym okresie rozliczeniowym">@_usageLabel</span>
+            }
+        </span>
+        @if (Billing.Value.Enabled)
+        {
+            <a class="side-user-link" href="/konto" title="Konto">›</a>
+        }
+    </div>
 </aside>
 
 <div class="chat">
@@ -34,15 +89,27 @@
         @if (_exchanges.Count == 0)
         {
             <div class="empty">
-                <p class="empty-title">Zapytaj o przepis lub orzeczenie</p>
-                <p class="empty-hint">Odpowiedzi powstają wyłącznie z cytowanych źródeł. To wstępny research — zawsze weryfikuj przy źródle.</p>
+                <span class="empty-mark" aria-hidden="true"></span>
+                <p class="empty-title">@(_firstName is null ? "W czym mogę pomóc?" : $"Witaj {_firstName} — w czym mogę pomóc?")</p>
+                <p class="empty-hint">Opisz sytuację po ludzku — znalezienie właściwych przepisów to moja praca. Odpowiedzi powstają wyłącznie z cytowanych źródeł; to wstępny research, zawsze weryfikuj przy źródle.</p>
+                <div class="empty-examples">
+                    @foreach (var q in ExampleQuestions)
+                    {
+                        <button class="example-chip" @onclick="() => _input = q" disabled="@_busy">@q</button>
+                    }
+                </div>
                 <p class="empty-hint">Pierwszy raz? <a href="/o-systemie">Przeczytaj, co system umie, a czego nie</a>.</p>
             </div>
         }
         @foreach (var ex in _exchanges)
         {
             <div class="msg msg-user">@ex.Question</div>
-            <div class="msg msg-assistant">
+            @* US-2.11 (AI Act art. 50 ust. 2): maszynowe oznaczenie pochodzenia w warstwie, którą
+               widzi skrypt/crawler. Odmowa bramki (Abstained) to szablon systemowy, nie generacja. *@
+            <div class="msg msg-assistant"
+                 data-ai-generated="@((!ex.Abstained).ToString().ToLowerInvariant())"
+                 data-ai-model="@ex.Model"
+                 data-ai-generated-at="@(ex.GeneratedAt?.ToString("O"))">
                 @if (ex.Abstained)
                 {
                     <div class="banner banner-warn" role="status">@ex.AbstainMessage</div>
@@ -52,19 +119,92 @@
                     <div class="answer" aria-live="polite">
                         @if (ex.Answer.Length > 0)
                         {
-                            @((MarkupString)MarkdownRenderer.ToSafeHtml(ex.Answer))
+                            @((MarkupString)MarkdownRenderer.ToSafeHtml(ex.Answer, ex.Sources.Count, ex.AnchorId, ex.DocFragments.Count))
                         }
                         else if (ex.Streaming)
                         {
                             <span class="typing" aria-label="generowanie odpowiedzi">…</span>
                         }
+                        else if (ex.Done)
+                        {
+                            @* Siatka bezpieczeństwa na pusty tekst po zakończonym strumieniu. Po ODM-1
+                               (ChatService podstawia zdanie odmowy na ścieżce bez retrievalu) to martwy
+                               kod bezpieczeństwa — ale gdyby odpalił, ma nie kłamać: „nie pomagam w
+                               tematach spoza prawa" TYLKO dla tury bez retrievalu; pusta odpowiedź na
+                               ścieżce ZE źródłami (czkawka providera przy pytaniu prawnym) dostaje
+                               neutralny komunikat zamiast fałszywego „to nie prawo" (ODM-2). *@
+                            <span class="empty-hint">@(ex.NoRetrievalReason is not null
+                                ? SmalltalkPrompt.OutOfScopeMessage
+                                : "Odpowiedź nie zawiera treści — zadaj pytanie ponownie.")</span>
+                        }
                     </div>
 
-                    @if (ex.Done && !IsRefusal(ex))
+                    @* Pasek etapu pracy: pytanie prawne trwa dziesiątki sekund, a wcześniej jedynym
+                       sygnałem było „…" na przycisku Wyślij. Licznik sekund pokazuje, że system żyje. *@
+                    @if (ex.Streaming && ex.Stage is { } stage)
+                    {
+                        <div class="work-stage" role="status" aria-live="polite">
+                            <svg class="work-spinner" viewBox="0 0 100 100" aria-hidden="true">
+                                <path class="work-spinner-ring" d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#142450" stroke-width="9" stroke-linecap="butt"/>
+                                <circle class="work-spinner-node" cx="50" cy="18" r="5" fill="#D97706"/>
+                            </svg>
+                            <span class="work-stage-label">@stage.Label</span>
+                            @if (stage.Count is { } n)
+                            {
+                                <span class="work-stage-count">@n.ToString("N0")</span>
+                            }
+                            <span class="work-stage-time">@ex.StageSeconds s</span>
+                        </div>
+                    }
+
+                    @* Router uznał, że pytanie nie wymaga przepisów — baza NIE była przeglądana.
+                       Etykieta jest JAWNA i niezwijalna: to jedyne miejsce w systemie, gdzie
+                       odpowiedź nie jest oparta na źródłach, i użytkownik musi to wiedzieć. *@
+                    @* Druga runda retrievalu: użytkownik ma wiedzieć, że pierwsze wyszukiwanie nie
+                       domknęło pytania, i CZEGO szukaliśmy zamiast tego (to wyjaśnia dodatkowy czas). *@
+                    @if (ex.RetriedQuery is { } retried)
+                    {
+                        @* Na żywo: jawny komunikat „nie znalazłem dla tego brzmienia, ale DALEJ PRACUJĘ
+                           nad przeformułowanym pytaniem" (decyzja 2026-09-01) — kluczowe, żeby czyszczenie
+                           tekstu rundy 1 czytało się jako zmiana strategii, nie wysypanie się systemu.
+                           Po zakończeniu tury adnotacja zostaje w czasie przeszłym. *@
+                        <div class="retry-note" role="status">
+                            @if (ex.Streaming)
+                            {
+                                <svg class="work-spinner" viewBox="0 0 100 100" aria-hidden="true">
+                                    <path class="work-spinner-ring" d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#142450" stroke-width="9" stroke-linecap="butt"/>
+                                    <circle class="work-spinner-node" cx="50" cy="18" r="5" fill="#D97706"/>
+                                </svg>
+                                <span>Dla tak zadanego pytania nie znalazłem jednoznacznej podstawy prawnej —
+                                    przeformułowałem je i <strong>szukam dalej</strong>: <em>@retried</em></span>
+                            }
+                            else
+                            {
+                                <span>🔁 Dla pierwotnego brzmienia pytania nie znalazłem jednoznacznej podstawy
+                                    prawnej — szukałem też: <em>@retried</em></span>
+                            }
+                        </div>
+                    }
+
+                    @if (ex.Done && ex.NoRetrievalReason is not null)
+                    {
+                        <div class="verify-banner no-retrieval" role="note">
+                            💬 Nie przeglądałem bazy — ta odpowiedź NIE jest oparta na źródłach.
+                            Zadaj pytanie prawne, żeby poszukać w przepisach i orzeczeniach.
+                        </div>
+                    }
+
+                    @if (ex.Done && !IsRefusal(ex) && ex.NoRetrievalReason is null)
                     {
                         <div class="verify-banner" role="note">
-                            ⚖️ Wstępny research do weryfikacji — sprawdź w źródłach poniżej.
-                            @if (ex.Check is { IsClean: false })
+                            ⚖️ Treść wygenerowana przez AI — wstępny research do weryfikacji, sprawdź w źródłach poniżej.
+                            @* Po Zadaniu 10 ⚠ znaczy „odpowiedź była poprawiana", nie „wypuściliśmy
+                               brudną" — brudna po drugiej próbie w ogóle nie wychodzi (odmowa). *@
+                            @if (ex.Regenerated)
+                            {
+                                <span class="badge badge-ok" title="Pierwsza wersja przywołała odwołania nieobecne w źródłach — odpowiedź została napisana ponownie na tych samych źródłach">↻ odpowiedź poprawiona</span>
+                            }
+                            else if (ex.Check is { IsClean: false })
                             {
                                 <span class="badge badge-danger" title="Model mógł przywołać coś spoza źródeł">⚠ cytaty do sprawdzenia</span>
                             }
@@ -81,30 +221,30 @@
                         </div>
                     }
 
-                    @if (ex.Sources.Count > 0 && !IsRefusal(ex))
+                    @* W trakcie generacji akordeon jest OTWARTY: rozumowanie to ~połowa czasu odpowiedzi
+                       i jest jedyną treścią, jaką da się wtedy pokazać. Po zakończeniu zwija się sam. *@
+                    @if (!string.IsNullOrEmpty(ex.Reasoning))
                     {
-                        <details class="sources" open>
-                            <summary>Źródła (@ex.Sources.Count)</summary>
-                            @foreach (var s in ex.Sources)
-                            {
-                                <div class="source-card">
-                                    <div class="source-head">
-                                        <span class="source-n">[@s.Index]</span>
-                                        <span class="source-label">@s.Label</span>
-                                        @if (!string.IsNullOrWhiteSpace(s.AmendmentEffectiveDate))
-                                        {
-                                            <span class="badge badge-warn" title="Fragment nowelizacji jeszcze niewchłoniętej do tekstu jednolitego">🕓 nowelizacja — obowiązuje od @s.AmendmentEffectiveDate</span>
-                                        }
-                                        @if (!string.IsNullOrWhiteSpace(s.Url))
-                                        {
-                                            <a class="source-link" href="@s.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
-                                        }
-                                    </div>
-                                    <blockquote class="source-snippet">@s.Snippet</blockquote>
-                                </div>
-                            }
+                        <details class="sources reasoning" open="@ex.Streaming">
+                            <summary>🧠 Rozumowanie modelu (@(ex.Reasoning.Length) zn.)@(ex.Streaming ? " — myśli…" : "")</summary>
+                            <div class="reasoning-body">@ex.Reasoning</div>
+                            <p class="empty-hint">To wewnętrzny tok modelu — pomocniczy, NIE część odpowiedzi ani źródło. Rozstrzygają teza i cytowane źródła.</p>
                         </details>
                     }
+
+                    @* Źródła żyją w PANELU po prawej (RED-2.3) — pod odpowiedzią zostaje kotwica,
+                       która przełącza panel na tę turę (numeracja [n] jest per tura). Na wąskim
+                       ekranie ta sama kotwica otwiera panel jako wysuwany arkusz. *@
+                    @if ((ex.Sources.Count > 0 || ex.DocFragments.Count > 0) && !IsRefusal(ex))
+                    {
+                        <button class="src-anchor @(ex.AnchorId == _activeAnchor ? "active" : "")"
+                                data-src-btn="@ex.AnchorId" @onclick="() => ActivateSources(ex)">
+                            <span aria-hidden="true">⌕</span>
+                            Źródła (@ex.Sources.Count)@(ex.DocFragments.Count > 0 ? $" · dokument ({ex.DocFragments.Count})" : "")
+                            <span aria-hidden="true">›</span>
+                        </button>
+                    }
+
                 }
                 @if (ex.Error is not null)
                 {
@@ -133,17 +273,173 @@
 
     @if (_notice is not null)
     {
-        <div class="banner banner-warn" role="status">@_notice</div>
+        <div class="banner banner-warn" role="status">
+            @_notice
+            @if (_noticePlanLimit && Billing.Value.Enabled)
+            {
+                @* US-3.9: komunikat limitu planu to miejsce konwersji — prowadzi do zakupu
+                   (na /konto jest formularz Checkout z tokenem antiforgery), nie kończy rozmowy. *@
+                <a class="notice-upgrade" href="/konto" data-umami-event="upgrade-z-limitu">Zwiększ limit — przejdź do konta →</a>
+            }
+        </div>
     }
-    <form class="chat-input" @onsubmit="Send" @onsubmit:preventDefault>
+    @if (Documents.Value.Enabled)
+    {
+        <div class="chat-attach">
+            <label class="attach-btn" title="Dołącz PDF (umowa, pismo, wyrok) — treść nie jest zapisywana">
+                📎 <InputFile OnChange="OnFileSelected" accept="@AttachmentExtractor.Accept" disabled="@(_busy || _docLoading)" />
+            </label>
+            @if (_docLoading)
+            {
+                <span class="attach-chip">⏳ przetwarzam załącznik…</span>
+            }
+            else if (_document is not null)
+            {
+                <span class="attach-chip" title="Załącznik żyje do końca sesji — treść nie jest zapisywana">
+                    📄 @_document.FileName (@_document.PageCount str.@(_document.Truncated ? $", obcięto do {PdfAttachmentExtractor.MaxPages}" : ""))
+                    <button class="attach-remove" @onclick="RemoveDocument" disabled="@_busy" title="Usuń załącznik">✕</button>
+                </span>
+            }
+            @if (_docNotice is not null)
+            {
+                <span class="attach-notice">@_docNotice</span>
+            }
+        </div>
+    }
+    @{ var _piiHits = SensitiveDataDetector.Detect(_input); }
+    @if (_piiHits.Count > 0)
+    {
+        <div class="pii-warn" role="status">
+            <span class="badge badge-warn"
+                  title="System służy do researchu prawnego — opisz sprawę abstrakcyjnie, bez danych klienta. To podpowiedź, nie gwarancja.">
+                ⚠️ możliwe dane osobowe: @string.Join(", ", _piiHits.Select(SensitiveDataDetector.Label))
+            </span>
+        </div>
+    }
+    @* Enter wysyła, Shift+Enter = nowa linia. Blazor nie pozwala warunkować @onkeydown:preventDefault
+       per-klawisz z poziomu C# (ustawienie jest statyczne per render), a `onkeydown` czystego JS nie
+       da się dodać OBOK `@onkeydown` na TYM SAMYM elemencie (Razor traktuje to jako duplikat atrybutu).
+       Dlatego blokada domyślnego wstawienia znaku nowej linii wisi na <form> (rodzicu) — zdarzenie
+       keydown dochodzi tam przez bąbelkowanie, zanim przeglądarka wykona domyślną akcję na textarea;
+       decyzję „wysłać czy nie" nadal podejmuje OnKeyDown w C# na samej textarea. *@
+    <form class="chat-input" @onsubmit="Send" @onsubmit:preventDefault
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();}">
         <textarea @bind="_input" @bind:event="oninput" @onkeydown="OnKeyDown"
-                  placeholder="Zadaj pytanie prawne… (Ctrl+Enter wysyła)" rows="2" disabled="@_busy"
-                  aria-label="Pytanie"></textarea>
+                  placeholder="Zadaj pytanie prawne… (Enter wysyła, Shift+Enter = nowa linia)" rows="2"
+                  disabled="@_busy" aria-label="Pytanie"></textarea>
         <button type="submit" class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_input))">
             @(_busy ? "…" : "Wyślij")
         </button>
     </form>
+    <p class="chat-disclaimer">OmniaSI generuje research do weryfikacji przez prawnika — to nie porada prawna.</p>
 </div>
+
+@* PANEL ŹRÓDEŁ (RED-2.3): kontekstowy — pokazuje źródła JEDNEJ tury (numeracja [n] jest per tura,
+   więc nagłówek zawsze nazywa turę). Domyślnie najnowsza tura ze źródłami (wypełnia się w trakcie
+   generowania — SourcesEvent przychodzi przed tokenami); kotwica pod odpowiedzią i klik w chip [n]
+   przełączają. Markup kart 1:1 z dotychczasowej sekcji inline (kotwice #src-… nietknięte).
+   Na wąskim ekranie (<1200px) panel jest wysuwanym arkuszem otwieranym tą samą kotwicą. *@
+@if (_srcPanelOpen)
+{
+    <div class="src-backdrop" @onclick="() => _srcPanelOpen = false"></div>
+}
+@* Zwinięty panel (desktop): wąska szyna do ponownego otwarcia — czat zyskuje całą szerokość. *@
+@if (_srcPanelCollapsed)
+{
+    <button class="src-rail" @onclick="() => _srcPanelCollapsed = false" title="Pokaż panel źródeł">
+        <span aria-hidden="true">⌕</span><span class="src-rail-label">Źródła</span>
+    </button>
+}
+<aside class="src-panel @(_srcPanelOpen ? "open" : "") @(_srcPanelCollapsed ? "collapsed" : "")" aria-label="Źródła odpowiedzi">
+    @if (ActiveSourcesExchange is { } act)
+    {
+        <div class="src-panel-head">
+            <div class="src-panel-title">
+                <span>Źródła</span>
+                <span class="src-count">@act.Sources.Count</span>
+                <button class="src-close" @onclick="CloseSourcesPanel" aria-label="Zwiń panel źródeł" title="Zwiń panel — czat zajmie całą szerokość">✕</button>
+            </div>
+            <div class="src-panel-context" title="@act.Question">do odpowiedzi: <em>„@Truncate(act.Question, 70)"</em></div>
+        </div>
+        <div class="src-panel-body">
+            @if (act.DocFragments.Count > 0)
+            {
+                <div class="src-section-head">📄 Twój dokument: @act.DocFileName (@act.DocFragments.Count użyte fragmenty)</div>
+                @foreach (var f in act.DocFragments)
+                {
+                    <div class="source-card" id="docsrc-@(act.AnchorId)-@f.Index">
+                        <div class="source-head"><span class="source-n">[D@(f.Index)]</span></div>
+                        <blockquote class="source-snippet">@f.Snippet</blockquote>
+                    </div>
+                }
+            }
+            @* Grupowanie po dokumencie (Zadanie 3 planu SAS): przy rozszerzeniu sąsiedztwa aktu
+               źródeł bywa kilkadziesiąt i płaska lista przestaje być czytelna. Numeracja [n]
+               i kotwice #src-… zostają NIETKNIĘTE — na nich stoją klikalne cytowania. *@
+            @foreach (var group in act.Sources.GroupBy(s => s.Title))
+            {
+            @if (group.Count() > 1)
+            {
+                <div class="source-group-head">
+                    <span class="source-group-title">@group.Key</span>
+                    <span class="source-group-count">@group.Count() fragmentów</span>
+                    @if (group.Any(s => s.Neighbour))
+                    {
+                        <span class="badge badge-ok" title="Artykuły dociągnięte jako kontekst obok trafień — progi i wyjątki w ustawach stoją przy przepisie, który modyfikują">
+                            + @group.Count(s => s.Neighbour) z sąsiedztwa
+                        </span>
+                    }
+                </div>
+            }
+            @foreach (var s in group)
+            {
+                <div class="source-card @(s.Neighbour ? "source-neighbour" : "")" id="src-@(act.AnchorId)-@s.Index">
+                    <div class="source-head">
+                        <span class="source-n">[@s.Index]</span>
+                        <span class="source-label">@s.Label</span>
+                        @if (s.Neighbour)
+                        {
+                            <span class="source-neighbour-tag" title="Nie było trafieniem wyszukiwania — dociągnięte jako przepis sąsiadujący">kontekst</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(s.AmendmentEffectiveDate))
+                        {
+                            <span class="badge badge-warn" title="Fragment nowelizacji jeszcze niewchłoniętej do tekstu jednolitego">🕓 nowelizacja — obowiązuje od @s.AmendmentEffectiveDate</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(s.Url))
+                        {
+                            <a class="source-link" href="@s.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
+                        }
+                    </div>
+                    <blockquote class="source-snippet">@s.Snippet</blockquote>
+                    @if (s.LegalBases is { Count: > 0 })
+                    {
+                        <details class="legal-bases-details">
+                            <summary>Podstawa prawna (@s.LegalBases.Count)</summary>
+                            <div class="legal-bases">
+                                @foreach (var b in s.LegalBases)
+                                {
+                                    <span class="legal-basis-chip">@b</span>
+                                }
+                            </div>
+                        </details>
+                    }
+                </div>
+            }
+            }
+        </div>
+    }
+    else
+    {
+        <div class="src-panel-head">
+            <div class="src-panel-title"><span>Źródła</span>
+                <button class="src-close" @onclick="CloseSourcesPanel" aria-label="Zwiń panel źródeł">✕</button>
+            </div>
+        </div>
+        <div class="src-panel-empty">
+            <p>Tu pojawią się przepisy i orzeczenia, na których powstaje odpowiedź — każde cytowanie [n] w tekście wskazuje kartę w tym panelu.</p>
+        </div>
+    }
+</aside>
 </div>
 
 @code {
@@ -152,10 +448,81 @@
     private List<ConversationSummary> _conversations = new();
     private string _input = "";
     private string? _notice;
+    private bool _noticePlanLimit;
     private bool _busy;
     private Guid? _conversationId;
     private CancellationTokenSource? _cts;
     private string _userId = "demo@local";
+
+    // Załącznik (DOC-5): żyje wyłącznie w pamięci obwodu — F5/rekonekt = trzeba dołączyć ponownie
+    // (decyzja #1 planu DOC: treść pism klientów nie jest persystowana).
+    private DocumentContext? _document;
+    private bool _docLoading;
+    private string? _docNotice;
+
+    // PANEL ŹRÓDEŁ (RED-2.3): kotwica tury, której źródła pokazuje panel + stan arkusza na mobile
+    // + zwinięcie na desktopie (przeklikanie 2026-08-31: możliwość poszerzenia czatu).
+    private string? _activeAnchor;
+    private bool _srcPanelOpen;
+    private bool _srcPanelCollapsed;
+    private string? _planLabel;
+    private string? _usageLabel;
+    private string? _givenName;
+    private string? _firstName;
+
+    /// <summary>Rozmowa, której odpowiedź właśnie się zakończyła — przez chwilę pokazuje ✓ w historii
+    /// (przeklikanie 2026-08-31). Czyszczona timerem, best-effort.</summary>
+    private Guid? _finishedConvId;
+
+    private static readonly string[] ExampleQuestions =
+    [
+        "Najemca nie płaci czynszu — czy mogę wypowiedzieć umowę?",
+        "Jakie odsetki mogę naliczyć od zaległej faktury B2B?",
+        "Co grozi za prowadzenie działalności bez rejestracji?",
+    ];
+
+    private string Initials
+    {
+        get
+        {
+            var name = _givenName ?? CurrentUser.DisplayName;
+            if (string.IsNullOrWhiteSpace(name)) return "?";
+            var parts = name.Split(new[] { ' ', '.', '@' }, StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length >= 2
+                ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}"
+                : char.ToUpperInvariant(name[0]).ToString();
+        }
+    }
+
+    /// <summary>Tura, której źródła pokazuje panel: wskazana kotwicą, a gdy kotwica wskazuje turę
+    /// bez źródeł (odmowa, small-talk, tura w trakcie retrievalu) — ZAWSZE fallback na najnowszą
+    /// niosącą źródła. Bez fallbacku panel po drugiej wiadomości potrafił świecić pustką, mimo że
+    /// wcześniejsze tury miały źródła (zgłoszone w przeklikaniu 2026-08-31).</summary>
+    private Exchange? ActiveSourcesExchange
+    {
+        get
+        {
+            static bool HasSources(Exchange e) => (e.Sources.Count > 0 || e.DocFragments.Count > 0) && !IsRefusal(e);
+            return _exchanges.LastOrDefault(e => e.AnchorId == _activeAnchor && HasSources(e))
+                ?? _exchanges.LastOrDefault(HasSources);
+        }
+    }
+
+    private void ActivateSources(Exchange ex)
+    {
+        _activeAnchor = ex.AnchorId;
+        _srcPanelOpen = true;       // mobile: otwiera arkusz
+        _srcPanelCollapsed = false; // desktop: rozwija zwinięty panel
+    }
+
+    /// <summary>Jeden przycisk ✕ obsługuje oba tryby: mobile zamyka arkusz, desktop zwija panel.</summary>
+    private void CloseSourcesPanel()
+    {
+        _srcPanelOpen = false;
+        _srcPanelCollapsed = true;
+    }
+
+    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
 
     protected override async Task OnInitializedAsync()
     {
@@ -163,10 +530,31 @@
         // akcesor bywa null w interaktywnym renderowaniu (rekonekty, inne wątki) i cichy fallback na
         // wspólny placeholder MIESZAŁBY rozmowy i limity testerów. Rozwiązana RAZ na obwód.
         var auth = await AuthState.GetAuthenticationStateAsync();
-        _userId = auth.User.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name }
-            ? name
+        // Klucz przez UserIdentity, NIE Identity.Name: Name to e-mail (UserName), a rozmowy, plany
+        // i /api/chat liczą po Id konta — inaczej limit planu w UI nie działa (audyt 2026-09-01, W2).
+        _userId = auth.User.Identity?.IsAuthenticated == true
+            ? UserIdentity.KeyOf(auth.User) ?? CurrentUser.UserId
             : CurrentUser.UserId; // bramka wyłączona (dev/M4) → placeholder jak dotąd
+
+        // Imię z rejestracji (claim GivenName, AppClaimsFactory) — do powitania i stopki sidebara.
+        // Z AuthenticationState, nie ICurrentUser — akcesor HttpContextu bywa null w obwodzie.
+        var given = auth.User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value;
+        _givenName = string.IsNullOrWhiteSpace(given) ? null : given;
+        _firstName = _givenName?.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
         await RefreshConversationsAsync();
+
+        // Etykieta planu w stopce sidebara (RED-2.1, addytywne) — best-effort, nie blokuje czatu.
+        if (CurrentUser.IsAuthenticated)
+        {
+            try
+            {
+                var ent = await Entitlements.ForAsync(_userId);
+                if (ent.PlanApplies)
+                    _planLabel = ent.PlanId switch { "free" => "Plan Start", "pro" => "Plan Pro", var x => x };
+            }
+            catch { /* best-effort */ }
+            await RefreshUsageAsync();
+        }
 
         // AUTO-WZNOWIENIE ostatniej rozmowy. _conversationId żyje w pamięci obwodu — odświeżenie strony,
         // rekonekt SignalR albo wejście na /o-systemie i powrót NISZCZĄ komponent; bez wznowienia każde
@@ -182,13 +570,20 @@
         catch { /* best-effort */ }
     }
 
+    /// <summary>Panel historii na mobile (≤900px, patrz app.css) — na desktopie sidebar jest zawsze
+    /// widoczny, ta flaga tam nic nie zmienia (CSS gatuje `.open` tylko pod media query).</summary>
+    private bool _mobileSidebarOpen;
+
     private void NewConversation()
     {
         if (_busy) return;
         _exchanges.Clear();
         _conversationId = null;
-        _notice = null;
+        _notice = null; _noticePlanLimit = false;
         _input = "";
+        _mobileSidebarOpen = false;
+        _activeAnchor = null;
+        _srcPanelOpen = false;
     }
 
     /// <summary>Wczytuje rozmowę z historii: pary user/assistant → Exchange. Follow-upy działają
@@ -198,12 +593,13 @@
         if (_busy || id == _conversationId) return;
         List<StoredMessage> messages;
         try { messages = (await Store.GetMessagesAsync(id, _userId, CancellationToken.None)).ToList(); }
-        catch { _notice = "Nie udało się wczytać rozmowy."; return; }
+        catch { _notice = "Nie udało się wczytać rozmowy."; _noticePlanLimit = false; return; }
         if (messages.Count == 0) return; // nie istnieje albo nie moja
 
         _exchanges.Clear();
         _conversationId = id;
-        _notice = null;
+        _notice = null; _noticePlanLimit = false;
+        _mobileSidebarOpen = false;
         Exchange? current = null;
         foreach (var m in messages)
         {
@@ -214,11 +610,18 @@
             }
             else if (current is not null)
             {
-                if (m.Abstained) { current.Abstained = true; current.AbstainMessage = m.Content; }
+                // ODM-5: kolumna Abstained od wariantu A telemetrii znaczy też odmowę TREŚCIOWĄ
+                // (content = pełna odpowiedź, źródła zapisane) — banner tylko dla odmowy BRAMKI,
+                // którą po danych poznaje brak źródeł. Bez tego rozróżnienia ta sama tura wyglądała
+                // inaczej na żywo (dymek odpowiedzi) i po przeładowaniu (żółty banner z całą
+                // odpowiedzią w środku) — zgłoszone żywcem 2026-09-01.
+                if (m.Abstained && m.Sources.Count == 0) { current.Abstained = true; current.AbstainMessage = m.Content; }
                 else current.Answer = m.Content;
                 current.Sources = m.Sources;
                 current.MessageId = m.Id;
                 current.Model = m.Model;
+                // US-2.11: odpowiedź odtworzona z historii niesie to samo oznaczenie co świeża.
+                current.GeneratedAt = m.CreatedAt == default ? null : m.CreatedAt;
                 // CitationCheck z historii: znamy tylko werdykt (bool) — odtwarzamy minimalny obiekt,
                 // żeby badge ✓/⚠ renderował się jak przy świeżej odpowiedzi (UI czyta tylko IsClean).
                 current.Check = m.CitationClean switch
@@ -230,19 +633,89 @@
                 current = null;
             }
         }
+        _activeAnchor = _exchanges.LastOrDefault(e => e.Sources.Count > 0)?.AnchorId;
+        _srcPanelOpen = false;
     }
 
     /// <summary>LLM odmówił NA POZIOMIE TREŚCI (ocenił dostarczone źródła jako nietrafne) — bramka
     /// retrievalu (<c>ex.Abstained</c>) tego nie łapie, bo próg podobieństwa i tak przepuścił. Bez tego
-    /// panel „Źródła" pokazywał nietrafione fragmenty obok odpowiedzi „Nie mam wystarczających źródeł" —
+    /// panel „Źródła" pokazywał nietrafione fragmenty obok odpowiedzi z frazą odmowy —
     /// mylące (zgłoszone przy pytaniu spoza domeny, gdzie retrieval znalazł tylko przypadkowo podobne
-    /// fragmenty prawnicze). Sprawdzane dopiero gdy tura się skończy (Done) — nie przy każdym tokenie.</summary>
+    /// fragmenty prawnicze). Sprawdzane dopiero gdy tura się skończy (Done) — nie przy każdym tokenie.
+    /// ODM-4: definicja kanoniczna w <see cref="GroundedPrompt.IsContentRefusal"/> — odpowiedź
+    /// MIESZANA (fraza + treść z cytowaniami [n]) NIE jest odmową; klasyfikowanie jej jako odmowy
+    /// chowało panel przy żywych linkach [n] (zgłoszone żywcem 2026-09-01: martwe [22]).</summary>
     private static bool IsRefusal(Exchange ex) =>
-        ex.Done && !ex.Abstained && ex.Answer.Contains(GroundedPrompt.RefusalMarker, StringComparison.OrdinalIgnoreCase);
+        ex.Done && !ex.Abstained && GroundedPrompt.IsContentRefusal(ex.Answer);
+
+
+    /// <summary>Licznik zużycia X/Y w stopce sidebara (leftover RED, addytywne) — best-effort,
+    /// pojawia się tylko gdy plan obowiązuje (UsageAsync zwraca null w trybie bez kont).</summary>
+    private async Task RefreshUsageAsync()
+    {
+        if (!CurrentUser.IsAuthenticated) return;
+        try
+        {
+            _usageLabel = await CostGuard.UsageAsync(_userId) is { } u
+                ? $"{u.Used} / {u.Limit} zapytań"
+                : null;
+        }
+        catch { /* best-effort */ }
+    }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && e.CtrlKey) await Send();
+        if (e.Key == "Enter" && !e.ShiftKey) await Send();
+    }
+
+    private void RemoveDocument()
+    {
+        _document = null;
+        _docNotice = null;
+    }
+
+    /// <summary>Upload PDF → ekstrakcja (PdfPig) → bramka skanów → chunki+embeddingi w pamięci.
+    /// Każdy błąd = czytelny komunikat, nigdy 500 (uszkodzony/zaszyfrowany plik to normalny przypadek).</summary>
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _docNotice = null;
+        _document = null;
+        var file = e.File;
+        if (!AttachmentExtractor.IsSupported(file.Name))
+        {
+            _docNotice = "Obsługujemy pliki PDF i DOCX.";
+            return;
+        }
+        if (file.Size > AttachmentExtractor.MaxBytes)
+        {
+            _docNotice = $"Plik jest za duży (limit {AttachmentExtractor.MaxBytes / (1024 * 1024)} MB).";
+            return;
+        }
+
+        _docLoading = true;
+        try
+        {
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(AttachmentExtractor.MaxBytes).CopyToAsync(ms);
+            var pdf = AttachmentExtractor.Extract(file.Name, ms.ToArray());
+            if (pdf.IsScanLike)
+            {
+                _docNotice = AttachmentExtractor.Kind(file.Name) == "PDF"
+                    ? "Ten PDF wygląda na skan — obsługujemy dokumenty z warstwą tekstową (bez OCR)."
+                    : "Ten plik nie zawiera tekstu (same obrazy lub pusty dokument).";
+                return;
+            }
+            _document = await DocumentContext.CreateAsync(file.Name, pdf, Embedder, CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            _docNotice = "Nie udało się odczytać tego pliku (uszkodzony, zabezpieczony hasłem lub w nieznanym wariancie formatu).";
+        }
+        finally
+        {
+            _docLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task Send()
@@ -250,7 +723,7 @@
         var question = _input.Trim();
         if (question.Length == 0 || _busy) return;
 
-        _notice = null;
+        _notice = null; _noticePlanLimit = false;
         if (question.Length > MaxQuestionLen)
         {
             _notice = $"Pytanie jest za długie (limit {MaxQuestionLen} znaków).";
@@ -261,10 +734,11 @@
             _notice = "Za dużo zapytań w krótkim czasie — spróbuj ponownie za chwilę.";
             return;
         }
-        // Twardy dzienny cap kosztów LLM (3.7) — obok okna minutowego RateGuard.
-        if (!CostGuard.TryAcquire(_userId, out var limitReason))
+        // Limit planu (miesięczny) + capy pojemności (dobowe) — obok okna minutowego RateGuard.
+        if (await CostGuard.TryAcquireAsync(_userId) is { Allowed: false } limit)
         {
-            _notice = CostGuard.LimitMessage(limitReason);
+            _notice = limit.Message;
+            _noticePlanLimit = limit.PlanLimit; // US-3.9: tylko limit PLANU dostaje link do zakupu
             return;
         }
 
@@ -279,7 +753,9 @@
         // Limit tur egzekwuje GroundedPrompt/FollowUpQuery.
         var history = _exchanges
             .Where(e => e.Done && e.Error is null)
-            .Select(e => new ChatTurn(e.Question, e.Abstained || IsRefusal(e) ? null : e.Answer))
+            .Select(e => e.Abstained || IsRefusal(e)
+                ? new ChatTurn(e.Question, null)
+                : new ChatTurn(e.Question, e.Answer))
             .ToList();
 
         var ex = new Exchange { Question = question, Streaming = true };
@@ -291,14 +767,44 @@
         _conversationId ??= await Try(() => Store.CreateConversationAsync(_userId, question, ct));
         if (_conversationId is { } cid) await Try(() => Store.AddUserMessageAsync(cid, question, ct));
 
+        // Tykający licznik etapu. Bez niego czas zamarza między zdarzeniami, a najdłuższy etap
+        // (ocena trafności kandydatów) potrafi trwać dziesiątki sekund bez ani jednego eventu —
+        // czyli dokładnie tam, gdzie użytkownik najbardziej potrzebuje dowodu, że system żyje.
+        var ticker = Task.Run(async () =>
+        {
+            try
+            {
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+                while (await timer.WaitForNextTickAsync(ct)) await InvokeAsync(StateHasChanged);
+            }
+            catch (OperationCanceledException) { /* koniec tury */ }
+            catch (ObjectDisposedException) { /* komponent zniknął */ }
+        }, ct);
+
         try
         {
-            await foreach (var evt in ChatService.AskAsync(question, history, ct))
+            await foreach (var evt in ChatService.AskAsync(question, history, _document, ct))
             {
                 switch (evt)
                 {
-                    case SourcesEvent s: ex.Sources = s.Sources; break;
+                    case StageEvent st: ex.SetStage(st); break;
+                    case NoRetrievalEvent nr: ex.NoRetrievalReason = nr.Reason; break;
+                    // US-2.11: oznaczenie pochodzenia — model i czas generacji na turze (atrybuty data-ai-*).
+                    case ProvenanceEvent p: ex.Model ??= p.Model; ex.GeneratedAt = p.GeneratedAt; break;
+                    // Bramka zawróciła odpowiedź: czyścimy tekst I rozumowanie, żeby druga wersja nie
+                    // dopisała się do pierwszej (brudnej) — użytkownik ma zobaczyć poprawkę, nie sklejkę.
+                    case RegeneratingEvent: ex.Answer = ""; ex.Reasoning = ""; ex.Regenerated = true; break;
+                    // Druga runda na NOWYCH źródłach (diagnoza 2026-09-01): też czyścimy — bez tego tekst
+                    // i rozumowanie rundy 2 doklejały się do rundy 1. Widok przejmuje ŻYWA adnotacja retry
+                    // (markup niżej): użytkownik ma widzieć zmianę strategii i dalszą pracę, nie awarię.
+                    case RetryingRetrievalEvent rr: ex.RetriedQuery = rr.NewQuery; ex.Answer = ""; ex.Reasoning = ""; break;
+                    case SourcesEvent s: ex.Sources = s.Sources; _activeAnchor = ex.AnchorId; break;
+                    case DocSourcesEvent d: ex.DocFileName = d.FileName; ex.DocFragments = d.Fragments; break;
                     case TokenEvent t: ex.Answer += t.Text; break;
+                    // Delta rozumowania dopisuje (na żywo), ReasoningEvent na końcu NADPISUJE całością —
+                    // to on jest źródłem prawdy (delty mogą się zgubić, jeśli klient dołączył później).
+                    case ReasoningDeltaEvent rd: ex.Reasoning += rd.Text; break;
+                    case ReasoningEvent r: ex.Reasoning = r.Text; break;
                     case AbstainEvent a: ex.Abstained = true; ex.AbstainMessage = a.Message; break;
                     case DoneEvent d: ex.Done = true; ex.Check = d.Check; ex.Model = d.Model; ex.Usage = d.Usage; break;
                     case ChatErrorEvent err: ex.Error = err.Message; break;
@@ -311,15 +817,35 @@
         finally
         {
             ex.Streaming = false;
-            CostGuard.Record(_userId, ex.Answer.Length); // dolicz wyjście do dziennego budżetu
+            _cts?.Cancel();          // zatrzymuje ticker (jego jedyne zadanie skończone)
+            await Try(() => ticker); // domknięcie bez wyjątku w tle
+            await CostGuard.RecordAsync(_userId, ex.Answer.Length); // dolicz wyjscie do dobowego budzetu
             if (_conversationId is { } cid2)
             {
                 var content = ex.Abstained ? (ex.AbstainMessage ?? "") : ex.Answer;
+                // Route zapisywany zawsze — bez niego raport z żywego ruchu (Zadanie 16) nie odróżni
+                // ścieżek, a trafność routera byłaby niemierzalna.
+                var route = ex.NoRetrievalReason is null ? ChatRoutes.Retrieval : ChatRoutes.Smalltalk;
+                // WARIANT A telemetrii (2026-08-31): do kolumny Abstained trafia KAŻDA odmowa —
+                // progowa (ex.Abstained z bramki) LUB treściowa (IsRefusal — model sam orzekł, że
+                // źródła nie odpowiadają). Dotąd zapisywana była tylko progowa, a że próg = 0.0,
+                // metryka nadrzędna (odsetek odmów z messages.Abstained) pokazywała ~0%.
+                // ex.Abstained w stanie UI zostaje progowe (steruje wyborem treści linijkę wyżej).
                 ex.MessageId = await Try(() => Store.AddAssistantMessageAsync(
-                    cid2, content, ex.Sources, ex.Abstained, ex.Check?.IsClean, ex.Model, CancellationToken.None));
+                    cid2, content, ex.Sources, ex.Abstained || IsRefusal(ex), ex.Check?.IsClean, ex.Model,
+                    CancellationToken.None, route, ex.Regenerated));
             }
             _busy = false;
             await RefreshConversationsAsync(); // nowa rozmowa/tytuł pojawia się w sidebarze
+            await RefreshUsageAsync();         // licznik X/Y w stopce nadąża za właśnie zużytym zapytaniem
+            // ✓ przy rozmowie w historii przez kilka sekund po zakończeniu (przeklikanie 2026-08-31).
+            _finishedConvId = _conversationId;
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5));
+                _finishedConvId = null;
+                try { await InvokeAsync(StateHasChanged); } catch { /* komponent mógł zniknąć */ }
+            });
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -350,15 +876,58 @@
 
     private sealed class Exchange
     {
+        /// <summary>Unikalny prefiks kotwic cytowań tej wymiany — [n] w odpowiedzi linkuje do
+        /// #src-{AnchorId}-{n}; bez prefiksu kotwice różnych wymian w jednym logu by się zderzały.</summary>
+        public string AnchorId { get; } = Guid.NewGuid().ToString("N")[..8];
+
         public required string Question { get; init; }
         public string Answer { get; set; } = "";
+
+        /// <summary>„Rozumowanie" modelu (thinking) wydzielone ze strumienia — tylko in-memory (nie
+        /// persystowane; rozmowa z historii go nie ma). Puste = model nie „myślał".</summary>
+        public string Reasoning { get; set; } = "";
         public IReadOnlyList<ChatSource> Sources { get; set; } = [];
+
+        /// <summary>Fragmenty załącznika użyte w tej turze (przestrzeń [Dk]); tylko in-memory —
+        /// rozmowa wczytana z historii ich nie ma ([Dk] renderują się wtedy jako zwykły tekst).</summary>
+        public IReadOnlyList<DocSource> DocFragments { get; set; } = [];
+        public string? DocFileName { get; set; }
         public bool Abstained { get; set; }
         public string? AbstainMessage { get; set; }
         public CitationCheck? Check { get; set; }
         public string? Model { get; set; }
+
+        /// <summary>Czas generacji (US-2.11, atrybut data-ai-generated-at); z historii = CreatedAt wiadomości.</summary>
+        public DateTimeOffset? GeneratedAt { get; set; }
         public bool Streaming { get; set; }
         public bool Done { get; set; }
+
+        /// <summary>Bieżący etap pracy (Zadanie 2/3 planu ROU) — null przed pierwszym raportem
+        /// i po zakończeniu tury.</summary>
+        public StageEvent? Stage { get; private set; }
+
+        /// <summary>Uzasadnienie routera, gdy tura poszła ścieżką BEZ retrievalu (Zadanie 8) —
+        /// niepuste ⇒ odpowiedź nie jest oparta na źródłach i UI musi to jawnie pokazać.</summary>
+        public string? NoRetrievalReason { get; set; }
+
+        /// <summary>Czy bramka anty-fabrykacji zawróciła odpowiedź do poprawy (Zadanie 10).</summary>
+        public bool Regenerated { get; set; }
+
+        /// <summary>Zapytanie użyte w DRUGIEJ rundzie retrievalu (Zadanie 12) — niepuste ⇒ pierwsze
+        /// wyszukiwanie nie domknęło pytania i szukaliśmy inaczej.</summary>
+        public string? RetriedQuery { get; set; }
+
+        private DateTimeOffset _stageStarted = DateTimeOffset.UtcNow;
+
+        /// <summary>Ile sekund trwa BIEŻĄCY etap. Liczone od jego rozpoczęcia, nie od początku tury —
+        /// użytkownik ma widzieć, że praca postępuje, a nie jeden rosnący licznik przez 85 s.</summary>
+        public int StageSeconds => (int)(DateTimeOffset.UtcNow - _stageStarted).TotalSeconds;
+
+        public void SetStage(StageEvent stage)
+        {
+            Stage = stage;
+            _stageStarted = DateTimeOffset.UtcNow;
+        }
         public string? Error { get; set; }
         public Guid? MessageId { get; set; }
         public string? FeedbackGiven { get; set; }

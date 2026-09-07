@@ -1,4 +1,5 @@
 using System.Text;
+using PrawoRAG.Domain;
 using PrawoRAG.Domain.Documents;
 using PrawoRAG.Domain.Llm;
 using PrawoRAG.Domain.Retrieval;
@@ -7,40 +8,134 @@ namespace PrawoRAG.Llm.Grounding;
 
 /// <summary>Źródło pokazywane użytkownikowi i numerowane [n] w prompcie/odpowiedzi. AKT-4:
 /// <see cref="AmendmentEffectiveDate"/> niepuste ⇔ fragment nowelizacji niewchłoniętej do t.j. (chip w UI).</summary>
-public sealed record SourceRef(int Index, string Label, string Title, string? SourceUrl, string Snippet, string? AmendmentEffectiveDate = null);
+/// <param name="Neighbour">
+/// Źródło dociągnięte SĄSIEDZTWEM (plan SAS), a nie wygrane rankingiem — przepis leżący obok
+/// trafienia. UI oznacza je inaczej, żeby użytkownik widział, co wyszukiwanie FAKTYCZNIE dopasowało,
+/// a co dostał jako kontekst. Rozpoznawane po markerze <c>Score = double.MinValue</c>, tym samym
+/// mechanizmem, którym tory dokładne znaczą się przez <c>MaxValue</c>.
+/// </param>
+public sealed record SourceRef(int Index, string Label, string Title, string? SourceUrl, string Snippet, string? AmendmentEffectiveDate = null, IReadOnlyList<string>? LegalBases = null, bool Neighbour = false);
 
 /// <summary>
 /// Buduje ugruntowany prompt: twardy system prompt (odpowiadaj tylko ze źródeł, cytuj [n],
 /// abstynencja gdy brak pokrycia) + wiadomość użytkownika z ponumerowanymi źródłami [1..K].
 /// </summary>
-public static class GroundedPrompt
+public static partial class GroundedPrompt
 {
     /// <summary>Fraza, którą LLM ma napisać DOKŁADNIE (reguła 3 w <see cref="SystemPrompt"/>), gdy źródła
     /// nie odpowiadają na pytanie. UI sprawdza nią odpowiedź (Contains, bez rozróżniania wielkości liter),
     /// żeby ukryć panel źródeł — bramka retrievalu (<c>AbstainEvent</c>) tego przypadku nie łapie, bo to
-    /// odmowa NA POZIOMIE TREŚCI (LLM ocenił dostarczone źródła jako nietrafne), nie brak pokrycia w progu.</summary>
-    public const string RefusalMarker = "Nie mam wystarczających źródeł";
+    /// odmowa NA POZIOMIE TREŚCI (LLM ocenił dostarczone źródła jako nietrafne), nie brak pokrycia w progu.
+    /// Wording „podstawy prawnej", nie „źródeł" (2026-08-31): „w źródłach" wymagało od użytkownika
+    /// domyślenia się, czym są „źródła" systemu. Fraza MUSI pozostać prefiksem
+    /// <c>AbstentionPolicy.Message</c> — eval odróżnia odmowę treściową od bramki po tym prefiksie.</summary>
+    public const string RefusalMarker = "Nie znalazłem jednoznacznej podstawy prawnej";
+
+    /// <summary>Poprzednia fraza odmowy (sprzed 2026-08-31) — utrwalona w zapisanych rozmowach,
+    /// więc odczyt historii musi ją nadal rozpoznawać. NIE używać w nowych promptach.</summary>
+    public const string LegacyRefusalMarker = "Nie mam wystarczających źródeł";
+
+    /// <summary>
+    /// KANONICZNA definicja odmowy treściowej (ODM-4, 2026-09-01): fraza odmowy (bieżąca lub legacy)
+    /// obecna ORAZ odpowiedź BEZ cytowań [n]. Odpowiedź MIESZANA (model złamał regułę 3: fraza + dalsza
+    /// treść z cytowaniami) to NIE odmowa — użytkownik dostał odpowiedź; klasyfikacja jej jako odmowy
+    /// chowała panel źródeł przy żywych linkach [n] (martwe kliknięcia) i zawyżała metrykę odmów.
+    /// Jedna definicja dla UI (render + zapis telemetrii), DoneEvent i evala — rozjazd między nimi
+    /// był źródłem tury wyglądającej inaczej na żywo i po przeładowaniu rozmowy.
+    /// </summary>
+    public static bool IsContentRefusal(string? answer) =>
+        !string.IsNullOrWhiteSpace(answer)
+        && (answer.Contains(RefusalMarker, StringComparison.OrdinalIgnoreCase)
+            || answer.Contains(LegacyRefusalMarker, StringComparison.OrdinalIgnoreCase))
+        && !CitationRegex().IsMatch(answer);
+
+    /// <summary>Cytowanie [n]/[n, m] w treści — ten sam kształt co markery walidatora cytowań.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"\[\s*\d+(?:\s*,\s*\d+)*\s*\]")]
+    private static partial System.Text.RegularExpressions.Regex CitationRegex();
 
     public const string SystemPrompt =
         """
         Jesteś asystentem prawnym dla polskich prawników. Odpowiadasz WYŁĄCZNIE na podstawie
         dostarczonych źródeł, oznaczonych [1], [2], itd. Zasady bezwzględne:
-        1. Odpowiedz WPROST na pytanie, zaczynając od sedna — nie opisuj kolejno źródeł
-           ("Wyrok ten dotyczy...", "Źródło [2] mówi o..."). Połącz informacje ze wszystkich
-           źródeł w jedną spójną odpowiedź w naturalnym języku.
+        1. Zacznij od KONKLUZJI: pierwsze zdanie odpowiada wprost na pytanie w odniesieniu do
+           opisanego stanu faktycznego (np. „Nie ponosisz odpowiedzialności, ponieważ…"), dopiero
+           potem uzasadnienie. Nie opisuj kolejno źródeł ("Wyrok ten dotyczy...", "Źródło [2]
+           mówi o...") i nie wyliczaj abstrakcyjnych „czynników, które biorą pod uwagę sądy" —
+           zastosuj prawo do faktów z pytania. Połącz informacje ze wszystkich źródeł w jedną
+           spójną odpowiedź w naturalnym języku.
         2. Każdą tezę poprzyj odwołaniem do numeru źródła w nawiasie kwadratowym, np. [1].
-        3. Jeśli dostarczone źródła NIE zawierają odpowiedzi, napisz dokładnie:
-           "Nie mam wystarczających źródeł, aby odpowiedzieć." i nic poza tym nie dodawaj.
+           Odpowiedź bez odwołań [n] jest nieprawidłowa.
+        2a. Gdy ŹRÓDŁA są podzielone na sekcje PRZEPISY i ORZECZNICTWO: regułę prawną czerp
+           z PRZEPISÓW, a orzeczenia traktuj jako przykłady jej zastosowania do konkretnych
+           stanów faktycznych — rozstrzygnij, który wzorzec pasuje do faktów z PYTANIA,
+           i wywiedź konkluzję z przepisu.
+        3. Jeśli źródła pozwalają odpowiedzieć tylko na CZĘŚĆ pytania — odpowiedz na tę część
+           (z odwołaniami [n]) i wskaż wprost, której kwestii źródła nie pokrywają (np. „Źródła
+           nie obejmują kwestii…"). Odpowiedź częściowa z uczciwie nazwaną luką jest LEPSZA niż
+           odmowa. Dokładną frazę: "Nie znalazłem jednoznacznej podstawy prawnej dla tego pytania." napisz
+           TYLKO wtedy, gdy źródła nie pozwalają odpowiedzieć na ŻADNĄ część pytania — wtedy nic
+           poza tym nie dodawaj i nie używaj tej frazy w żadnej innej sytuacji. NIGDY nie łącz
+           tej frazy z odpowiedzią merytoryczną ani z odwołaniami [n] w jednej wiadomości.
         4. NIE wymyślaj przepisów, artykułów, sygnatur ani cytatów. Nie korzystaj z wiedzy spoza źródeł.
         5. Cytuj dokładnie; jeśli źródło jest niejednoznaczne — zaznacz to.
-        6. Jeśli wśród źródeł jest fragment oznaczony „[NOWELIZACJA …]", to znaczy, że cytowany przepis
-           ZMIENIŁA nowela jeszcze niewchłonięta do tekstu jednolitego. Przedstaw wtedy stan PO zmianie:
-           wyraźnie napisz, co i od kiedy się zmienia, i zacytuj OBA źródła (tekst jednolity oraz nowelę).
-           NIE przepisuj po cichu przepisu jako niezmienionego — zestaw stary tekst i zmianę.
+        6. Jeśli wśród źródeł jest fragment oznaczony „[NOWELIZACJA — JUŻ OBOWIĄZUJE …]", cytowany
+           przepis ZMIENIŁA nowela, która już weszła w życie (data w oznaczeniu jest w przeszłości) —
+           mimo że tekst jednolity jej jeszcze nie wchłonął. TA WERSJA jest DZISIEJSZYM stanem prawnym:
+           przedstaw ją jako AKTUALNĄ (nie jako nadchodzącą zmianę), zacytuj OBA źródła (tekst jednolity
+           i nowelę) i wyraźnie zaznacz, że tekst jednolity jest w tym zakresie nieaktualny.
+           Jeśli fragment jest oznaczony „[NOWELIZACJA — WEJDZIE W ŻYCIE …]", zmiana jeszcze NIE
+           obowiązuje (data w oznaczeniu jest w przyszłości) — przedstaw DOTYCHCZASOWY stan z tekstu
+           jednolitego jako obowiązujący dziś, a nowelę wspomnij jako zapowiedzianą zmianę z dokładną
+           datą wejścia w życie. W obu przypadkach NIE przepisuj po cichu przepisu jako niezmienionego —
+           zestaw stary tekst i zmianę, i nigdy nie zgaduj sam, która wersja obowiązuje dziś — oznaczenie
+           źródła już to rozstrzyga.
+        6a. Jeśli TEN SAM przepis (ten sam artykuł/paragraf) występuje w źródłach w KILKU wersjach
+           z różnych aktów lub lat (np. tekst jednolity oraz dawna ustawa nowelizująca), liczby,
+           stawki i terminy cytuj WYŁĄCZNIE z wersji najnowszej (tekst jednolity albo źródło
+           z oznaczeniem NOWELIZACJA wg zasady 6). Starszą wersję możesz przywołać tylko jako
+           jawnie oznaczony kontekst historyczny — nigdy jako obowiązujący stan prawny.
         7. Wcześniejsze wypowiedzi w rozmowie służą WYŁĄCZNIE zrozumieniu kontekstu pytania.
            Każdą tezę odpowiedzi opieraj wyłącznie na ŹRÓDŁACH bieżącej tury; numeracja [n]
            dotyczy tylko bieżących źródeł.
         Odpowiadaj po polsku, rzeczowo i zwięźle.
+        """;
+
+    /// <summary>
+    /// Zasady doklejane do systemu WYŁĄCZNIE gdy pytanie ma załącznik (DOC-2). Bez dokumentu
+    /// system prompt zostaje bajt w bajt dzisiejszy — prompty strojone pod Bielika, instrukcje
+    /// o nieistniejącej sekcji to szum i ryzyko regresji (patrz diagnoza 5e).
+    /// </summary>
+    public const string DocumentRules =
+        """
+        ZAŁĄCZNIK — zasady dodatkowe (pytanie zawiera sekcję DOKUMENT):
+        D1. Fakty stanu faktycznego czerp z sekcji DOKUMENT i oznaczaj cytowaniem [D1], [D2], itd.
+        D2. DOKUMENT NIE jest źródłem prawa — podstawę prawną cytuj wyłącznie ze ŹRÓDEŁ jako [n].
+            Gdy treść dokumentu jest sprzeczna z przepisem, wskaż tę rozbieżność wprost.
+        D3. Dostajesz FRAGMENTY dokumentu, nie całość — jeśli pytanie dotyczy treści nieobecnej
+            we fragmentach, napisz wprost, że dołączone fragmenty jej nie zawierają. Nie zgaduj
+            zawartości reszty pliku.
+        D4. Zasada 3 (fraza odmowy) bez zmian — dotyczy braku PRAWA w ŹRÓDŁACH, nie braków dokumentu.
+        """;
+
+    /// <summary>
+    /// Zasady doklejane do systemu WYŁĄCZNIE gdy wiadomość jest prośbą o sporządzenie dokumentu
+    /// (Horyzont 0 draftingu, rozmowa 2026-08-28; detekcja: <c>DraftingRequestDetector</c>).
+    /// Bez tej doklejki zachowanie było niezdefiniowane: w korpusie nie ma wzorów pism, więc model
+    /// albo odmawiał („źródła nie pozwalają" — fałszywy sygnał w metryce odmów), albo generował
+    /// pseudo-dokument poszyty cytatami. Kontrakt: jasna granica + checklist wymogów ze źródłami.
+    /// Wzorem <see cref="DocumentRules"/> — bez prośby o pismo system prompt zostaje bajt w bajt.
+    /// </summary>
+    public const string DraftingRules =
+        """
+        PROŚBA O DOKUMENT — zasady dodatkowe (użytkownik prosi o sporządzenie pisma/umowy):
+        P1. NIE sporządzaj dokumentu ani jego szkicu. Zacznij od JEDNEGO zdania: nie przygotowujesz
+            projektów pism, ale wyjaśnisz, co taki dokument musi zawierać i na jakiej podstawie.
+        P2. Następnie podaj — WYŁĄCZNIE na podstawie ŹRÓDEŁ, z cytowaniami [n] — wymagania prawne
+            dla tego typu dokumentu: elementy konieczne, wymaganą formę (pisemna, akt notarialny…),
+            terminy, podstawy prawne, skutki braków. Użyj listy punktowanej.
+        P3. Jeśli ŹRÓDŁA pokrywają tylko część wymogów, podaj tę część i wskaż wprost, czego
+            źródła nie regulują. Zasada 3 (fraza odmowy) tylko gdy źródła nie mówią NIC na temat.
+        P4. Zakończ jednym zdaniem, że projekt dokumentu warto skonsultować z prawnikiem.
         """;
 
     /// <summary>Ile ostatnich zakończonych tur rozmowy wchodzi do promptu (kontekst follow-upów).</summary>
@@ -53,6 +148,18 @@ public static class GroundedPrompt
         => Build(question, chunks, []);
 
     /// <summary>
+    /// Porządek źródeł do ugruntowania: PRZEPISY przed ORZECZNICTWEM (stabilnie w obrębie grup).
+    /// Norma prawna jako kotwica na początku listy [1..] — diagnoza 2026-07-17: Bielik dostając
+    /// najpierw stos narracji orzeczeń streszczał je, ignorując normę. WOŁAĆ PRZED <see cref="Build"/>
+    /// i używać TEGO SAMEGO porządku do kontekstu walidacji anty-fabrykacji — numeracja [n] w prompcie,
+    /// panelu źródeł i walidatorze musi być jedna (dlatego porządkuje caller, nie Build).
+    /// </summary>
+    public static IReadOnlyList<RetrievedChunk> OrderForGrounding(IReadOnlyList<RetrievedChunk> chunks) =>
+        chunks.Count == 0 ? chunks : [.. chunks.Where(IsAct), .. chunks.Where(c => !IsAct(c))];
+
+    private static bool IsAct(RetrievedChunk c) => c.DocType == DocTypes.Act;
+
+    /// <summary>
     /// Wariant z historią rozmowy (follow-upy): wcześniejsze tury wchodzą jako naprzemienne wiadomości
     /// User/Assistant PRZED finalną wiadomością z pytaniem i źródłami. Odpowiedzi historyczne są
     /// sanityzowane — markery [n] ZDJĘTE (odnosiły się do źródeł TAMTEJ tury; skopiowane przez model
@@ -61,21 +168,86 @@ public static class GroundedPrompt
     /// </summary>
     public static (LlmRequest Request, IReadOnlyList<SourceRef> Sources) Build(
         string question, IReadOnlyList<RetrievedChunk> chunks, IReadOnlyList<ChatTurn> history)
+        => Build(question, chunks, history, []);
+
+    /// <summary>
+    /// Wariant z załącznikiem (DOC-2): <paramref name="docFragments"/> (fragmenty dokumentu
+    /// użytkownika, już wybrane i uporządkowane) wchodzą jako sekcja DOKUMENT [D1..] między
+    /// pytaniem a źródłami, a system dostaje doklejony blok <see cref="DocumentRules"/>.
+    /// Pusta lista = zachowanie identyczne jak dotąd (bajt w bajt — zero regresji golden-setu).
+    /// </summary>
+    public static (LlmRequest Request, IReadOnlyList<SourceRef> Sources) Build(
+        string question, IReadOnlyList<RetrievedChunk> chunks, IReadOnlyList<ChatTurn> history,
+        IReadOnlyList<string> docFragments, bool draftingRequest = false)
     {
         var sources = new List<SourceRef>(chunks.Count);
         var sb = new StringBuilder();
-        sb.Append("PYTANIE:\n").Append(question).Append("\n\nŹRÓDŁA:\n");
+        sb.Append("PYTANIE:\n").Append(question);
+
+        if (docFragments.Count > 0)
+        {
+            sb.Append("\n\nDOKUMENT (fragmenty załącznika użytkownika — fakty, NIE źródło prawa):\n");
+            for (var k = 0; k < docFragments.Count; k++)
+                sb.Append("[D").Append(k + 1).Append("] ").Append(docFragments[k]).Append("\n\n");
+            sb.Append("ŹRÓDŁA:\n");
+        }
+        else
+        {
+            sb.Append("\n\nŹRÓDŁA:\n");
+        }
+
+        // Podział na sekcje TYLKO gdy są oba typy (norma nie może ginąć wizualnie wśród narracji
+        // orzeczeń — diagnoza 2026-07-17/5e); jeden typ = format jak dotąd (zero regresji promptu).
+        // Zakłada porządek z OrderForGrounding (przepisy przed orzeczeniami) — przy przeplocie
+        // nagłówek pojawia się przy każdej zmianie typu, co nadal jest poprawne, tylko brzydsze.
+        var sectioned = chunks.Any(IsAct) && chunks.Any(c => !IsAct(c));
+        string? currentSection = null;
 
         for (var i = 0; i < chunks.Count; i++)
         {
+            if (sectioned)
+            {
+                var section = IsAct(chunks[i]) ? "PRZEPISY:" : "ORZECZNICTWO:";
+                if (section != currentSection)
+                {
+                    sb.Append('\n').Append(section).Append('\n');
+                    currentSection = section;
+                }
+            }
+
             var n = i + 1;
             var label = LocatorLabel(chunks[i]);
-            sources.Add(new SourceRef(n, label, chunks[i].Title, chunks[i].SourceUrl, Snippet(chunks[i].Text), chunks[i].AmendmentEffectiveDate));
+            sources.Add(new SourceRef(n, label, chunks[i].Title, chunks[i].SourceUrl, Snippet(chunks[i].Text),
+                chunks[i].AmendmentEffectiveDate, chunks[i].LegalBases,
+                Neighbour: chunks[i].Score == double.MinValue));
             sb.Append('[').Append(n).Append("] ").Append(label).Append('\n')
               .Append(chunks[i].Text).Append("\n\n");
         }
 
-        var messages = new List<ChatMessage> { new(ChatRole.System, SystemPrompt) };
+        // Warunkowy system prompt (DOC-2): zasady o dokumencie tylko gdy sekcja DOKUMENT istnieje;
+        // zasady o prośbie o pismo tylko gdy wykryta (Horyzont 0 draftingu) — poza tymi przypadkami
+        // prompt bajt w bajt dzisiejszy (strojony pod Bielika, patrz diagnoza 5e).
+        var system = docFragments.Count > 0 ? SystemPrompt + "\n" + DocumentRules : SystemPrompt;
+        if (draftingRequest) system += "\n" + DraftingRules;
+        var messages = new List<ChatMessage> { new(ChatRole.System, system) };
+        AppendHistory(messages, history);
+        AddCoalescing(messages, new ChatMessage(ChatRole.User, sb.ToString()));
+
+        var request = new LlmRequest { Messages = messages, Temperature = 0 };
+        return (request, sources);
+    }
+
+    /// <summary>
+    /// Dokleja historię rozmowy jako naprzemienne wiadomości User/Assistant: ostatnie
+    /// <see cref="HistoryTurnsTaken"/> tur, odpowiedzi sanityzowane (<see cref="SanitizeHistoryAnswer"/>),
+    /// tura z abstynencją (Answer=null) → tylko User, kolejne wiadomości tej samej roli scalone.
+    ///
+    /// PUBLICZNA, bo ścieżka bez retrievalu (small-talk w ChatService) potrzebuje DOKŁADNIE tej samej
+    /// historii, mimo że świadomie nie używa <see cref="SystemPrompt"/> ani sekcji ŹRÓDŁA. Druga kopia
+    /// tej pętli rozjechałaby się z tą (precedens: trzy kopie logiki follow-upu przed FollowUpSelector).
+    /// </summary>
+    public static void AppendHistory(List<ChatMessage> messages, IReadOnlyList<ChatTurn> history)
+    {
         foreach (var turn in history.TakeLast(HistoryTurnsTaken))
         {
             if (string.IsNullOrWhiteSpace(turn.Question)) continue;
@@ -83,17 +255,15 @@ public static class GroundedPrompt
             if (turn.Answer is { } a && !string.IsNullOrWhiteSpace(a))
                 messages.Add(new ChatMessage(ChatRole.Assistant, SanitizeHistoryAnswer(a)));
         }
-        AddCoalescing(messages, new ChatMessage(ChatRole.User, sb.ToString()));
-
-        var request = new LlmRequest { Messages = messages, Temperature = 0 };
-        return (request, sources);
     }
 
     /// <summary>Scala kolejne wiadomości tej samej roli (tura z abstynencją = samotny User przed następnym
     /// User). Messages API dziś łączy takie tury samo, ale historycznie zwracało 400 „roles must alternate",
     /// a szablony czatu lokalnych modeli (Bielik/llama.cpp) bywają wrażliwe — ścisła naprzemienność jest
-    /// bezpieczna dla KAŻDEGO providera.</summary>
-    private static void AddCoalescing(List<ChatMessage> messages, ChatMessage next)
+    /// bezpieczna dla KAŻDEGO providera. PUBLICZNA z tego samego powodu co
+    /// <see cref="AppendHistory"/>: ścieżka bez retrievalu składa listę wiadomości sama, a ograniczenie
+    /// providerów obowiązuje ją identycznie.</summary>
+    public static void AddCoalescing(List<ChatMessage> messages, ChatMessage next)
     {
         if (messages.Count > 0 && messages[^1] is { } last && last.Role == next.Role)
             messages[^1] = last with { Content = last.Content + "\n\n" + next.Content };

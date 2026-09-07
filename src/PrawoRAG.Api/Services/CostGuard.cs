@@ -1,70 +1,217 @@
-using System.Collections.Concurrent;
+using System.Globalization;
 using Microsoft.Extensions.Options;
+using PrawoRAG.Api.Services.Plans;
 
 namespace PrawoRAG.Api.Services;
 
-/// <summary>
-/// Twardy dzienny cap kosztów LLM (3.7) — działa OBOK <see cref="RateGuard"/> (inna oś: RateGuard =
-/// okno minutowe przeciw pętli; CostGuard = dzienne budżety przeciw wyczerpaniu portfela). Trzy limity
-/// z <see cref="AccessOptions"/>: zapytania/dzień per tester, zapytania/dzień globalnie, globalny budżet
-/// znaków WYJŚCIA (proxy tokenów — providerzy streamują tekst bez liczników). Klucz dnia = data UTC.
-/// Świadome ograniczenie: liczniki in-memory — restart zeruje dzień (dla zamkniętego testu akceptowalne).
-/// Gdy Access:Enabled=false — zawsze przepuszcza (zero zmian zachowania dev/M4).
-/// </summary>
-public sealed class CostGuard(IOptions<AccessOptions> options, TimeProvider time)
+/// <summary>Werdykt bramki kosztów: czy wolno, a jeśli nie — co dokładnie się wyczerpało.
+/// <paramref name="PlanLimit"/> = wyczerpał się LIMIT PLANU użytkownika (US-3.9: UI dokłada wtedy
+/// link do konta/zakupu — to miejsce konwersji); limity pojemności/dzienne go nie ustawiają,
+/// bo wyższy plan nic tam nie zmienia.</summary>
+public readonly record struct CostDecision(bool Allowed, string? Message, bool PlanLimit = false)
 {
-    private readonly object _lock = new();
-    private DateOnly _day;
-    private long _globalRequests;
-    private long _globalOutputChars;
-    private readonly ConcurrentDictionary<string, int> _userRequests = new();
+    public static CostDecision Ok() => new(true, null);
+    public static CostDecision Denied(string message, bool planLimit = false) => new(false, message, planLimit);
+}
 
-    /// <summary>True = można wykonać zapytanie LLM; false = twardy limit dzienny (reason mówi który).</summary>
-    public bool TryAcquire(string userId, out string? reason)
+/// <summary>
+/// Bramka kosztów (E1/T-10). Trzyma DWIE NIEZALEŻNE OSIE — mylenie ich to najczęstszy błąd w tego
+/// typu kodzie:
+///
+/// • <b>Oś rozliczeniowa</b> — ile zapytań należy się KLIENTOWI: limit planu na okres rozliczeniowy
+///   konta (15/mies. darmowy, 300/mies. płatny). W trybie bez kont (dev, bramka invite) jej miejsce
+///   zajmuje dobowy limit per użytkownik z <see cref="AccessOptions"/> — zachowanie z alfy bez zmian.
+/// • <b>Oś pojemnościowa</b> — ile zniesie NASZ SPRZĘT: globalne capy dobowe (zapytania i znaki
+///   wyjścia). Zostaje niezależnie od tego, kto ile zapłacił; bez niej jeden klient z planem płatnym
+///   potrafi położyć serwer w kilka godzin. Obowiązuje ZAWSZE, gdy cokolwiek jest liczone — także
+///   w trybie kont z wyłączoną bramką invite (<c>Auth:Enabled=true</c>, <c>Access:Enabled=false</c>).
+///   Do audytu 2026-09-01 (W3) była sprzężona z <c>Access:Enabled</c>, więc w trybie kont nie
+///   działała: N darmowych kont = N×15 zapytań bez sufitu sprzętowego. Wartości capów nadal leżą
+///   w <see cref="AccessOptions"/> (zgodność konfiguracji), ale <c>Access:Enabled</c> ich nie wyłącza.
+///   Jedyny tryb bez liczenia: brak planu I brak bramki (dev/M4).
+///
+/// Liczniki są trwałe (wcześniej w pamięci procesu — restart zerował dzień). Zliczanie jest atomowe
+/// po stronie magazynu (<see cref="IUsageCounters"/>), bo dwie karty przeglądarki tego samego
+/// użytkownika nie mogą przepchnąć się ponad limit.
+/// </summary>
+public sealed class CostGuard(
+    IUsageCounters counters,
+    IOptions<AccessOptions> options,
+    IEntitlements entitlements,
+    TimeProvider time)
+{
+    private const string GlobalKey = "*";
+    private static readonly CultureInfo Polish = new("pl-PL");
+
+    /// <summary>
+    /// Rezerwuje jedno zapytanie LLM. Kolejność jest celowa: najpierw to, co należy się klientowi
+    /// (jego komunikat jest inny), potem pojemność systemu.
+    /// <paramref name="chargePlan"/>=false — wywołanie w ramach JUŻ OPŁACONEJ analizy dokumentu
+    /// (pula <see cref="PlanLimits.AnalysesPerMonth"/> naliczona per dokument w
+    /// <see cref="TryAcquireAnalysisAsync"/>): oś planu jest pomijana, ale oś pojemnościowa
+    /// (globalne capy dzienne) i dobowy limit trybu bez kont obowiązują bez zmian.
+    /// </summary>
+    public async Task<CostDecision> TryAcquireAsync(string userId, CancellationToken ct = default, bool chargePlan = true)
     {
-        reason = null;
         var o = options.Value;
-        if (!o.Enabled) return true;
+        var now = time.GetUtcNow().UtcDateTime;
+        var today = DateOnly.FromDateTime(now);
+        var entitlement = await entitlements.ForAsync(userId, ct);
 
-        lock (_lock)
+        // Nic do liczenia: tryb bez kont i bez bramki (dev/M4) — zero zapytań do magazynu.
+        if (!entitlement.PlanApplies && !o.Enabled) return CostDecision.Ok();
+
+        // --- oś rozliczeniowa ---
+        var reserved = false;
+        if (entitlement is { PlanApplies: true, Limits: { } limits })
         {
-            RollOverIfNewDay();
-
-            if (_globalOutputChars >= o.MaxGlobalOutputCharsPerDay)
-            { reason = "globalny dzienny budżet odpowiedzi"; return false; }
-            if (_globalRequests >= o.MaxGlobalRequestsPerDay)
-            { reason = "globalny dzienny limit zapytań"; return false; }
-            if (_userRequests.GetValueOrDefault(userId) >= o.MaxUserRequestsPerDay)
-            { reason = "Twój dzienny limit zapytań"; return false; }
-
-            _globalRequests++;
-            _userRequests.AddOrUpdate(userId, 1, (_, n) => n + 1);
-            return true;
+            if (chargePlan)
+            {
+                var used = await counters.TryIncrementAsync(UsageScopes.UserRequestsPeriod, userId,
+                    entitlement.Period.Key, limits.RequestsPerMonth, ct);
+                if (used is null)
+                    return CostDecision.Denied(PlanLimitMessage(limits, entitlement.Period), planLimit: true);
+                reserved = true;
+            }
+            // chargePlan=false: dokument już opłacony z puli analiz — oś planu pomijana, capy niżej nie.
         }
+        else if (o.Enabled)
+        {
+            // Tryb bez kont: dobowy limit per tester (bramka invite, alfa) — bit w bit jak dotąd.
+            var used = await counters.TryIncrementAsync(UsageScopes.UserRequestsDay, userId, today,
+                o.MaxUserRequestsPerDay, ct);
+            if (used is null)
+                return CostDecision.Denied(Limit("Twój dzienny limit zapytań"));
+            reserved = true;
+        }
+
+        // --- oś pojemnościowa: budżet znaków (dolicza się PO odpowiedzi, w RecordAsync) ---
+        // Bez warunku na o.Enabled: skoro doszliśmy tutaj, coś jest liczone (plan albo bramka),
+        // więc pojemność też ma być pilnowana (W3).
+        var chars = await counters.CurrentAsync(UsageScopes.GlobalCharsDay, GlobalKey, today, ct);
+        if (chars >= o.MaxGlobalOutputCharsPerDay)
+            return await RefundAndDenyAsync(entitlement, userId, today, reserved,
+                Limit("globalny dzienny budżet odpowiedzi"), ct);
+
+        // --- oś pojemnościowa: zapytania na dobę ---
+        var global = await counters.TryIncrementAsync(UsageScopes.GlobalRequestsDay, GlobalKey, today,
+            o.MaxGlobalRequestsPerDay, ct);
+        if (global is null)
+            return await RefundAndDenyAsync(entitlement, userId, today, reserved,
+                Limit("globalny dzienny limit zapytań"), ct);
+
+        return CostDecision.Ok();
     }
 
-    /// <summary>Dolicza rozmiar wyjścia LLM po zakończeniu streamu (budżet znaków).</summary>
-    public void Record(string userId, int outputChars)
+    /// <summary>Dolicza rozmiar odpowiedzi LLM do dobowego budżetu znaków (po zakończeniu streamu).</summary>
+    public async Task RecordAsync(string userId, int outputChars, CancellationToken ct = default)
     {
-        if (!options.Value.Enabled || outputChars <= 0) return;
-        lock (_lock)
-        {
-            RollOverIfNewDay();
-            _globalOutputChars += outputChars;
-        }
-    }
-
-    /// <summary>Komunikat dla użytkownika przy odmowie (spójny UI/SSE).</summary>
-    public static string LimitMessage(string? reason) =>
-        $"Wyczerpany {reason ?? "dzienny limit"} — spróbuj ponownie jutro. To zamknięty test z twardym budżetem.";
-
-    private void RollOverIfNewDay()
-    {
+        if (outputChars <= 0) return;
+        // Lustro TryAcquireAsync: liczymy zawsze, gdy obowiązuje plan LUB bramka; tylko dev/M4
+        // (ani jedno, ani drugie) nie dotyka magazynu.
+        if (!options.Value.Enabled && !(await entitlements.ForAsync(userId, ct)).PlanApplies) return;
         var today = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
-        if (today == _day) return;
-        _day = today;
-        _globalRequests = 0;
-        _globalOutputChars = 0;
-        _userRequests.Clear();
+        await counters.AddAsync(UsageScopes.GlobalCharsDay, GlobalKey, today, outputChars, ct);
+    }
+
+    /// <summary>
+    /// Rezerwuje jedną ANALIZĘ DOKUMENTU z osobnej puli planu (<see cref="PlanLimits.AnalysesPerMonth"/>)
+    /// — naliczane per dokument na starcie, nie per fragment (naprawa 2026-09-02: 19-fragmentowy
+    /// dokument zjadał cały miesięczny limit czatu). Wywołania LLM w ramach opłaconej analizy idą
+    /// potem przez <see cref="TryAcquireAsync"/> z <c>chargePlan:false</c> (capy pojemności zostają).
+    /// Tryb bez kont (brak planu): nic nie nalicza — jednostki liczą się per dobę jak dotąd.
+    /// </summary>
+    public async Task<CostDecision> TryAcquireAnalysisAsync(string userId, CancellationToken ct = default)
+    {
+        var entitlement = await entitlements.ForAsync(userId, ct);
+        if (entitlement is not { PlanApplies: true, Limits: { } limits }) return CostDecision.Ok();
+
+        var used = await counters.TryIncrementAsync(UsageScopes.UserAnalysesPeriod, userId,
+            entitlement.Period.Key, limits.AnalysesPerMonth, ct);
+        return used is null
+            ? CostDecision.Denied(AnalysisLimitMessage(limits, entitlement.Period), planLimit: true)
+            : CostDecision.Ok();
+    }
+
+    /// <summary>Zużycie puli analiz w bieżącym okresie (UI /analiza). <c>null</c> = plan nie obowiązuje.</summary>
+    public async Task<(int Used, int Limit)?> AnalysisUsageAsync(string userId, CancellationToken ct = default)
+    {
+        var entitlement = await entitlements.ForAsync(userId, ct);
+        if (entitlement.Limits is not { } limits) return null;
+        var used = await counters.CurrentAsync(UsageScopes.UserAnalysesPeriod, userId,
+            entitlement.Period.Key, ct);
+        return ((int)Math.Min(used, int.MaxValue), limits.AnalysesPerMonth);
+    }
+
+    /// <summary>Cap fragmentów jednego dokumentu wg planu użytkownika; <c>int.MaxValue</c> gdy plan
+    /// nie obowiązuje (wtedy ogranicza tylko globalny <c>Analysis:MaxUnits</c>).</summary>
+    public async Task<int> MaxUnitsForAsync(string userId, CancellationToken ct = default)
+    {
+        var entitlement = await entitlements.ForAsync(userId, ct);
+        return entitlement.Limits is { } limits && limits.MaxUnitsPerAnalysis > 0
+            ? limits.MaxUnitsPerAnalysis
+            : int.MaxValue;
+    }
+
+    /// <summary>Zużycie w bieżącym okresie (ekran planu, komunikaty). <c>null</c> = plan nie obowiązuje.</summary>
+    public async Task<(int Used, int Limit)?> UsageAsync(string userId, CancellationToken ct = default)
+    {
+        var entitlement = await entitlements.ForAsync(userId, ct);
+        if (entitlement.Limits is not { } limits) return null;
+
+        var used = await counters.CurrentAsync(UsageScopes.UserRequestsPeriod, userId,
+            entitlement.Period.Key, ct);
+        return ((int)Math.Min(used, int.MaxValue), limits.RequestsPerMonth);
+    }
+
+    /// <summary>
+    /// Komunikat wyczerpanego limitu planu — MIEJSCE KONWERSJI (T-11), nie komunikat błędu. Mówi, co
+    /// się skończyło, kiedy się odnawia i (dla darmowego) że istnieje wyższy plan.
+    /// </summary>
+    private static string PlanLimitMessage(PlanLimits limits, BillingPeriod period)
+    {
+        var text = $"Wykorzystano limit planu {limits.DisplayName} " +
+                   $"({limits.RequestsPerMonth} zapytań na okres rozliczeniowy). " +
+                   $"Odnowi się {period.EndUtc.ToString("d MMMM yyyy", Polish)}.";
+        return limits.RequestsPerMonth < ProPlanRequests
+            ? text + $" Plan Pro daje {ProPlanRequests} zapytań miesięcznie."
+            : text;
+    }
+
+    /// <summary>Komunikat wyczerpanej puli ANALIZ — jak <see cref="PlanLimitMessage"/>, miejsce
+    /// konwersji, nie komunikat błędu. Nie zżera limitu czatu i mówi to wprost.</summary>
+    private static string AnalysisLimitMessage(PlanLimits limits, BillingPeriod period)
+    {
+        var text = $"Wykorzystano limit analiz dokumentów planu {limits.DisplayName} " +
+                   $"({limits.AnalysesPerMonth} analiz na okres rozliczeniowy). " +
+                   $"Odnowi się {period.EndUtc.ToString("d MMMM yyyy", Polish)}. " +
+                   "Zapytania na czacie liczą się osobno i nadal działają.";
+        return limits.AnalysesPerMonth < ProPlanAnalyses
+            ? text + $" Plan Pro daje {ProPlanAnalyses} analiz miesięcznie."
+            : text;
+    }
+
+    /// <summary>E3 podmieni to na odczyt z katalogu planów wraz z cennikiem i odnośnikiem do zakupu.</summary>
+    private const int ProPlanRequests = 300;
+    private const int ProPlanAnalyses = 50;
+
+    private static string Limit(string reason) =>
+        $"Wyczerpany {reason} — spróbuj ponownie jutro.";
+
+    /// <summary>
+    /// Zwrot rezerwacji, gdy zapytanie odbił dopiero cap pojemności. Bez tego klient traciłby
+    /// zapytanie z pakietu za ograniczenie po NASZEJ stronie.
+    /// </summary>
+    private async Task<CostDecision> RefundAndDenyAsync(
+        Entitlement entitlement, string userId, DateOnly today, bool reserved, string message, CancellationToken ct)
+    {
+        if (reserved)
+        {
+            var (scope, period) = entitlement.PlanApplies
+                ? (UsageScopes.UserRequestsPeriod, entitlement.Period.Key)
+                : (UsageScopes.UserRequestsDay, today);
+            await counters.AddAsync(scope, userId, period, -1, ct);
+        }
+        return CostDecision.Denied(message);
     }
 }

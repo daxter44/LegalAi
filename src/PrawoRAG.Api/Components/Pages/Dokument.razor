@@ -1,0 +1,71 @@
+@page "/dokument/{Id:guid}"
+@rendermode InteractiveServer
+@inject IDocumentReader Reader
+
+<div class="docview">
+    <a class="doc-back" href="/szukaj">← Wyszukiwarka</a>
+
+    @if (_loading)
+    {
+        <div class="banner" role="status">⏳ wczytuję dokument…</div>
+    }
+    else if (_doc is null)
+    {
+        <div class="banner banner-warn" role="status">Nie znaleziono dokumentu w korpusie.</div>
+    }
+    else
+    {
+        <article class="msg msg-assistant docview-body">
+            <h1 class="docview-title">@_doc.Title</h1>
+            <div class="docview-meta">
+                @if (!string.IsNullOrWhiteSpace(_doc.CaseNumber)) { <span>sygn. @_doc.CaseNumber</span> }
+                @if (!string.IsNullOrWhiteSpace(_doc.Court)) { <span>@_doc.Court</span> }
+                @if (_doc.JudgmentDate is { } d) { <span>@d.ToString("yyyy-MM-dd")</span> }
+                @if (!string.IsNullOrWhiteSpace(_doc.Url))
+                {
+                    <a class="source-link" href="@_doc.Url" target="_blank" rel="noopener noreferrer">oryginał ↗</a>
+                }
+            </div>
+
+            @if (_doc.LegalBases.Count > 0)
+            {
+                <details class="legal-bases-details">
+                    <summary>Podstawa prawna (@_doc.LegalBases.Count)</summary>
+                    <div class="legal-bases">
+                        @foreach (var b in _doc.LegalBases)
+                        {
+                            <span class="legal-basis-chip">@b</span>
+                        }
+                    </div>
+                </details>
+            }
+
+            @foreach (var s in _doc.Sections)
+            {
+                @if (!string.IsNullOrWhiteSpace(s.Label))
+                {
+                    <h2 class="docview-section">@s.Label</h2>
+                }
+                <div class="docview-text">@s.Text</div>
+            }
+
+            <p class="empty-hint docview-note">Treść zrekonstruowana z fragmentów zaindeksowanych w korpusie —
+                do weryfikacji przy oryginale. To wstępny research, nie porada.</p>
+        </article>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private DocumentView? _doc;
+    private bool _loading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        try { _doc = await Reader.GetAsync(Id, CancellationToken.None); }
+        catch { _doc = null; }
+        finally { _loading = false; }
+    }
+}

@@ -1,0 +1,110 @@
+# Pomiar „PRZED" — prawo UE w korpusie (UE-0)
+
+Artefakt bramkowy Fazy 0 z `PLAN-PRAWO-UE.md` § 5.1. **Bez wypełnionej tabeli wyników Faza 2
+(pobieranie) nie startuje** — to zabezpieczenie przed powtórzeniem wpadki z polskim FTS, gdzie
+metryka wyniku powstała po wykonaniu pracy.
+
+## 1. Co jest gotowe (2026-08-26)
+
+Zestaw pomiarowy: **22 nowe pozycje w `src/PrawoRAG.Eval/golden-set.json`** z prefiksem `ue-`
+(razem plik ma 40 pozycji). Każdy przepis docelowy został **zweryfikowany w polskim tekście
+z CELLAR-a** — nie wpisany z pamięci:
+
+| pozycja | akt (CELEX) | art. | co weryfikowano w tekście |
+|---|---|---|---|
+| `ue-rodo-6` | 32016R0679 | 6 | ust. 1 lit. f) — prawnie uzasadniony interes |
+| `ue-rodo-33` | 32016R0679 | 33 | tytuł artykułu + termin 72 h |
+| `ue-rodo-17` | 32016R0679 | 17 | „prawo do bycia zapomnianym" |
+| `ue-aiact-5` | 32024R1689 | 5 | „Zakazane praktyki w zakresie AI" |
+| `ue-aiact-50` | 32024R1689 | 50 | obowiązki przejrzystości |
+| `ue-aiact-deepfake` | 32024R1689 | 5 | **lit. ba) istnieje TYLKO w konsolidacji** `02024R1689-20260727` |
+| `ue-dsa-16` | 32022R2065 | 16 | „Mechanizmy zgłaszania i działania" |
+| `ue-dma-5` | 32022R1925 | 5 | „Obowiązki strażników dostępu" |
+| `ue-konsument-9` | 32011L0083 | 9 | prawo odstąpienia (14 dni) |
+| `ue-kierowcy-6` | 32006R0561 | 6 | dosłownie: „nie może przekroczyć 9 godzin" |
+| `ue-zywnosc-9` | 32011R1169 | 9 | wykaz danych obowiązkowych |
+| `ue-mdr-10` | 32017R0745 | 10 | ogólne obowiązki producentów |
+| `ue-produkty-5` | 32023R0988 | 5 | ogólne wymaganie bezpieczeństwa |
+| `ue-mar-17` | 32014R0596 | 17 | podawanie informacji poufnych |
+| `ue-turystyka-12` | 32015L2302 | 12 | rozwiązanie umowy o imprezę |
+| `ue-dsm-17` | 32019L0790 | 17 | odpowiedzialność platform |
+| `ue-reach-33` | 32006R1907 | 33 | **weryfikowane w konsolidacji** (tekst bazowy: 404 dla PL) |
+| `ue-eprivacy-5` | 32002L0058 | 5 | **tylko konsolidacja, markup legacy bez kotwic** |
+| `ue-trap-95-46` | — | — | pułapka: dyrektywa uchylona przez RODO |
+| `ue-trap-rodo-999` | — | — | pułapka: RODO ma 99 artykułów |
+| `ue-out-ccpa` | — | — | poza korpusem (prawo Kalifornii) |
+| `ue-related-ukgdpr` | — | — | pokrewne, ale poza korpusem (UK GDPR) |
+
+Trzy z tych pozycji są **strażnikami mechanizmu**, nie tylko treści: `ue-aiact-deepfake` przechodzi
+tylko wtedy, gdy ingestujemy tekst skonsolidowany, `ue-reach-33` — gdy konsolidacja jest próbowana
+przed tekstem bazowym, `ue-eprivacy-5` — gdy istnieje tor parsowania dokumentów bez kotwic (UE-3.0).
+
+Poprawiona też jedna pozycja zastana: `out-rodo` („zasady przetwarzania zgodnie z RODO",
+`OutOfCorpus`) jest poprawna wyłącznie do transzy T1 — po zaingestowaniu RODO musi zmienić kategorię
+na `InCorpus`, inaczej scorowanie zacznie karać system za poprawną odpowiedź. Zapisane w nocie pozycji.
+
+## 2. Co trzeba uruchomić (operator, maszyna z korpusem)
+
+Środowisko agenta nie ma dostępu do korpusu ani modeli (lokalnie brak bazy i TEI), więc oba przebiegi
+odpala operator na maszynie z pełnym korpusem:
+
+```
+# 1. Golden set (tu żyją 22 pozycje UE) — BEZ żadnej flagi, domyślnie retrieval-only, bez LLM.
+dotnet run --project src/PrawoRAG.Eval
+
+# 2. Odmowy na realnym ruchu — bez generowania odpowiedzi (szybka diagnostyka składu źródeł).
+Eval__RefusalsGenerate=false dotnet run --project src/PrawoRAG.Eval -- --refusals
+```
+
+**Czego NIE uruchamiać do tego pomiaru:** `--exam`. To osobny eval — 446 pytań ABC z egzaminów
+wstępnych, z LLM-em na każde pytanie; mierzy wiedzę modelu, nie zachowanie produktu na golden-secie,
+i chodzi godzinami (potwierdzone: przebieg 2 h zakończony błędem). Golden set to domyślna ścieżka
+`Program.cs` bez flag.
+
+Pełny przebieg z generowaniem odpowiedzi (`--chat` lub `Eval:Chat=true`) ma sens dopiero po
+transzy T1 — do pomiaru „przed" wystarczy retrieval, bo pytania UE nie mają dziś czego trafić.
+
+## 3. Wyniki „PRZED" — ZMIERZONE (2026-08-26)
+
+**Golden set: 14 / 40 pozycji zaliczonych. Żadna pozycja `ue-*` nie ma `hit=True`.**
+
+Interpretacja (dlatego ta liczba jest dobrym punktem odniesienia, a nie porażką):
+
+| grupa | ile | oczekiwanie „przed" | wynik |
+|---|---|---|---|
+| `ue-*` merytoryczne (`InCorpus`) | 18 | wszystkie nietrafione — w korpusie nie ma ani jednego aktu UE | ✅ zero trafień |
+| `ue-*` odmowy (`Trap`/`OutOfCorpus`/`RelatedButWrong`) | 4 | powinny zaliczać już dziś (poprawne zachowanie = odmowa) | ✅ (w puli 14) |
+| pozycje polskie | 18 | baseline regresji; część świadomie czerwona (`uodo-107`) | ✅ (w puli 14) |
+
+**Najważniejsze z tego pomiaru:** zero `hit=True` na pozycjach UE znaczy, że retrieval nie podstawia
+dziś polskiego aktu o zbliżonym temacie pod pytanie unijne. Gdyby podstawiał, mielibyśmy problem R6
+(mieszanie porządków prawnych) JESZCZE PRZED ingestią — i to on byłby pierwszy do naprawy, nie pokrycie.
+
+**Bramka Fazy 0: SPEŁNIONA.** Liczba odniesienia dla transzy T1 to `14/40` przy zerowym trafieniu
+prawa UE. Po T1 mierzymy: (a) ile pozycji `ue-*` merytorycznych zaczyna trafiać, (b) czy 18 pozycji
+polskich nie spadło (regresja = warunek STOPU dla kolejnych transz), (c) ile pokazanych źródeł to
+bojlerplate albo diff (metryka wyniku odsiewu z § 4.6 planu).
+
+## 4. Wyniki `--refusals` — do wypełnienia
+
+Oczekiwanie: **wszystkie pozycje `ue-*` z kategorii `InCorpus` kończą się odmową albo trafieniem
+w niewłaściwy akt** (prawa UE nie ma dziś w korpusie). Jeśli któraś przechodzi z sensowną
+odpowiedzią, to sygnał, że model odpowiada z pamięci parametrycznej mimo bramki anty-fabrykacji —
+osobny problem do zapisania, ważniejszy od samej ingestii.
+
+| pozycja | wynik (odmowa / trafienie / zła podstawa) | co trafiło do źródeł |
+|---|---|---|
+| … | | |
+
+**Baseline polski (do porównań regresji po każdej transzy):** wynik `--exam` dla pozycji spoza
+prefiksu `ue-` oraz `--refusals` (odsetek odmów). Liczby wpisać tutaj:
+
+- pozycje PL: … / 18 trafionych
+- odmowy na `refusal-set`: … %
+
+## 4. Bramka
+
+Faza 2 startuje, gdy w § 3 są liczby dla wszystkich 22 pozycji UE i baseline polski. Interpretacja:
+- wszystkie UE = odmowa → ingestia ma sens, mierzymy poprawę po T1;
+- część UE trafia → sprawdzić, czym trafia (możliwa konfabulacja albo polski odpowiednik przepisu);
+- pozycje PL słabsze niż w ostatnim pomiarze → najpierw diagnoza regresji, potem prawo UE.

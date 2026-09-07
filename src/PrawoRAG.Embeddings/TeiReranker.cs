@@ -7,8 +7,11 @@ namespace PrawoRAG.Embeddings;
 
 /// <summary>
 /// <see cref="IReranker"/> oparty o HuggingFace TEI (endpoint <c>/rerank</c>). Cross-encoder bierze
-/// surowe pary query×passage (bez prefiksu „zapytanie:"). TEI batchuje serwerowo — wysyłamy jedną listę.
-/// Kontrakt: POST {query, texts[], raw_scores:false} → [{index, score}] (wyższy score = trafniejszy).
+/// surowe pary query×passage (bez prefiksu „zapytanie:"). Batchowanie PO STRONIE KLIENTA (MaxBatch) —
+/// zmierzone: instancja TEI ma twardy `max_client_batch_size` (32), przekroczenie zwraca 422, nie
+/// dzieli sama (w przeciwieństwie do zwykłego /embed).
+/// Kontrakt: POST {query, texts[], raw_scores:false} → [{index, score}] (wyższy score = trafniejszy;
+/// index liczony WEWNĄTRZ danej paczki — przesuwamy o offset przy scalaniu wyników).
 /// </summary>
 public sealed class TeiReranker(HttpClient http, IOptions<RerankerOptions> options) : IReranker
 {
@@ -20,17 +23,23 @@ public sealed class TeiReranker(HttpClient http, IOptions<RerankerOptions> optio
     {
         if (passages.Count == 0) return [];
 
-        var req = new RerankRequest { Query = query, Texts = passages, RawScores = false, Truncate = true };
-        using var resp = await http.PostAsJsonAsync("/rerank", req, ct);
-        if (!resp.IsSuccessStatusCode)
+        var results = new List<RerankResult>(passages.Count);
+        for (var offset = 0; offset < passages.Count; offset += _opt.MaxBatch)
         {
-            var body = await resp.Content.ReadAsStringAsync(ct);
-            throw new HttpRequestException($"TEI /rerank {(int)resp.StatusCode} {resp.ReasonPhrase}: {body}");
-        }
+            var batch = passages.Skip(offset).Take(_opt.MaxBatch).ToList();
+            var req = new RerankRequest { Query = query, Texts = batch, RawScores = false, Truncate = true };
+            using var resp = await http.PostAsJsonAsync("/rerank", req, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                throw new HttpRequestException($"TEI /rerank {(int)resp.StatusCode} {resp.ReasonPhrase}: {body}");
+            }
 
-        var items = await resp.Content.ReadFromJsonAsync<RerankResponseItem[]>(cancellationToken: ct)
-                    ?? throw new InvalidOperationException("TEI /rerank zwróciło pustą odpowiedź.");
-        return items.Select(r => new RerankResult(r.Index, r.Score)).ToList();
+            var items = await resp.Content.ReadFromJsonAsync<RerankResponseItem[]>(cancellationToken: ct)
+                        ?? throw new InvalidOperationException("TEI /rerank zwróciło pustą odpowiedź.");
+            results.AddRange(items.Select(r => new RerankResult(r.Index + offset, r.Score)));
+        }
+        return results;
     }
 
     private sealed class RerankRequest

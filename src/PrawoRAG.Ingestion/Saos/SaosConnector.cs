@@ -227,9 +227,11 @@ public sealed class SaosConnector(
     {
         var id = judgment.GetProperty("id").GetInt64();
         var html = judgment.TryGetProperty("textContent", out var tc) ? tc.GetString() ?? "" : "";
-        string? sourceUrl = judgment.TryGetProperty("source", out var src) &&
-                            src.TryGetProperty("judgmentUrl", out var ju) ? ju.GetString() : null;
-        sourceUrl ??= $"https://www.saos.org.pl/judgments/{id}";
+        // Zawsze widok SAOS (zweryfikowane: renderuje pełną, czytelną treść orzeczenia dla dowolnego
+        // ID). `source.judgmentUrl` z payloadu bywa surowym API sądu macierzystego (np. ncourt-api
+        // zwraca goły XML z metadanymi, bez treści) — mylące jako link „oryginał" w UI, mimo że nasz
+        // RawContent/textContent jest kompletny. Nie używamy już judgmentUrl.
+        var sourceUrl = $"https://www.saos.org.pl/judgments/{id}";
 
         return new RawDocument
         {

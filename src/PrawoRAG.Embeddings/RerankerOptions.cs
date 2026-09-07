@@ -13,4 +13,7 @@ public sealed class RerankerOptions
 
     /// <summary>Model cross-encoder, np. „sdadas/polish-reranker-roberta-v3".</summary>
     public string ModelId { get; set; } = "sdadas/polish-reranker-roberta-v3";
+
+    /// <summary>Twardy limit TEI (CPU), domyślnie 32 — zob. TeiOptions.MaxBatch. Przekroczenie zwraca 422.</summary>
+    public int MaxBatch { get; set; } = 32;
 }

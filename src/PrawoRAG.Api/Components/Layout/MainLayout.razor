@@ -1,17 +1,97 @@
 @inherits LayoutComponentBase
+@inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.AnalysisOptions> Analysis
+@inject Microsoft.Extensions.Options.IOptions<PrawoRAG.Api.Services.Billing.BillingOptions> Billing
+@inject PrawoRAG.Api.Services.ICurrentUser CurrentUser
+@inject NavigationManager Nav
 
+@* JEDEN globalny header na wszystkich stronach (spójność 2026-09-01) — ciemny pasek w stylu
+   nawigacji landingu (gradientowy znak, marka display). Ekrany robocze (czat, analiza) też go
+   dostają — ich powłoka (sidebar + treść) żyje w app-main-flush POD headerem i scrolluje
+   wewnątrz kolumn. Linki i warunki flag NIETKNIĘTE względem stanu sprzed redesignu (inwarianty
+   RED). Wyszukiwarka celowo BEZ pozycji w nawigacji (decyzja 2026-08-31: funkcja do dopracowania;
+   trasa /szukaj zostaje dostępna z adresu). *@
+@{
+    // Jedna definicja pozycji nawigacji — renderowana dwa razy: w pasku (desktop) i w „kartce"
+    // hamburgera (mobile, <details> bez JS — CSP nie dopuszcza skryptów inline).
+    RenderFragment navLinks =
+        @<text>
+            <a href="/czat" class="@ActiveClass("/czat")">Czat</a>
+            @if (Analysis.Value.Enabled)
+            {
+                <a href="/analiza" class="@ActiveClass("/analiza")">Analiza</a>
+            }
+            <a href="/o-systemie" class="@ActiveClass("/o-systemie")">O systemie</a>
+            @if (CurrentUser.IsAuthenticated)
+            {
+                @* Chip konta (spójność 2026-09-01): avatar z inicjałem + imię z rejestracji (gdy jest),
+                   zamiast linku „Konto" i gołego adresu e-mail. Klik prowadzi na /konto, gdy strona
+                   istnieje (Billing:Enabled); pełna tożsamość w podpowiedzi. *@
+                @if (Billing.Value.Enabled)
+                {
+                    <a class="app-who" href="/konto" title="Konto — @CurrentUser.DisplayName">
+                        <span class="app-avatar" aria-hidden="true">@Initial</span>
+                        @if (FirstName is not null)
+                        {
+                            <span class="app-who-name">@FirstName</span>
+                        }
+                    </a>
+                }
+                else
+                {
+                    <span class="app-who" title="@CurrentUser.DisplayName">
+                        <span class="app-avatar" aria-hidden="true">@Initial</span>
+                        @if (FirstName is not null)
+                        {
+                            <span class="app-who-name">@FirstName</span>
+                        }
+                    </span>
+                }
+            }
+        </text>;
+}
 <div class="app-shell">
     <header class="app-header">
-        <div class="app-brand">
-            <span class="app-logo">§</span>
-            <span class="app-title">PrawoRAG</span>
-            <span class="app-tag">demo</span>
-        </div>
-        <nav class="app-nav">
-            <a href="/o-systemie">O systemie</a>
-        </nav>
+        @* /start, nie "/" — "/" dla zalogowanego przekierowuje do /czat, a logo ma jawnie
+           wracać na stronę główną (leftover 2026-08-31). *@
+        <a class="app-brand" href="/start" title="Strona główna">
+            @* Sygnet OmniaSI — pierścień z jednym nacięciem i węzłem w miejscu odpowiedzi
+               (diagnoza wizualna 2026-09-01: jeden gest, bez ozdobników). Kolory na sztywno,
+               bo nagłówek zawsze ma ciemne tło niezależnie od motywu strony. *@
+            <svg class="app-logo-mark" viewBox="0 0 100 100" aria-hidden="true">
+                <path d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#EDEFF8" stroke-width="9" stroke-linecap="butt"/>
+                <circle cx="50" cy="18" r="5" fill="#D97706"/>
+            </svg>
+            <span class="app-title"><span class="omnia">Omnia</span><span class="si">SI</span></span>
+        </a>
+        <nav class="app-nav">@navLinks</nav>
+        <details class="nav-burger">
+            <summary aria-label="Menu">☰</summary>
+            <nav class="nav-sheet">@navLinks</nav>
+        </details>
     </header>
-    <main class="app-main">
+    <main class="app-main @(IsAppShellPage ? "app-main-flush" : null)">
         @Body
     </main>
 </div>
+
+@code {
+    private string CurrentPath => new Uri(Nav.Uri).AbsolutePath.TrimEnd('/');
+
+    private bool IsAppShellPage => CurrentPath is "/czat" or "/analiza";
+
+    private string? ActiveClass(string path) => CurrentPath == path ? "active" : null;
+
+    /// <summary>Imię (pierwszy człon „imię i nazwisko" z rejestracji) — null, gdy nie podano.</summary>
+    private string? FirstName =>
+        CurrentUser.GivenName?.Split(' ', StringSplitOptions.RemoveEmptyEntries) is { Length: > 0 } p
+            ? p[0] : null;
+
+    private string Initial
+    {
+        get
+        {
+            var src = CurrentUser.GivenName ?? CurrentUser.DisplayName;
+            return string.IsNullOrWhiteSpace(src) ? "?" : char.ToUpperInvariant(src[0]).ToString();
+        }
+    }
+}

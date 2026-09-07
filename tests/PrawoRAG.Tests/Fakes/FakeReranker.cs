@@ -11,8 +11,13 @@ public sealed class FakeReranker(string boostSubstring, double high = 0.99, doub
 {
     public int Calls { get; private set; }
 
+    /// <summary>Ostatnie zapytanie przekazane cross-encoderowi — pozwala sprawdzić, że retriever
+    /// ocenia kandydatów względem pytania użytkownika, a nie względem sklejki follow-upu.</summary>
+    public string? LastQuery { get; private set; }
+
     public Task<IReadOnlyList<RerankResult>> RerankAsync(string query, IReadOnlyList<string> passages, CancellationToken ct)
     {
+        LastQuery = query;
         Calls++;
         IReadOnlyList<RerankResult> res = passages
             .Select((p, i) => new RerankResult(i, p.Contains(boostSubstring, StringComparison.OrdinalIgnoreCase) ? high : low))

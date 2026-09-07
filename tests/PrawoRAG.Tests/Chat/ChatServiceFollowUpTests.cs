@@ -65,7 +65,8 @@ public class ChatServiceFollowUpTests
     }
 
     private static ChatService Service(FakeRetriever retriever, NoOpAugmenter augmenter, FakeLlm llm) =>
-        new(retriever, augmenter, llm, Options.Create(new RetrievalOptions { AbstentionThreshold = Threshold }));
+        new(retriever, augmenter, llm, Options.Create(new RetrievalOptions { AbstentionThreshold = Threshold }),
+            new Fakes.FakeEmbeddingProvider(), Options.Create(new DocumentsOptions()));
 
     private static async Task<List<ChatEvent>> Drain(IAsyncEnumerable<ChatEvent> events)
     {
@@ -80,7 +81,7 @@ public class ChatServiceFollowUpTests
         var retriever = new FakeRetriever(_ => 0.9);
         var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
 
-        var events = await Drain(Service(retriever, augmenter, llm).AskAsync("pytanie", [], default));
+        var events = await Drain(Service(retriever, augmenter, llm).AskAsync("pytanie", [], null, default));
 
         Assert.Equal(["pytanie"], retriever.Queries); // dokładnie 1 retrieval, surowe pytanie
         Assert.Contains(events, e => e is SourcesEvent);
@@ -99,12 +100,13 @@ public class ChatServiceFollowUpTests
         var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
         var history = new[] { new ChatTurn("co mówi art. 367 KPC?", "Art. 367 stanowi…") };
 
-        var events = await Drain(Service(retriever, augmenter, llm).AskAsync("a co z § 2?", history, default));
+        var events = await Drain(Service(retriever, augmenter, llm).AskAsync("a co z § 2?", history, null, default));
 
         Assert.Equal(2, retriever.Queries.Count);
-        Assert.Equal("co mówi art. 367 KPC? a co z § 2?", retriever.Queries[1]); // sklejony wariant
+        // Wariant kontekstowy: rdzeń (pytania) prowadzi, dalej fold kotwic poprzedniej odpowiedzi.
+        Assert.StartsWith("co mówi art. 367 KPC? a co z § 2?", retriever.Queries[1]);
         Assert.DoesNotContain(events, e => e is AbstainEvent);   // uratowane przed fałszywą odmową
-        Assert.Equal("co mówi art. 367 KPC? a co z § 2?", augmenter.LastQueryText); // augmenter widzi kontekst
+        Assert.StartsWith("co mówi art. 367 KPC? a co z § 2?", augmenter.LastQueryText); // augmenter widzi kontekst
         Assert.Contains(llm.LastRequest!.Messages, m => m.Role == ChatRole.Assistant); // historia w prompcie
         var final = llm.LastRequest.Messages[^1];
         Assert.Contains("a co z § 2?", final.Content); // do promptu idzie ORYGINALNE pytanie
@@ -118,7 +120,7 @@ public class ChatServiceFollowUpTests
         var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
         var history = new[] { new ChatTurn("co mówi art. 367 KPC?", "Art. 367 stanowi…") };
 
-        await Drain(Service(retriever, augmenter, llm).AskAsync("jaka kara grozi za zabójstwo?", history, default));
+        await Drain(Service(retriever, augmenter, llm).AskAsync("jaka kara grozi za zabójstwo?", history, null, default));
 
         Assert.Equal(2, retriever.Queries.Count);
         Assert.Equal("jaka kara grozi za zabójstwo?", augmenter.LastQueryText); // wygrało surowe
@@ -134,9 +136,50 @@ public class ChatServiceFollowUpTests
         var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
         var history = new[] { new ChatTurn("co mówi art. 367 KPC?", "Art. 367 stanowi…") };
 
-        await Drain(Service(retriever, augmenter, llm).AskAsync("a co z § 2?", history, default));
+        await Drain(Service(retriever, augmenter, llm).AskAsync("a co z § 2?", history, null, default));
 
-        Assert.Equal("co mówi art. 367 KPC? a co z § 2?", augmenter.LastQueryText); // kontekstowe mimo niższego sygnału
+        Assert.StartsWith("co mówi art. 367 KPC? a co z § 2?", augmenter.LastQueryText); // kontekstowe mimo niższego sygnału
+    }
+
+    [Fact]
+    public async Task Anaphoric_followup_rescued_by_previous_answer_anchor()
+    {
+        // Zgłoszony przypadek: most („art. 157", „las") jest tylko w ODPOWIEDZI Q1, nie w pytaniach.
+        // Surowe bare dopytanie → 0.30 (odmowa); kontekstowe z foldem odpowiedzi → 0.80.
+        var retriever = new FakeRetriever(q => q.Contains("art. 157") || q.Contains("las") ? 0.80 : 0.30);
+        var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
+        var history = new[]
+        {
+            new ChatTurn("jakie są konsekwencje nocowania w lesie?",
+                "Grzywna może wynikać z art. 157 § 1 kodeksu wykroczeń, jeżeli osoba nie opuści lasu na żądanie osoby uprawnionej."),
+        };
+
+        var events = await Drain(Service(retriever, augmenter, llm)
+            .AskAsync("a kim jest osoba uprawniona z powyższej odpowiedzi?", history, null, default));
+
+        Assert.Equal(2, retriever.Queries.Count);
+        Assert.Contains("art. 157", retriever.Queries[1]);        // kotwica z odpowiedzi w zapytaniu
+        Assert.DoesNotContain(events, e => e is AbstainEvent);    // uratowane przed fałszywą odmową
+        Assert.Contains("las", augmenter.LastQueryText!);         // rzeczownik z odpowiedzi
+    }
+
+    [Fact]
+    public async Task Anaphoric_followup_reaches_past_refusal_turn()
+    {
+        // Q2 = odmowa (Answer=null) → fold sięga do ostatniej REALNEJ odpowiedzi (Q1). Zgłoszone Q2→Q3.
+        var retriever = new FakeRetriever(q => q.Contains("art. 157") || q.Contains("las") ? 0.80 : 0.30);
+        var (augmenter, llm) = (new NoOpAugmenter(), new FakeLlm());
+        var history = new[]
+        {
+            new ChatTurn("jakie są konsekwencje nocowania w lesie?",
+                "Grzywna może wynikać z art. 157 § 1 kodeksu wykroczeń, jeżeli osoba nie opuści lasu na żądanie osoby uprawnionej."),
+            new ChatTurn("a kim jest osoba uprawniona?", null), // odmowa treściowa
+        };
+
+        await Drain(Service(retriever, augmenter, llm)
+            .AskAsync("a kim jest osoba uprawniona z powyższej odpowiedzi?", history, null, default));
+
+        Assert.Contains("art. 157", augmenter.LastQueryText!); // kotwica z Q1 mimo odmowy w Q2
     }
 
     [Fact]
@@ -146,7 +189,7 @@ public class ChatServiceFollowUpTests
         var history = new[] { new ChatTurn("pytanie", "odpowiedź") };
 
         var events = await Drain(Service(retriever, new NoOpAugmenter(), new FakeLlm())
-            .AskAsync("dopytanie", history, default));
+            .AskAsync("dopytanie", history, null, default));
 
         Assert.Contains(events, e => e is AbstainEvent);
         Assert.Contains(events, e => e is DoneEvent { Abstained: true });

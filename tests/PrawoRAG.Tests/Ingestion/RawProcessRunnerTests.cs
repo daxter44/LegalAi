@@ -22,9 +22,10 @@ public sealed class RawProcessRunnerTests : IDisposable
         if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true);
     }
 
-    private static RawDocument Doc(string id, string content = "treść dokumentu") => new()
+    private static RawDocument Doc(string id, string content = "treść dokumentu", DateTimeOffset? sourceDate = null) => new()
     {
         Source = "T", ExternalId = id, DocType = "judgment", RawContent = content,
+        SourceModificationDate = sourceDate,
     };
 
     private sealed class InMemoryStore(params RawDocument[] docs) : IRawDocumentStore
@@ -42,6 +43,9 @@ public sealed class RawProcessRunnerTests : IDisposable
             foreach (var d in docs.Where(d => d.Source == source)) yield return d;
             await Task.CompletedTask;
         }
+
+        public Task<RawDocument?> ReadAsync(string source, string externalId, CancellationToken ct) =>
+            Task.FromResult(docs.FirstOrDefault(d => d.Source == source && d.ExternalId == externalId));
     }
 
     /// <summary>Fake pipeline'u: wynik sterowany skryptem (dokument, nr wywołania); zlicza co przetworzył.</summary>
@@ -58,15 +62,36 @@ public sealed class RawProcessRunnerTests : IDisposable
         }
     }
 
-    private RawProcessRunner Runner(ScriptedPipeline pipeline, IRawDocumentStore store, int failStreakLimit = 10)
+    private RawProcessRunner Runner(ScriptedPipeline pipeline, IRawDocumentStore store, int failStreakLimit = 10, int parallelism = 1)
     {
         var services = new ServiceCollection();
         services.AddSingleton<IIngestionPipeline>(pipeline);
         var sp = services.BuildServiceProvider();
-        var opt = new ProcessOptions { FailStreakLimit = failStreakLimit, FailureLogDir = _logDir };
+        var opt = new ProcessOptions { FailStreakLimit = failStreakLimit, FailureLogDir = _logDir, ProcessParallelism = parallelism };
         return new RawProcessRunner(
             sp.GetRequiredService<IServiceScopeFactory>(), store, Options.Create(opt),
             NullLogger<RawProcessRunner>.Instance);
+    }
+
+    /// <summary>Pipeline thread-safe do testów równoległości: liczy realną RÓWNOCZESNOŚĆ wywołań
+    /// (dowód, że dokumenty idą naraz) i zwraca sukces.</summary>
+    private sealed class ConcurrentPipeline : IIngestionPipeline
+    {
+        private int _current, _maxConcurrent, _calls;
+        public int MaxConcurrent => Volatile.Read(ref _maxConcurrent);
+        public int Calls => Volatile.Read(ref _calls);
+
+        public async Task<IngestResult> ProcessAsync(RawDocument raw, CancellationToken ct)
+        {
+            Interlocked.Increment(ref _calls);
+            var cur = Interlocked.Increment(ref _current);
+            int seen;
+            while (cur > (seen = Volatile.Read(ref _maxConcurrent)))
+                Interlocked.CompareExchange(ref _maxConcurrent, cur, seen);
+            await Task.Delay(30, ct);
+            Interlocked.Decrement(ref _current);
+            return new IngestResult(IngestOutcome.Inserted);
+        }
     }
 
     private static IngestResult Ok() => new(IngestOutcome.Inserted);
@@ -168,6 +193,45 @@ public sealed class RawProcessRunnerTests : IDisposable
         Assert.Equal(25, summary.Failed);
     }
 
+    [Fact] // RÓWN-1: parallelism>1 przetwarza dokumenty NARAZ i liczy poprawnie (bez gubienia/dublowania)
+    public async Task Parallel_processes_concurrently_and_counts_correctly()
+    {
+        var docs = Enumerable.Range(1, 40).Select(i => Doc($"d{i}")).ToArray();
+        var pipeline = new ConcurrentPipeline();
+
+        var summary = await Runner2(pipeline, new InMemoryStore(docs), parallelism: 8)
+            .RunAsync("T", null, ProcessSkipSet.Empty, default);
+
+        Assert.Equal(40, summary.Inserted);
+        Assert.Equal(40, pipeline.Calls);
+        Assert.True(pipeline.MaxConcurrent > 1, $"oczekiwano współbieżności, było {pipeline.MaxConcurrent}");
+        Assert.True(pipeline.MaxConcurrent <= 8, $"przekroczono limit równoległości: {pipeline.MaxConcurrent}");
+    }
+
+    [Fact] // RÓWN-1: maxItems respektowany też przy równoległości (Bounded ucina strumień)
+    public async Task Parallel_respects_max_items()
+    {
+        var docs = Enumerable.Range(1, 40).Select(i => Doc($"d{i}")).ToArray();
+        var pipeline = new ConcurrentPipeline();
+
+        var summary = await Runner2(pipeline, new InMemoryStore(docs), parallelism: 8)
+            .RunAsync("T", 10, ProcessSkipSet.Empty, default);
+
+        Assert.Equal(10, summary.Total);
+        Assert.Equal(10, pipeline.Calls);
+    }
+
+    private RawProcessRunner Runner2(IIngestionPipeline pipeline, IRawDocumentStore store, int parallelism)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(pipeline);
+        var sp = services.BuildServiceProvider();
+        var opt = new ProcessOptions { FailureLogDir = _logDir, ProcessParallelism = parallelism };
+        return new RawProcessRunner(
+            sp.GetRequiredService<IServiceScopeFactory>(), store, Options.Create(opt),
+            NullLogger<RawProcessRunner>.Instance);
+    }
+
     [Fact] // ODP-1: klucz zbioru = dokładny ExternalId + hash (case-sensitive, jak klucz naturalny w DB)
     public void SkipSet_key_is_exact_id_plus_hash()
     {
@@ -196,6 +260,47 @@ public sealed class RawProcessRunnerTests : IDisposable
         Assert.Equal("zly-dokument", json.RootElement.GetProperty("externalId").GetString());
         Assert.Equal("chunk", json.RootElement.GetProperty("stage").GetString());
         Assert.Contains("TEI: connection refused", json.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact] // Ingestion:MinSourceDate — dokument STARSZY niż próg pomijany BEZ pipeline'u (jak fast-skip)
+    public async Task MinSourceDate_filters_out_older_documents_without_calling_pipeline()
+    {
+        var old = Doc("stary", sourceDate: new DateTimeOffset(2008, 3, 1, 0, 0, 0, TimeSpan.Zero));
+        var recent = Doc("nowy", sourceDate: new DateTimeOffset(2015, 6, 1, 0, 0, 0, TimeSpan.Zero));
+        var pipeline = new ScriptedPipeline((_, _) => Ok());
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IIngestionPipeline>(pipeline);
+        var sp = services.BuildServiceProvider();
+        var opt = new ProcessOptions { FailureLogDir = _logDir, MinSourceDate = new DateOnly(2011, 1, 1) };
+        var runner = new RawProcessRunner(
+            sp.GetRequiredService<IServiceScopeFactory>(), new InMemoryStore(old, recent), Options.Create(opt),
+            NullLogger<RawProcessRunner>.Instance);
+
+        var summary = await runner.RunAsync("T", null, ProcessSkipSet.Empty, default);
+
+        Assert.Equal(["nowy"], pipeline.Processed); // „stary" pominięty bez wołania pipeline'u
+        Assert.Equal(1, summary.Inserted);
+        Assert.Equal(1, summary.Skipped);
+    }
+
+    [Fact] // brak znanej daty źródła → NIE filtrujemy (ostrożnie, nie zgadujemy)
+    public async Task MinSourceDate_does_not_filter_documents_with_unknown_date()
+    {
+        var noDate = Doc("bez-daty", sourceDate: null);
+        var pipeline = new ScriptedPipeline((_, _) => Ok());
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IIngestionPipeline>(pipeline);
+        var sp = services.BuildServiceProvider();
+        var opt = new ProcessOptions { FailureLogDir = _logDir, MinSourceDate = new DateOnly(2011, 1, 1) };
+        var runner = new RawProcessRunner(
+            sp.GetRequiredService<IServiceScopeFactory>(), new InMemoryStore(noDate), Options.Create(opt),
+            NullLogger<RawProcessRunner>.Instance);
+
+        await runner.RunAsync("T", null, ProcessSkipSet.Empty, default);
+
+        Assert.Equal(["bez-daty"], pipeline.Processed);
     }
 
     [Fact] // ODP-3: czysty run nie zostawia pustych plików raportu (tworzenie leniwe)
