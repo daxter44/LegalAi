@@ -179,7 +179,10 @@ public static class BillingPages
         }
 
         return Shell("konto", analysisEnabled, initials, whoName, $"""
-        <h1>Twoje konto</h1>
+        <div class="row" style="justify-content:space-between">
+          <h1>Twoje konto</h1>
+          <a class="btnlink btn-line" href="/wylogowanie">Wyloguj się</a>
+        </div>
 
         <div class="card">
           <div class="row">
@@ -236,7 +239,6 @@ public static class BillingPages
           <div class="links">
             <a href="/prywatnosc">Polityka prywatności</a>
             <a href="/regulamin">Regulamin</a>
-            <a class="btnlink btn-danger end" href="/wylogowanie">Wyloguj się</a>
           </div>
         </div>
 
