@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using PrawoRAG.Domain;
 using PrawoRAG.Domain.Documents;
 using PrawoRAG.Domain.Sources;
@@ -45,7 +46,8 @@ public sealed class NsaNormalizer : IDocumentNormalizer
 
         var title = BuildTitle(court, caseNumber, judgmentType);
         var header = string.Join(" — ", new[] { court, caseNumber }.Where(s => !string.IsNullOrWhiteSpace(s)));
-        var segments = SplitSections(text, header, locator);
+        text = StripCbosaFooter(text);
+        var segments = SplitSections(text, header, locator, issues);
 
         var metadata = new Dictionary<string, object?>
         {
@@ -79,18 +81,31 @@ public sealed class NsaNormalizer : IDocumentNormalizer
         };
     }
 
-    /// <summary>Sekcje: sentencja (do „UZASADNIENIE") + uzasadnienie. Brak markera → jeden segment
-    /// „document". ContextHeader (sąd — sygnatura) doklejany do każdego chunka (samowystarczalność
-    /// dla retrievalu i cytatu). Pusty tekst → brak segmentów (0 chunków, dokument-widmo odsiany).</summary>
-    private static List<DocumentSegment> SplitSections(string text, string header, CitationLocator locator)
+    /// <summary>Sekcje: sentencja (do „UZASADNIENIE") + uzasadnienie. ContextHeader (sąd — sygnatura)
+    /// na każdym segmencie. Pusty tekst → brak segmentów (0 chunków, dokument-widmo odsiany).
+    /// <para>Brak markera „UZASADNIENIE" → RÓWNIEŻ brak segmentów (decyzja 2026-09-07): to sama
+    /// sentencja („oddala skargę w całości") — wyrok nieprawomocny, do którego uzasadnienie w CBOSA
+    /// dochodzi później, albo stare tezy. Zmierzone na 10 738 wyrokach w korpusie: 20% (w latach
+    /// 2020–2024: 26%) nie ma uzasadnienia; taki fragment nie odpowie na żadne pytanie prawne, a zajmuje
+    /// miejsce w wynikach. Do dogrania, gdy będzie mechanizm aktualizacji (delta z CBOSA).</para>
+    /// <para>Z sentencji wycinany skład sądu (nazwiska sędziów, protokolant) — zmierzone: 76–78%
+    /// sentencji zaczyna się od „w składzie następującym: …"; przedmiot sprawy i rozstrzygnięcie
+    /// („po rozpoznaniu … sprawy ze skargi … w przedmiocie … oddala skargę") zostają.</para></summary>
+    private static List<DocumentSegment> SplitSections(string text, string header, CitationLocator locator, List<string> issues)
     {
         if (text.Length == 0) return [];
 
-        var segs = new List<DocumentSegment>();
-        void Add(string label, int start, int end)
+        var justIdx = text.IndexOf(JustificationMarker, StringComparison.Ordinal);
+        if (justIdx < 0)
         {
-            if (start < 0 || end <= start) return;
-            var slice = text[start..end].Trim();
+            issues.Add("Brak uzasadnienia (sama sentencja) — dokument pominięty, do dogrania po aktualizacji źródła.");
+            return [];
+        }
+
+        var segs = new List<DocumentSegment>();
+        void Add(string label, string slice, int start)
+        {
+            slice = slice.Trim();
             if (slice.Length == 0) return;
             segs.Add(new DocumentSegment
             {
@@ -100,16 +115,28 @@ public sealed class NsaNormalizer : IDocumentNormalizer
             });
         }
 
-        var justIdx = text.IndexOf(JustificationMarker, StringComparison.Ordinal);
-        if (justIdx < 0)
-        {
-            Add("document", 0, text.Length);
-            return segs;
-        }
-        Add("sentencja", 0, justIdx);
-        Add("uzasadnienie", justIdx, text.Length);
+        Add("sentencja", StripCourtComposition(text[..justIdx]), 0);
+        Add("uzasadnienie", text[justIdx..], justIdx);
         return segs;
     }
+
+    /// <summary>Skład sądu w sentencji: od „w składzie następującym:" do „po rozpoznaniu" (albo do
+    /// „sprawy ze skargi", gdy „po rozpoznaniu" nie występuje). Wycinamy nazwiska, zostawiamy nazwę sądu
+    /// przed i przedmiot sprawy po. Bez dopasowania — tekst bez zmian.</summary>
+    private static readonly Regex CourtCompositionRe = new(
+        @"\s*w składzie następującym\s*:.*?(?=\bpo rozpoznaniu\b|\bsprawy ze skarg)",
+        RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static string StripCourtComposition(string sentencja) =>
+        CourtCompositionRe.Replace(sentencja, " ", count: 1);
+
+    /// <summary>Stopka CBOSA („Orzeczenie … dostępne jest w Centralnej Bazie Orzeczeń Sądów Administracyjnych
+    /// pod adresem … orzeczenia.nsa.gov.pl") — czysty balast na końcu części wyroków.</summary>
+    private static readonly Regex CbosaFooterRe = new(
+        @"[^.\n]*Centralnej Bazie Orzeczeń Sądów Administracyjnych[^\n]*?(?:orzeczenia\.nsa\.gov\.pl[/.]*|\.|$)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static string StripCbosaFooter(string text) => CbosaFooterRe.Replace(text, "").TrimEnd();
 
     private static string BuildTitle(string? court, string? caseNumber, string? judgmentType)
     {

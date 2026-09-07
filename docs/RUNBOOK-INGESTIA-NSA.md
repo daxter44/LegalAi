@@ -23,10 +23,16 @@ używana przez workera ingestii).
 ```bash
 pip install datasets pyarrow
 # smoke (kilkaset wyroków) — weryfikacja end-to-end zanim ruszysz całość:
-python tools/nsa-ingest/fetch_nsa_wyroki.py --raw-root /sciezka/do/raw-store --limit 300
-# pełny backfill:
-python tools/nsa-ingest/fetch_nsa_wyroki.py --raw-root /sciezka/do/raw-store
+python tools/nsa-ingest/fetch_nsa_wyroki.py --raw-root /sciezka/do/raw-store --since 2016-01-01 --limit 300
+# zakres od 2016 r. (decyzja 2026-09-07); bez --since = wszystkie lata:
+python tools/nsa-ingest/fetch_nsa_wyroki.py --raw-root /sciezka/do/raw-store --since 2016-01-01
 ```
+Skrypt domyślnie POMIJA wyroki bez sekcji „UZASADNIENIE" (sama sentencja — wyrok nieprawomocny,
+uzasadnienie w CBOSA dochodzi później; zmierzone 2026-09-07: 20% zbioru, w latach 2020–2024 26%).
+Ten sam filtr jest w `NsaNormalizer` (0 segmentów + powód w QualityIssues), więc pliki zapisane
+starszą wersją skryptu też nie dadzą chunków. Normalizer wycina ponadto skład sądu z sentencji
+(nazwiska sędziów, protokolant) i stopkę „dostępne w Centralnej Bazie Orzeczeń…". Analiza gotowości
+i liczby: `ANALIZA-GOTOWOSC-INGESTIA-NSA-2026-09-07.md`.
 Uwaga: pobranie danych z HF (host US) to jednorazowe ściągnięcie PUBLICZNYCH orzeczeń — runtime
 produktu pozostaje PL/UE. Kwestie prawne (CC BY, nota CBOSA) czekają na bramkę 0.5 u prawnika;
 budowa korpusu lokalnie (bez deployu) jest z tym spójna.

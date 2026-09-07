@@ -85,11 +85,52 @@ public class NsaNormalizerTests
         Assert.All(norm.Segments, s => Assert.Contains("II SA/Op 8/05", s.ContextHeader!));
     }
 
-    [Fact] // brak markera → jeden segment „document"
-    public void No_marker_single_segment()
+    [Fact] // brak „UZASADNIENIE" = sama sentencja (wyrok nieprawomocny) → 0 segmentów + powód w QualityIssues
+    public void No_justification_is_skipped_with_issue()
     {
-        var norm = new NsaNormalizer().Normalize(Raw("Krótkie postanowienie bez uzasadnienia.", WsaPayload()));
-        Assert.Equal(["document"], norm.Segments.Select(s => s.Label));
+        var norm = new NsaNormalizer().Normalize(Raw(
+            "SENTENCJA Wojewódzki Sąd Administracyjny w Opolu w składzie następującym: Przewodniczący Sędzia WSA X po rozpoznaniu sprawy ze skargi A. B. oddala skargę w całości.",
+            WsaPayload()));
+        Assert.Empty(norm.Segments);
+        Assert.Contains(norm.QualityIssues, i => i.Contains("Brak uzasadnienia"));
+        Assert.Equal("II SA/Op 8/05", norm.Locator!.CaseNumber); // metadane nadal kompletne (rekord zostaje, bez chunków)
+    }
+
+    [Fact] // skład sądu (nazwiska, protokolant) wycięty z sentencji; nazwa sądu, przedmiot i rozstrzygnięcie zostają
+    public void Court_composition_is_stripped_from_sentencja()
+    {
+        const string full =
+            "SENTENCJA Wojewódzki Sąd Administracyjny w Gdańsku w składzie następującym: Przewodniczący Sędzia NSA Elżbieta R., " +
+            "Sędziowie Sędzia NSA Małgorzata G., Sędzia NSA Joanna Z.-W. /spr./, Protokolant Starszy Sekretarz Sądowy Dorota K., , " +
+            "po rozpoznaniu w Wydziale I na rozprawie w dniu 19 lutego 2025 r. sprawy ze skargi M. Sp. z o.o. na interpretację " +
+            "indywidualną Dyrektora KIS w przedmiocie podatku od towarów i usług 1. uchyla zaskarżoną interpretację.\n" +
+            "UZASADNIENIE\nSpółka wystąpiła o interpretację.";
+        var norm = new NsaNormalizer().Normalize(Raw(full, WsaPayload()));
+
+        var sentencja = norm.Segments.Single(s => s.Label == "sentencja").Text;
+        Assert.StartsWith("SENTENCJA Wojewódzki Sąd Administracyjny w Gdańsku po rozpoznaniu", sentencja);
+        Assert.DoesNotContain("Protokolant", sentencja);
+        Assert.DoesNotContain("Elżbieta", sentencja);
+        Assert.Contains("w przedmiocie podatku od towarów i usług", sentencja);
+        Assert.Contains("uchyla zaskarżoną interpretację", sentencja);
+        Assert.StartsWith("UZASADNIENIE", norm.Segments.Single(s => s.Label == "uzasadnienie").Text);
+    }
+
+    [Fact] // sentencja bez frazy składu → bez zmian
+    public void Sentencja_without_composition_is_untouched()
+    {
+        const string full = "Sąd oddalił skargę.\nUZASADNIENIE\nTreść.";
+        var norm = new NsaNormalizer().Normalize(Raw(full, WsaPayload()));
+        Assert.Equal("Sąd oddalił skargę.", norm.Segments[0].Text);
+    }
+
+    [Fact] // stopka CBOSA na końcu wyroku wycięta
+    public void Cbosa_footer_is_stripped()
+    {
+        const string full = "Sąd oddalił skargę.\nUZASADNIENIE\nSkarga jest niezasadna. Orzeczenie jest prawomocne i dostępne jest w Centralnej Bazie Orzeczeń Sądów Administracyjnych, pod adresem internetowym http://orzeczenia.nsa.gov.pl.";
+        var norm = new NsaNormalizer().Normalize(Raw(full, WsaPayload()));
+        var uzas = norm.Segments.Single(s => s.Label == "uzasadnienie").Text;
+        Assert.Equal("UZASADNIENIE\nSkarga jest niezasadna.", uzas);
     }
 
     [Fact] // pusty full_text → 0 segmentów + quality issue (dokument-widmo, chunker da 0 chunków)

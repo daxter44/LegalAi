@@ -15,7 +15,10 @@ pomija pliki już zapisane, więc można wznawiać po przerwaniu.
 Wymaga: pip install datasets pyarrow. Streaming (nie ładuje 31 GB do RAM).
 
 Użycie:
-  python fetch_nsa_wyroki.py --raw-root /sciezka/do/magazynu [--limit N] [--dataset JuDDGES/pl-nsa]
+  python fetch_nsa_wyroki.py --raw-root /sciezka/do/magazynu [--since 2016-01-01] [--limit N] [--dataset JuDDGES/pl-nsa]
+
+Domyślnie POMIJA wyroki bez sekcji UZASADNIENIE (sama sentencja — wyrok nieprawomocny, uzasadnienie
+dojdzie później; 20% zbioru). --keep-without-justification wyłącza ten filtr.
 
 Uwaga suwerenności: to jednorazowe pobranie PUBLICZNYCH danych (orzeczenia to materiały urzędowe);
 runtime produktu pozostaje PL/UE. Kwestie prawne (CC BY, nota CBOSA) → bramka 0.5 u prawnika.
@@ -59,13 +62,33 @@ def to_jsonable(v):
     return str(v)
 
 
+def judgment_on_or_after(judgment_date, since) -> bool:
+    """Data orzeczenia (datetime / date / ISO-string z offsetem, np. '2005-10-13T00:00:00+02:00') >= since.
+    Brak lub nieczytelna data → False (wyrok bez daty nie przechodzi filtra zakresu)."""
+    if judgment_date is None:
+        return False
+    if isinstance(judgment_date, datetime):
+        return judgment_date.date() >= since
+    if hasattr(judgment_date, "year") and not isinstance(judgment_date, str):
+        return judgment_date >= since
+    try:
+        return datetime.fromisoformat(str(judgment_date)[:19]).date() >= since
+    except ValueError:
+        return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw-root", required=True, help="Katalog magazynu surowych (RawStore:RootPath)")
     ap.add_argument("--dataset", default="JuDDGES/pl-nsa")
     ap.add_argument("--limit", type=int, default=None, help="Maks. liczba WYROKÓW (smoke)")
+    ap.add_argument("--since", default=None,
+                    help="Tylko wyroki z datą orzeczenia >= YYYY-MM-DD (np. 2016-01-01); bez flagi: wszystkie lata")
+    ap.add_argument("--keep-without-justification", action="store_true",
+                    help="Zapisuj też wyroki bez sekcji UZASADNIENIE (domyślnie pomijane: sama sentencja nic nie wnosi)")
     ap.add_argument("--report-every", type=int, default=5000)
     args = ap.parse_args()
+    since = datetime.fromisoformat(args.since).date() if args.since else None
 
     try:
         from datasets import load_dataset
@@ -79,17 +102,23 @@ def main() -> int:
     print(f"Streaming {args.dataset} → {out_dir} (tylko wyroki)")
     ds = load_dataset(args.dataset, split="train", streaming=True)
 
-    seen = written = skipped_type = skipped_empty = skipped_exists = 0
+    seen = written = skipped_type = skipped_empty = skipped_exists = skipped_date = skipped_nojust = 0
     for row in ds:
         seen += 1
         jtype = (row.get("judgment_type") or "")
         if not jtype.startswith("Wyrok"):          # FILTR: tylko wyroki (odsiew postanowień/uchwał)
             skipped_type += 1
+        elif since is not None and not judgment_on_or_after(row.get("judgment_date"), since):
+            skipped_date += 1                        # FILTR: zakres dat (--since)
         else:
             external_id = row.get("judgment_id") or row.get("docket_number")
             full_text = (row.get("full_text") or "").strip()
             if not external_id or not full_text:    # dokument-widmo (sama sentencja bez treści) — pomijamy
                 skipped_empty += 1
+            elif not args.keep_without_justification and "UZASADNIENIE" not in full_text:
+                # Sama sentencja (wyrok nieprawomocny, uzasadnienie dojdzie później) — zmierzone 2026-09-07:
+                # 20% wyroków w korpusie, w latach 2020-2024 aż 26%; nie odpowie na żadne pytanie prawne.
+                skipped_nojust += 1
             else:
                 path = out_dir / (sanitize(external_id) + ".json")
                 if path.exists():
@@ -119,10 +148,10 @@ def main() -> int:
                         break
         if seen % args.report_every == 0:
             print(f"  seen={seen} written={written} skip(type)={skipped_type} "
-                  f"skip(empty)={skipped_empty} skip(exists)={skipped_exists}")
+                  f"skip(empty)={skipped_empty} skip(exists)={skipped_exists} skip(date)={skipped_date} skip(bez-uzasadnienia)={skipped_nojust}")
 
     print(f"GOTOWE: seen={seen} written={written} skip(type)={skipped_type} "
-          f"skip(empty)={skipped_empty} skip(exists)={skipped_exists}")
+          f"skip(empty)={skipped_empty} skip(exists)={skipped_exists} skip(date)={skipped_date} skip(bez-uzasadnienia)={skipped_nojust}")
     print(f"Teraz embeduj: Ingestion__Source=NSA Ingestion__Mode=process "
           f"Ingestion__ProcessParallelism=8 dotnet run --project src/PrawoRAG.Ingestion")
     return 0
