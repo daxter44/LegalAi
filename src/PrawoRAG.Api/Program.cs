@@ -294,6 +294,14 @@ static string WejscieHtml(string? error) => $$"""
 
 // Publiczny landing na „/" (anonimowy — poza RequireAuthorization; statyczny HTML jak /wejscie).
 // Zalogowany gość → prosto do aplikacji. Chat przeniesiony na /czat.
+// UWAGA przed publikacja (2026-09-07) — DWA ROZNE warunki, nie jeden:
+// (a) LOKALIZACJA MODELU: eyebrow w hero i kafel „Lokalizacja danych" twierdza, ze model jezykowy
+//     dziala w UE. Prawda dopiero po przelaczeniu na CloudFerro/Sherlock (PLAN-DEPLOY-2026-09-02 §0.2);
+//     do tego czasu mowimy o DANYCH w UE, nie o modelu.
+// (b) BRAK TRENINGU: filar 04 i FAQ „Co sie dzieje z moimi pytaniami" obiecuja, ze zapytania nie
+//     trenuja modeli. To gwarancja UMOWNA po stronie dostawcy, nie wlasciwosc naszego kodu —
+//     audyt OWASP zostawil ja jako W4 (POZA ZAKRESEM, decyzja biznesowa wlasciciela). Nie publikowac,
+//     zanim warunek zero-retention nie bedzie w umowie z dostawca modelu.
 const string LandingHtml = """
     <!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>OmniaSI — research prawny na źródłach</title>
@@ -397,14 +405,73 @@ const string LandingHtml = """
     footer .row .flinks{margin-left:auto;display:flex;gap:20px}
     footer .row .flinks a{color:#C7D0EC;font-size:13.5px}
     footer .legal{font-size:12.5px;line-height:1.6;color:#6E7690;border-top:1px solid rgb(199 208 236 / .12);padding-top:16px;margin-top:18px}
+    /* --- Dla kogo (2026-09-07) --- */
+    .segs{display:grid;gap:20px;grid-template-columns:1fr}
+    @media(min-width:760px){.segs{grid-template-columns:1fr 1fr}}
+    .seg{background:var(--sl-surface);border:1px solid var(--sl-border);border-radius:16px;padding:26px;display:flex;flex-direction:column;gap:10px}
+    .seg h3{font-family:var(--sl-font-display);font-size:21px;line-height:1.25;font-weight:700;margin:0}
+    .seg p{font-size:15px;line-height:1.65;color:var(--sl-text-secondary);margin:0}
+    /* --- Bezpieczenstwo (2026-09-07) --- */
+    .dark .sub{color:var(--sl-on-dark-soft)}
+    .dark .k{color:var(--sl-on-dark-accent)}
+    .secgrid{display:grid;gap:20px;grid-template-columns:1fr;margin-bottom:46px}
+    @media(min-width:760px){.secgrid{grid-template-columns:repeat(3,1fr)}}
+    .sectile{border:1px solid rgb(199 208 236 / .18);border-radius:16px;padding:26px;background:rgb(199 208 236 / .05);display:flex;flex-direction:column;gap:8px}
+    .sectile .big{font-family:var(--sl-font-display);font-size:30px;font-weight:700;line-height:1.15;color:var(--sl-on-dark)}
+    .sectile .lbl{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--sl-on-dark-accent)}
+    .sectile p{font-size:14.5px;line-height:1.6;color:var(--sl-on-dark-soft);margin:0}
+    .pillars{display:grid;gap:22px;grid-template-columns:1fr}
+    @media(min-width:960px){.pillars{grid-template-columns:1fr 1fr}}
+    .pillar{display:flex;gap:16px;align-items:flex-start}
+    .pnum{font-family:var(--sl-font-display);font-size:15px;font-weight:700;color:var(--sl-on-dark-accent);border:1px solid rgb(147 180 255 / .3);border-radius:9999px;min-width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+    .pillar h3{font-family:var(--sl-font-display);font-size:19px;font-weight:700;margin:0 0 6px;color:var(--sl-on-dark)}
+    .pillar p{font-size:14.5px;line-height:1.65;color:var(--sl-on-dark-soft);margin:0}
+    .techlist{margin-top:36px;border:1px solid rgb(199 208 236 / .18);border-radius:14px}
+    .techlist>summary{cursor:pointer;list-style:none;padding:16px 22px;font-size:15px;font-weight:600;color:var(--sl-on-dark)}
+    .techlist>summary::-webkit-details-marker{display:none}
+    .techlist>summary::after{content:" +";color:var(--sl-on-dark-accent);font-weight:700}
+    .techlist[open]>summary::after{content:" \2212"}
+    .techlist ul{margin:0;padding:0 22px 20px 42px;display:flex;flex-direction:column;gap:9px;font-size:14.5px;line-height:1.6;color:var(--sl-on-dark-soft)}
+    /* --- FAQ (2026-09-07) --- */
+    .faq{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+    .faq details{background:var(--sl-surface);border:1px solid var(--sl-border);border-radius:12px}
+    .faq summary{cursor:pointer;list-style:none;padding:18px 22px;font-size:16.5px;font-weight:600;color:var(--sl-text-primary)}
+    .faq summary::-webkit-details-marker{display:none}
+    .faq summary::after{content:"+";float:right;color:var(--sl-accent);font-weight:700}
+    .faq details[open] summary::after{content:"\2212"}
+    .faq p{margin:0;padding:0 22px 20px;font-size:15px;line-height:1.7;color:var(--sl-text-secondary)}
+    /* --- CTA koncowe (2026-09-07) --- */
+    .endcta{background:var(--sl-hero-gradient);color:var(--sl-on-dark);padding:82px 6vw;text-align:center}
+    .endcta h2{max-width:22ch;margin:0 auto 14px}
+    .endcta p{font-size:17px;line-height:1.65;color:var(--sl-on-dark-soft);max-width:58ch;margin:0 auto 30px}
+    /* --- Spojnosc layoutu (2026-09-07) ---
+       Diagnoza: sekcje nie mialy ZADNEGO ograniczenia szerokosci — tylko `padding:90px 6vw`.
+       Na monitorze 1600px dawalo to ~1400px tresci, przez co „Dla kogo", „Bezpieczenstwo"
+       i analiza dokumentow rozlewaly sie na caly ekran i wygladaly jak osobne strony.
+       Cennik od poczatku byl scisniety do 880px i dlatego jako jedyny wygladal spojnie.
+       Rozwiazanie: jedna miara tresci dla wszystkich sekcji + wyjatki tam, gdzie wezsza
+       kolumna jest celowa (cennik, FAQ, akapity ciagle). */
+    /* Kontener robimy PADDINGIEM sekcji, nie marginesami dzieci. Poprzednia wersja dawala
+       `margin-inline:auto` kazdemu dziecku — przez co `.sub` (wezsza miara 72ch) centrowal sie
+       wzgledem nagłowka i lewe krawedzie sie rozjezdzaly. Tutaj kolumna tresci jest jedna,
+       a kazdy element zachowuje swoje wlasne wyrownanie: `.sub` do lewej, `.price`/`.faq`
+       do srodka (maja wlasne `margin:0 auto`). */
+    .light,.endcta{padding-left:max(6vw,(100% - 1180px) / 2);padding-right:max(6vw,(100% - 1180px) / 2)}
+    .light>.k{display:block;margin-bottom:12px}
+    .sech3{font-family:var(--sl-font-display);font-size:24px;font-weight:700;margin:0 0 24px}
+    .dark .sech3{color:var(--sl-on-dark)}
+    .candid{margin-top:34px;padding-top:22px;border-top:1px solid rgb(199 208 236 / .18);font-size:14.5px;line-height:1.65;color:var(--sl-on-dark-soft);max-width:70ch}
+    /* Jeden rytm pionowy zamiast 90/82 px na sekcje; na telefonie sekcje byly nienaturalnie wysokie. */
+    .light,.endcta{padding-top:84px;padding-bottom:84px}
+    @media(max-width:720px){.light,.endcta{padding-top:56px;padding-bottom:56px}}
     </style></head><body>
 
     <div class="nav">
       <a class="brand" href="/start" style="text-decoration:none"><svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><path d="M 60.94 19.93 A 32 32 0 1 1 39.06 19.93" fill="none" stroke="#EDEFF8" stroke-width="9" stroke-linecap="butt"/><circle cx="50" cy="18" r="5" fill="#D97706"/></svg><span class="omnia">Omnia</span><span class="si">SI</span></a>
-      <span class="links"><a href="#roznice">Czym się różnimy</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></span>
+      <span class="links"><a href="#roznice">Czym się różnimy</a><a href="#bezpieczenstwo">Bezpieczeństwo</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></span>
       <details class="nav-burger">
         <summary aria-label="Menu">☰</summary>
-        <nav class="nav-sheet"><a href="#roznice">Czym się różnimy</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></nav>
+        <nav class="nav-sheet"><a href="#roznice">Czym się różnimy</a><a href="#bezpieczenstwo">Bezpieczeństwo</a><a href="#cennik">Cennik</a><a href="/o-systemie">O systemie</a><!--NAV-CTA--></nav>
       </details>
     </div>
 
@@ -485,6 +552,103 @@ const string LandingHtml = """
       </div>
     </div>
 
+    <div class="light" id="dla-kogo" style="background:var(--sl-bg)">
+      <span class="k">Dla kogo</span>
+      <h2>Research, który da się sprawdzić</h2>
+      <p class="sub">Niezależnie od tego, w jakiej roli sprawdzasz — mechanizm jest ten sam: teza, cytat, źródło do otwarcia.</p>
+      <div class="segs">
+        <div class="seg">
+          <span class="k">Szybszy pierwszy krok w sprawie</span>
+          <h3>Małe i średnie kancelarie</h3>
+          <p>Pytasz po polsku, dostajesz przepisy i orzeczenia z sygnaturami do sprawdzenia. Zamiast godziny w wyszukiwarce — kilka minut i lista źródeł, od której zaczynasz pracę.</p>
+        </div>
+        <div class="seg">
+          <span class="k">Prawo polskie i unijne w jednym pytaniu</span>
+          <h3>Prawnicy in-house i compliance</h3>
+          <p>RODO, AI Act, DSA, DORA — akty unijne obok polskiej ustawy wdrażającej, w jednej odpowiedzi. Bez przeskakiwania między EUR-Leksem a ISAP-em.</p>
+        </div>
+        <div class="seg">
+          <span class="k">Wiesz, co się zmieniło i od kiedy</span>
+          <h3>Praktycy w obszarach po nowelizacji</h3>
+          <p>Prawo pracy, procedura, podatki — tam gdzie tekst jednolity nie nadąża. OmniaSI pokazuje nowelizację, której jeszcze nie ma w tekście, i datę jej wejścia w życie.</p>
+        </div>
+        <div class="seg">
+          <span class="k">Każda teza do zweryfikowania</span>
+          <h3>Aplikanci i młodsi prawnicy</h3>
+          <p>Nie musisz wierzyć odpowiedzi — otwierasz źródło i sprawdzasz. Plan Start (0 zł) wystarcza, żeby zobaczyć, czy to działa na Twoich sprawach.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="light dark" id="bezpieczenstwo">
+      <span class="k">Bezpieczeństwo</span>
+      <h2>Tajemnica zawodowa nie znosi wyjątków dla wygody.</h2>
+      <p class="sub">Za poufność wobec klienta odpowiadasz Ty, niezależnie od tego, jakiego narzędzia używasz. Dlatego OmniaSI jest zbudowana tak, żeby jak najmniej Twoich danych w ogóle powstawało.</p>
+      <div class="secgrid">
+        <div class="sectile">
+          <span class="lbl">Lokalizacja danych</span>
+          <span class="big">Unia Europejska</span>
+          <p>Baza, aplikacja i model językowy działają na infrastrukturze w UE. Twoje pytania nie wyjeżdżają za ocean — także zanonimizowane.</p>
+        </div>
+        <div class="sectile">
+          <span class="lbl">Treść dokumentów</span>
+          <span class="big">Nie zapisujemy</span>
+          <p>Wgrana umowa żyje tylko na czas analizy. Do bazy trafia raport z werdyktami i cytatami — nie treść dokumentu.</p>
+        </div>
+        <div class="sectile">
+          <span class="lbl">Uprawnienia modelu</span>
+          <span class="big">Zero narzędzi</span>
+          <p>Model czyta źródła i odpowiada. Nie wysyła wiadomości, nie wywołuje usług, nie zapisuje niczego poza odpowiedzią.</p>
+        </div>
+      </div>
+
+      <h3 class="sech3">Jak chronimy Twoje dane</h3>
+      <div class="pillars">
+        <div class="pillar">
+          <span class="pnum">01</span>
+          <div>
+            <h3>Dokument, którego nie ma, nie wycieknie</h3>
+            <p>Nie budujemy repozytorium akt kancelarii. Wgrany plik jest przetwarzany na czas analizy i znika — nie trafia na dysk ani do bazy danych. To najtańsze zabezpieczenie, jakie istnieje: dane, których nie przechowujemy, nie mogą zostać ujawnione.</p>
+          </div>
+        </div>
+        <div class="pillar">
+          <span class="pnum">02</span>
+          <div>
+            <h3>Odgrodzone konta, sprawdzone testami</h3>
+            <p>Rozmowy i analizy są przypisane do właściciela i sprawdzane przy każdym odczycie, a zapytania do bazy są w całości parametryczne. Izolacja kont ma pokrycie w testach automatycznych, nie w deklaracji na stronie.</p>
+          </div>
+        </div>
+        <div class="pillar">
+          <span class="pnum">03</span>
+          <div>
+            <h3>Audyt, którego wyniki pokazujemy</h3>
+            <p>Przeszliśmy audyt wobec OWASP Top 10 dla aplikacji LLM — z listą ustaleń, ścieżkami w kodzie i statusem napraw. Nie każde ustalenie było wygodne; te o najwyższej wadze zostały naprawione i pokryte testami.</p>
+          </div>
+        </div>
+        <div class="pillar">
+          <span class="pnum">04</span>
+          <div>
+            <h3>Pytania nie trenują modelu</h3>
+            <p>Twoje zapytania i dokumenty nie są wykorzystywane do trenowania ani ulepszania modeli językowych. Nie są też walutą, którą płacisz za korzystanie z narzędzia.</p>
+          </div>
+        </div>
+      </div>
+
+      <details class="techlist">
+        <summary>Szczegóły techniczne</summary>
+        <ul>
+          <li>Ścisła polityka bezpieczeństwa treści (CSP <code>default-src 'self'</code>, <code>frame-ancestors 'none'</code>) — strona nie ładuje skryptów ani czcionek z obcych serwerów.</li>
+          <li>Nagłówki ochronne: <code>X-Frame-Options: DENY</code>, <code>X-Content-Type-Options: nosniff</code>, <code>Referrer-Policy: strict-origin-when-cross-origin</code>.</li>
+          <li>Odpowiedzi modelu renderowane przez sanityzację HTML — treść z modelu nie może wykonać kodu w Twojej przeglądarce.</li>
+          <li>Zapytania do bazy wyłącznie parametryczne; brak sklejania SQL z tekstu.</li>
+          <li>Limity zapytań na poziomie konta i całej instancji — pojedynczy użytkownik nie jest w stanie wyczerpać usługi dla pozostałych.</li>
+          <li>Klucze szyfrowania sesji trzymane poza obrazem aplikacji; ruch szyfrowany TLS na wejściu.</li>
+        </ul>
+      </details>
+
+      <p class="candid">Jeśli Twoja kancelaria wymaga certyfikatu w procesie zakupowym — napisz do nas, to jest właściwy moment, żeby to zaplanować.</p>
+    </div>
+
     <div class="light" id="cennik">
       <h2 style="text-align:center">Prosty cennik</h2>
       <p class="sub" style="text-align:center;margin-inline:auto">Zacznij za darmo. Przejdź wyżej, gdy research stanie się codziennością.</p>
@@ -505,10 +669,51 @@ const string LandingHtml = """
       </div>
     </div>
 
+    <div class="light" id="faq" style="background:var(--sl-surface)">
+      <h2 style="text-align:center">Często zadawane pytania</h2>
+      <p class="sub" style="text-align:center;margin-inline:auto;margin-bottom:36px">Sześć pytań, które słyszymy najczęściej — z odpowiedziami bez marketingowej waty.</p>
+      <div class="faq">
+        <details>
+          <summary>Czym to się różni od ChatGPT albo Gemini?</summary>
+          <p>Ogólny czat odpowiada z pamięci modelu i brzmi tak samo pewnie wtedy, gdy ma rację, i wtedy, gdy jej nie ma. OmniaSI najpierw znajduje przepis lub orzeczenie w korpusie, a dopiero potem odpowiada — wyłącznie na podstawie znalezionych fragmentów, z cytatem, który otwierasz w oryginale. Gdy nie znajdzie podstawy, mówi o tym wprost.</p>
+        </details>
+        <details>
+          <summary>Z jakich źródeł korzysta?</summary>
+          <p>Kodeksy, ustawy i rozporządzenia z ISAP/ELI, prawo Unii Europejskiej z EUR-Lex (od 2004 r.) oraz orzecznictwo Sądu Najwyższego, sądów powszechnych i administracyjnych (SAOS). Wszystko z publicznych, państwowych baz — bez treści licencjonowanych od komercyjnych wydawców.</p>
+        </details>
+        <details>
+          <summary>Co się dzieje z moimi pytaniami i dokumentami?</summary>
+          <p>Nie trenują żadnego modelu. Wgrany dokument nie trafia do naszej bazy — żyje tylko na czas analizy, a zapisujemy raport, nie treść umowy. Rozmowy i raporty starsze niż sześć miesięcy kasują się automatycznie. Więcej w sekcji <a href="#bezpieczenstwo">Bezpieczeństwo</a>.</p>
+        </details>
+        <details>
+          <summary>Co, jeśli wgrany dokument zawiera ukryte polecenia dla AI?</summary>
+          <p>To realne ryzyko każdego narzędzia, które czyta cudze pliki, i nie udajemy, że go nie ma — nazwaliśmy je wprost w naszym audycie bezpieczeństwa. Ograniczamy skutki architekturą: model nie ma żadnych narzędzi, którymi mógłby takie polecenie wykonać, a treść Twojego dokumentu jest cytowana w innej przestrzeni niż przepisy — dokument nie może stać się podstawą prawną odpowiedzi. Każdy werdykt w raporcie jest przypisany do konkretnego fragmentu, więc widzisz, na czym analiza się oparła.</p>
+        </details>
+        <details>
+          <summary>Co robi, gdy nie zna odpowiedzi?</summary>
+          <p>Mówi „nie znalazłem jednoznacznej podstawy prawnej" zamiast zgadywać. To jest funkcja, nie awaria: research, który czasem odmawia, jest użyteczniejszy niż taki, przy którym nigdy nie wiadomo, kiedy mu wierzyć.</p>
+        </details>
+        <details>
+          <summary>Czy to zastępuje poradę prawną?</summary>
+          <p>Nie. OmniaSI przygotowuje research do weryfikacji przez prawnika. Dlatego każda teza ma cytat — ostatnie słowo należy do Ciebie, nie do modelu.</p>
+        </details>
+        <details>
+          <summary>Czy mogę przetestować przed płaceniem?</summary>
+          <p>Tak. Plan Start to 0 zł i 15 pytań miesięcznie, bez podawania karty. Wystarczy, żeby zadać własne pytania z własnych spraw — a to jedyny test, który cokolwiek rozstrzyga.</p>
+        </details>
+      </div>
+    </div>
+
+    <div class="endcta">
+      <h2>Zadaj pierwsze pytanie z własnej sprawy</h2>
+      <p>Nie z demo, nie z przykładu — z tego, nad czym pracujesz dziś. To jedyny test, który cokolwiek rozstrzyga.</p>
+      <div class="heroctas"><!--CTA-END--><a class="btn-line" href="/o-systemie">Zobacz, jak to działa</a></div>
+    </div>
+
     <footer>
       <div class="row">
         <span class="fbrand">OmniaSI</span>
-        <span class="flinks"><a href="/regulamin">Regulamin</a><a href="/prywatnosc">Polityka prywatności</a><a href="/cookies">Cookies</a><a href="/o-systemie">O systemie</a></span>
+        <span class="flinks"><a href="#faq">FAQ</a><a href="/regulamin">Regulamin</a><a href="/prywatnosc">Polityka prywatności</a><a href="/cookies">Cookies</a><a href="/o-systemie">O systemie</a></span>
       </div>
       <div class="legal">OmniaSI generuje research prawny do weryfikacji przez prawnika — nie świadczy porad prawnych. Treści generowane przez sztuczną inteligencję są oznaczane maszynowo zgodnie z aktem o sztucznej inteligencji (AI Act).</div>
     </footer>
@@ -527,11 +732,13 @@ var landingHtml = authOptions.Enabled
         .Replace("<!--CTA-->", """<a class="btn" href="/rejestracja" style="min-height:52px;padding:0 30px;font-size:16.5px" data-umami-event="cta-hero-rejestracja">Zacznij za darmo — 15 pytań/mies.</a>""")
         .Replace("<!--CTA-START-->", """<a class="btn-line" href="/rejestracja" style="color:var(--sl-text-primary);border-color:var(--sl-border);margin-top:auto;justify-content:center" data-umami-event="cta-plan-start">Załóż konto</a>""")
         .Replace("<!--CTA-PRO-->", """<a class="btn" href="/rejestracja" style="margin-top:auto;justify-content:center" data-umami-event="cta-plan-pro">Wybierz Pro</a>""")
+        .Replace("<!--CTA-END-->", """<a class="btn" href="/rejestracja" style="min-height:52px;padding:0 30px;font-size:16.5px" data-umami-event="cta-koncowe-rejestracja">Zacznij za darmo — 15 pytań/mies.</a>""")
     : landingBase
         .Replace("<!--NAV-CTA-->", """<a class="btn" href="/wejscie" style="min-height:40px">Mam kod zaproszenia</a>""")
         .Replace("<!--CTA-->", """<a class="btn" href="/wejscie" style="min-height:52px;padding:0 30px;font-size:16.5px">Mam kod zaproszenia → Wejdź</a>""")
         .Replace("<!--CTA-START-->", """<a class="btn-line" href="/wejscie" style="color:var(--sl-text-primary);border-color:var(--sl-border);margin-top:auto;justify-content:center">Zamknięty test — mam kod</a>""")
-        .Replace("<!--CTA-PRO-->", """<span class="foot-note" style="margin-top:auto">Dostępne po starcie publicznym.</span>""");
+        .Replace("<!--CTA-PRO-->", """<span class="foot-note" style="margin-top:auto">Dostępne po starcie publicznym.</span>""")
+        .Replace("<!--CTA-END-->", """<a class="btn" href="/wejscie" style="min-height:52px;padding:0 30px;font-size:16.5px">Mam kod zaproszenia → Wejdź</a>""");
 
 // Landing dla ZALOGOWANEGO (leftover 2026-08-31: logo ma wracać na stronę główną, a `/` dla
 // zalogowanych nadal przekierowuje do /czat — inwariant zostaje). /start to jawne „pokaż stronę
@@ -539,6 +746,7 @@ var landingHtml = authOptions.Enabled
 var landingHtmlAuthed = landingBase
     .Replace("<!--NAV-CTA-->", """<a class="btn" href="/czat" style="min-height:40px">Przejdź do czatu</a><!--WHO-->""")
     .Replace("<!--CTA-->", """<a class="btn" href="/czat" style="min-height:52px;padding:0 30px;font-size:16.5px">Przejdź do czatu</a>""")
+    .Replace("<!--CTA-END-->", """<a class="btn" href="/czat" style="min-height:52px;padding:0 30px;font-size:16.5px">Przejdź do czatu</a>""")
     .Replace("<!--CTA-START-->", """<span class="foot-note" style="margin-top:auto">Masz już konto.</span>""")
     .Replace("<!--CTA-PRO-->", billingOptions.Enabled
         ? """<a class="btn" href="/konto" style="margin-top:auto;justify-content:center">Zarządzaj planem</a>"""
