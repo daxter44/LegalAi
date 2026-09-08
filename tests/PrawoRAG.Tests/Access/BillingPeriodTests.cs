@@ -92,7 +92,7 @@ public class BillingPeriodTests
 
         var limits = plans.Resolve("plan-ktorego-nie-ma");
 
-        Assert.Equal(15, limits.RequestsPerMonth); // darmowy, NIE brak limitu
+        Assert.Equal(10, limits.RequestsPerMonth); // darmowy, NIE brak limitu
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class BillingPeriodTests
     {
         var plans = new PlanOptions();
 
-        Assert.Equal(15, plans.Resolve(PlanIds.Free).RequestsPerMonth);
-        Assert.Equal(300, plans.Resolve(PlanIds.Pro).RequestsPerMonth);
+        Assert.Equal(10, plans.Resolve(PlanIds.Free).RequestsPerMonth);
+        Assert.Equal(350, plans.Resolve(PlanIds.Pro).RequestsPerMonth);
     }
 }

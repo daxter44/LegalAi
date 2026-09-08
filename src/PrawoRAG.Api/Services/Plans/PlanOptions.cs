@@ -22,8 +22,8 @@ public sealed class PlanOptions
     {
         // AnalysesPerMonth/MaxUnitsPerAnalysis: wartości ROBOCZE do decyzji cenowej (2026-09-02) —
         // zmiana to zmiana konfiguracji (Plans:Items:{plan}:AnalysesPerMonth), nie kodu.
-        [PlanIds.Free] = new() { DisplayName = "Darmowy", RequestsPerMonth = 15, AnalysesPerMonth = 3, MaxUnitsPerAnalysis = 20 },
-        [PlanIds.Pro] = new() { DisplayName = "Pro", RequestsPerMonth = 300, AnalysesPerMonth = 50, MaxUnitsPerAnalysis = 40 },
+        [PlanIds.Free] = new() { DisplayName = "Darmowy", RequestsPerMonth = 10, AnalysesPerMonth = 3, MaxUnitsPerAnalysis = 20 },
+        [PlanIds.Pro] = new() { DisplayName = "Pro", RequestsPerMonth = 350, AnalysesPerMonth = 50, MaxUnitsPerAnalysis = 40 },
     };
 
     /// <summary>
@@ -33,7 +33,7 @@ public sealed class PlanOptions
     public PlanLimits Resolve(string? planId) =>
         planId is not null && Items.TryGetValue(planId, out var found) ? found
         : Items.TryGetValue(DefaultPlan, out var fallback) ? fallback
-        : new PlanLimits { DisplayName = "Darmowy", RequestsPerMonth = 15 };
+        : new PlanLimits { DisplayName = "Darmowy", RequestsPerMonth = 10 };
 }
 
 /// <summary>Nazwy planów w jednym miejscu — te same stringi lądują w bazie i w konfiguracji.</summary>

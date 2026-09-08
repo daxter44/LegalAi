@@ -26,7 +26,7 @@ public readonly record struct CostDecision(bool Allowed, string? Message, bool P
 ///   potrafi położyć serwer w kilka godzin. Obowiązuje ZAWSZE, gdy cokolwiek jest liczone — także
 ///   w trybie kont z wyłączoną bramką invite (<c>Auth:Enabled=true</c>, <c>Access:Enabled=false</c>).
 ///   Do audytu 2026-09-01 (W3) była sprzężona z <c>Access:Enabled</c>, więc w trybie kont nie
-///   działała: N darmowych kont = N×15 zapytań bez sufitu sprzętowego. Wartości capów nadal leżą
+///   działała: N darmowych kont = N×10 zapytań bez sufitu sprzętowego. Wartości capów nadal leżą
 ///   w <see cref="AccessOptions"/> (zgodność konfiguracji), ale <c>Access:Enabled</c> ich nie wyłącza.
 ///   Jedyny tryb bez liczenia: brak planu I brak bramki (dev/M4).
 ///
@@ -192,7 +192,7 @@ public sealed class CostGuard(
     }
 
     /// <summary>E3 podmieni to na odczyt z katalogu planów wraz z cennikiem i odnośnikiem do zakupu.</summary>
-    private const int ProPlanRequests = 300;
+    private const int ProPlanRequests = 350;
     private const int ProPlanAnalyses = 50;
 
     private static string Limit(string reason) =>

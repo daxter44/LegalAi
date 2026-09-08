@@ -84,7 +84,7 @@ public class EntitlementsLiveTests : IAsyncLifetime
         var entitlement = await Sut().ForAsync(UserId);
 
         Assert.Equal(PlanIds.Pro, entitlement.PlanId);
-        Assert.Equal(300, entitlement.Limits!.RequestsPerMonth);
+        Assert.Equal(350, entitlement.Limits!.RequestsPerMonth);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class EntitlementsLiveTests : IAsyncLifetime
         var entitlement = await Sut().ForAsync(UserId);
 
         Assert.Equal(PlanIds.Free, entitlement.PlanId);
-        Assert.Equal(15, entitlement.Limits!.RequestsPerMonth);
+        Assert.Equal(10, entitlement.Limits!.RequestsPerMonth);
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class EntitlementsLiveTests : IAsyncLifetime
         var entitlement = await Sut().ForAsync(UserId);
 
         Assert.Equal(PlanIds.Free, entitlement.PlanId);
-        Assert.Equal(15, entitlement.Limits!.RequestsPerMonth);
+        Assert.Equal(10, entitlement.Limits!.RequestsPerMonth);
     }
 
     [Fact]

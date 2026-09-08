@@ -118,8 +118,8 @@ public class CostGuardRulesTests
     [Fact]
     public async Task Paid_plan_message_does_not_advertise_itself()
     {
-        var guard = Guard(new AccessOptions { Enabled = false }, Plan(300, "Pro"), new FakeTime());
-        for (var i = 0; i < 300; i++) await guard.TryAcquireAsync("konto");
+        var guard = Guard(new AccessOptions { Enabled = false }, Plan(350, "Pro"), new FakeTime());
+        for (var i = 0; i < 350; i++) await guard.TryAcquireAsync("konto");
 
         var denied = await guard.TryAcquireAsync("konto");
 
@@ -161,7 +161,7 @@ public class CostGuardRulesTests
 
     // Audyt OWASP LLM 2026-09-01 (W3): tryb kont z WYŁĄCZONĄ bramką invite (Auth:Enabled=true,
     // Access:Enabled=false) — dokładnie konfiguracja bety. Capy pojemności musiały działać, a nie
-    // działały: wychodziliśmy z Ok() przy !Access.Enabled, więc N darmowych kont = N×15 zapytań bez
+    // działały: wychodziliśmy z Ok() przy !Access.Enabled, więc N darmowych kont = N×10 zapytań bez
     // sufitu sprzętowego.
 
     [Fact]
