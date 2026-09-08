@@ -486,20 +486,20 @@ const string LandingHtml = """
     <div class="hero">
       <div class="glow1"></div><div class="glow2"></div>
       <span class="eyebrow"><i></i>Asystent researchu prawnego · dane i modele w UE</span>
-      <h1>AI któremu<br>możesz zaufać</h1>
-      <p class="lead">Kada teza wysunięta przez nasz system musi być poparta dokumentem źródłowym. A gdy źródła nie wystarczają, OmniaSI mówi to wprost, zamiast zgadywać.</p>
+      <h1>AI, któremu<br>możesz zaufać</h1>
+      <p class="lead">Każda teza wysunięta przez nasz system musi być poparta dokumentem źródłowym. A gdy źródła nie wystarczają, OmniaSI mówi to wprost, zamiast zgadywać.</p>
       <div class="heroctas"><!--CTA--><a class="btn-line" href="#roznice">Co nas wyróżnia</a></div>
       <p class="quiet">Twoje pytania i dokumenty nie trenują żadnego modelu.</p>
     </div>
 
     <div class="light" id="roznice">
-      <h2>Ogólny chatbot odpowie na wszystko.<br>OmniaSI sprawdzi - zweryfikuje - odpowie.</h2>
+      <h2>Ogólny chatbot odpowie na wszystko.<br>OmniaSI sprawdzi — zweryfikuje — odpowie.</h2>
       <p class="sub">Podstawą pracy Prawnika jest zaufanie - cztery rzeczy, których popularne AI Ci nie zagwarantują.</p>
       <div class="bento">
         <div class="cardw">
           <span class="k">Nowelizacje pod kontrolą</span>
           <h3>Codzienne aktualizacje bazy nowelizacji.</h3>
-          <span class="q"><strong>Pytanie:</strong>Czy aplikant adwokacki może zastępować radcę prawnego ?</span>
+          <span class="q"><strong>Pytanie:</strong> Czy aplikant adwokacki może zastępować radcę prawnego?</span>
           <div class="cmp">
             <div class="ans ans-bad">
               <span class="who">Gemini <span class="tag" style="background:var(--sl-error)">NIEAKTUALNY STAN PRAWNY</span></span>
