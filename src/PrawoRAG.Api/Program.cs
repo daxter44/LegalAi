@@ -472,6 +472,37 @@ const string LandingHtml = """
     .unit-actions dt{font-weight:700;color:var(--sl-error);margin:0}
     .unit-actions dd{margin:0;color:var(--sl-text-secondary)}
     .unit-why{margin:8px 0 0;font-size:12.5px;line-height:1.6;color:var(--sl-text-secondary)}
+    /* --- Cena promocyjna early access (2026-09-08) --- */
+    .plan .amount s{font-size:26px;font-weight:400;color:var(--sl-text-tertiary);margin-right:10px;text-decoration-thickness:2px}
+    .promo-note{font-size:13px;line-height:1.5;color:var(--sl-text-tertiary);margin:-6px 0 0}
+    /* --- Modul „kiedy sie oplaca" (2026-09-08) --- */
+    .roi{max-width:880px;margin:46px auto 0;background:var(--sl-surface);border:1px solid var(--sl-border);border-radius:16px;padding:32px}
+    .roi h3{font-family:var(--sl-font-display);font-size:24px;font-weight:700;margin:0 0 8px;color:var(--sl-text-primary)}
+    .roi .roi-lead{font-size:15.5px;color:var(--sl-text-secondary);margin:0 0 26px}
+    .roi-assum{display:grid;gap:14px;grid-template-columns:1fr;margin:0 0 28px}
+    @media(min-width:700px){.roi-assum{grid-template-columns:1fr 1fr}}
+    .roi-assum div{display:grid;grid-template-columns:1fr auto;align-content:start;gap:5px 12px;background:var(--sl-bg-secondary);border-radius:12px;padding:14px 16px;font-size:14px;color:var(--sl-text-secondary)}
+    .roi-assum strong{grid-column:1;grid-row:1;color:var(--sl-text-primary);font-size:14.5px}
+    .roi-assum em{grid-column:2;grid-row:1;justify-self:end;font-style:normal;font-weight:700;color:var(--sl-success);white-space:nowrap}
+    .roi-assum span{grid-column:1/-1;grid-row:2}
+    .roi-vs{display:flex;align-items:stretch;gap:10px;margin-top:4px}
+    .roi-vs>span{flex:1;display:flex;flex-direction:column;gap:3px;border-radius:10px;padding:9px 12px;background:var(--sl-surface);border:1px solid var(--sl-border);font-size:16px;font-weight:700;color:var(--sl-text-primary)}
+    .roi-vs>span i{font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--sl-text-tertiary)}
+    .roi-vs .roi-after{background:var(--sl-accent-light);border-color:var(--sl-accent)}
+    .roi-vs .roi-after i{color:var(--sl-accent)}
+    .roi-arrow{align-self:center;color:var(--sl-text-tertiary);font-size:17px}
+    .roi-inputs{display:grid;gap:26px;grid-template-columns:1fr;margin-bottom:30px}
+    @media(min-width:700px){.roi-inputs{grid-template-columns:repeat(3,1fr)}}
+    .roi-inputs label{display:block}
+    .roi-lbl{display:block;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--sl-text-tertiary);margin:0 0 10px}
+    .roi-lbl output{float:right;font-size:15px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--sl-accent)}
+    .roi-inputs input[type=range]{width:100%;height:6px;-webkit-appearance:none;appearance:none;background:var(--sl-bg-secondary);border-radius:9999px;outline-offset:6px}
+    .roi-inputs input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:9999px;background:var(--sl-gradient);box-shadow:var(--sl-shadow-accent);cursor:pointer}
+    .roi-inputs input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radius:9999px;background:var(--sl-accent);cursor:pointer}
+    .roi-out{background:var(--sl-accent-light);border-radius:12px;padding:22px 24px}
+    .roi-num{display:block;font-family:var(--sl-font-display);font-size:32px;font-weight:700;line-height:1.1;color:var(--sl-accent)}
+    .roi-out p{font-size:14.5px;line-height:1.6;color:var(--sl-text-secondary);margin:8px 0 0}
+    .roi-foot{font-size:14.5px;line-height:1.65;color:var(--sl-text-secondary);margin:26px 0 0;padding-top:20px;border-top:1px solid var(--sl-border)}
     </style></head><body>
 
     <div class="nav">
@@ -696,16 +727,56 @@ const string LandingHtml = """
         <div class="plan">
           <span class="name">Start</span>
           <span class="amount">0 zł <small>/ miesiąc</small></span>
-          <ul><li>15 zapytań miesięcznie</li><li>Pełna baza przepisów i orzecznictwa</li><li>Cytowania, panel źródeł, nowelizacje</li></ul>
+          <ul><li>10 pytań miesięcznie — aby przekonać się, że rozwiązanie działa</li><li>Pełna baza przepisów i orzecznictwa</li><li>Cytowania, panel źródeł, nowelizacje</li></ul>
           <!--CTA-START-->
         </div>
         <div class="plan pro">
-          <span class="badge-top">DLA PRAKTYKI</span>
+          <span class="badge-top">EARLY ACCESS · −25%</span>
           <span class="name">Pro</span>
-          <span class="amount">[CENA] zł <small>/ miesiąc</small></span>
-          <ul><li>300 zapytań miesięcznie</li><li>Wszystko z planu Start + analiza dokumentów</li><li>Anulujesz w każdej chwili — plan działa do końca okresu</li></ul>
+          <span class="amount"><s>199 zł</s>149 zł <small>/ miesiąc</small></span>
+          <p class="promo-note">Cena early access. Docelowo 199 zł miesięcznie — 149 zł zachowujesz tak długo, jak nie anulujesz subskrypcji.</p>
+          <ul><li>350 pytań miesięcznie</li><li>Dostęp do modułu analizy dokumentów</li><li>Anulujesz w każdej chwili — bez zobowiązań</li></ul>
           <!--CTA-PRO-->
         </div>
+      </div>
+
+      <div class="roi">
+        <h3>Ile jesteś do przodu? Policz sam.</h3>
+        <p class="roi-lead">Dwa założenia z realnej pracy, resztę ustawiasz suwakami pod siebie.</p>
+        <div class="roi-assum">
+          <div>
+            <strong>Analiza umowy</strong><em>+55 min</em>
+            <span class="roi-vs">
+              <span><i>Bez OmniaSI</i>~1 godzina</span><b class="roi-arrow">→</b><span class="roi-after"><i>Z OmniaSI</i>~5 minut</span>
+            </span>
+          </div>
+          <div>
+            <strong>Research kazusu</strong><em>+30 min</em>
+            <span class="roi-vs">
+              <span><i>Bez OmniaSI</i>~1 godzina</span><b class="roi-arrow">→</b><span class="roi-after"><i>Z OmniaSI</i>~30 minut</span>
+            </span>
+          </div>
+        </div>
+        <div class="roi-inputs">
+          <label>
+            <span class="roi-lbl">Koszt Twojej godziny <output id="roi-rate">200 zł</output></span>
+            <input type="range" id="roi-hour" min="100" max="600" step="10" value="200" aria-label="Koszt godziny Twojej pracy">
+          </label>
+          <label>
+            <span class="roi-lbl">Analiz umów / mies. <output id="roi-d">4</output></span>
+            <input type="range" id="roi-docs" min="0" max="20" step="1" value="4" aria-label="Liczba analizowanych dokumentów miesięcznie">
+          </label>
+          <label>
+            <span class="roi-lbl">Kazusów / mies. <output id="roi-k">8</output></span>
+            <input type="range" id="roi-cases" min="0" max="40" step="1" value="8" aria-label="Liczba researchów orzecznictwa miesięcznie">
+          </label>
+        </div>
+        <div class="roi-out" aria-live="polite">
+          <span class="roi-num"><output id="roi-net">+1384 zł</output> <small style="font-size:16px;font-weight:400;color:var(--sl-text-secondary)">na plus, miesięcznie</small></span>
+          <p id="roi-detail">Odzyskujesz 7 godz. 40 min miesięcznie — to 1533 zł Twojego czasu. Po odjęciu 149 zł abonamentu zostaje 1384 zł na plus.</p>
+          <p id="roi-break" style="font-size:14.5px;line-height:1.6;color:var(--sl-text-secondary);margin:6px 0 0">Przy tej stawce już jedna analiza umowy w miesiącu pokrywa cały abonament.</p>
+        </div>
+        <p class="roi-foot">Czasy po stronie OmniaSI zostały zbadane podczas testów wdrożeniowych. Każda sprawa i każdy dokument są inne, więc podane czasy mogą się różnić.</p>
       </div>
     </div>
 
@@ -739,7 +810,7 @@ const string LandingHtml = """
         </details>
         <details>
           <summary>Czy mogę przetestować przed płaceniem?</summary>
-          <p>Tak. Plan Start to 0 zł i 15 pytań miesięcznie, bez podawania karty. Wystarczy, żeby zadać własne pytania z własnych spraw — a to jedyny test, który cokolwiek rozstrzyga.</p>
+          <p>Tak. Plan Start to 0 zł i 10 pytań miesięcznie, bez podawania karty. Wystarczy, żeby zadać własne pytania z własnych spraw — a to jedyny test, który cokolwiek rozstrzyga.</p>
         </details>
       </div>
     </div>
@@ -757,6 +828,7 @@ const string LandingHtml = """
       </div>
       <div class="legal">OmniaSI generuje research prawny do weryfikacji przez prawnika — nie świadczy porad prawnych. Treści generowane przez sztuczną inteligencję są oznaczane maszynowo zgodnie z aktem o sztucznej inteligencji (AI Act).</div>
     </footer>
+    <script src="/js/roi.js" defer></script>
     <!--ANALYTICS-->
     </body></html>
     """;
@@ -769,10 +841,10 @@ var landingBase = LandingHtml.Replace("<!--ANALYTICS-->", AnalyticsSnippet.Html)
 var landingHtml = authOptions.Enabled
     ? landingBase
         .Replace("<!--NAV-CTA-->", """<a class="btn-line" href="/logowanie" style="min-height:40px">Zaloguj się</a><a class="btn" href="/rejestracja" style="min-height:40px" data-umami-event="cta-nav-rejestracja">Wypróbuj za darmo</a>""")
-        .Replace("<!--CTA-->", """<a class="btn" href="/rejestracja" style="min-height:52px;padding:0 30px;font-size:16.5px" data-umami-event="cta-hero-rejestracja">Zacznij za darmo — 15 pytań/mies.</a>""")
+        .Replace("<!--CTA-->", """<a class="btn" href="/rejestracja" style="min-height:52px;padding:0 30px;font-size:16.5px" data-umami-event="cta-hero-rejestracja">Zacznij za darmo — 10 pytań/mies.</a>""")
         .Replace("<!--CTA-START-->", """<a class="btn-line" href="/rejestracja" style="color:var(--sl-text-primary);border-color:var(--sl-border);margin-top:auto;justify-content:center" data-umami-event="cta-plan-start">Załóż konto</a>""")
         .Replace("<!--CTA-PRO-->", """<a class="btn" href="/rejestracja" style="margin-top:auto;justify-content:center" data-umami-event="cta-plan-pro">Wybierz Pro</a>""")
-        .Replace("<!--CTA-END-->", """<a class="btn" href="/rejestracja" style="min-height:52px;padding:0 30px;font-size:16.5px" data-umami-event="cta-koncowe-rejestracja">Zacznij za darmo — 15 pytań/mies.</a>""")
+        .Replace("<!--CTA-END-->", """<a class="btn" href="/rejestracja" style="min-height:52px;padding:0 30px;font-size:16.5px" data-umami-event="cta-koncowe-rejestracja">Zacznij za darmo — 10 pytań/mies.</a>""")
     : landingBase
         .Replace("<!--NAV-CTA-->", """<a class="btn" href="/wejscie" style="min-height:40px">Mam kod zaproszenia</a>""")
         .Replace("<!--CTA-->", """<a class="btn" href="/wejscie" style="min-height:52px;padding:0 30px;font-size:16.5px">Mam kod zaproszenia → Wejdź</a>""")
